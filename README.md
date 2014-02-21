@@ -31,4 +31,5 @@ How to use
 To use SolarmanTriplestore just load it up in GHCi and use the "main" function.
 
 >main "which moons were discovered by hall"
+
 >=>[phobos deimos]
