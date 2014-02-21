@@ -1218,7 +1218,8 @@ how_many nph vbph =
 who vbph = which person vbph
 
 --New
-what = which thing
+what nph = if result /= [] then result else "nothing."
+	where result = unwords nph
 
 --end of copied from gangster_v4
 
