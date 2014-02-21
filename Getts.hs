@@ -60,10 +60,11 @@ collect ((x,y):t) =
 		
 
 --make_image accepts an event type as input, determines all subjects for
---all events of that type, and comp
-make_image :: (TripleStore m) => m -> String -> [(String,[String])]
-make_image ev_data et =
-	collect [(subj, ev) | ev <- evs, subj <- getts_3 ev_data (ev, "subject","?") ]
-	where evs = getts_1 ev_data ("?", "type", et)
+--all events of that type, and computes the image under the relation
+--for each subject as described in the collect function
+--Arguments: triple store, Event type (i.e. join_rel), Entity type (i.e. subject, object)
+make_image :: (TripleStore m) => m -> String -> String ->[(String,[String])]
+make_image ev_data ev_type entity_type =
+	collect [(ent, ev) | ev <- evs, ent <- getts_3 ev_data (ev, entity_type,"?") ]
+	where evs = getts_1 ev_data ("?", "type", ev_type)
 	
-

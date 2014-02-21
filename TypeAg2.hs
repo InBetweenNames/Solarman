@@ -1,4 +1,4 @@
-module TypeAg where
+module TypeAg2 where
 
 
 data AttValue = VAL             {getAVAL    ::   Int} 
@@ -15,11 +15,11 @@ data AttValue = VAL             {getAVAL    ::   Int}
 	      | ADJ_VAL         {getAVALS   ::   ES} 
 	      | TERMPH_VAL      {getTVAL    ::   (ES -> Bool)}     
 	      | DET_VAL         {getDVAL    ::   (ES -> ES -> Bool)} 
-	      | VERB_VAL        {getBR      ::   Bin_Rel}      
+	      | VERB_VAL        {getBR      ::   Relation}      
 	      | RELPRON_VAL     {getRELVAL  ::   (ES -> ES -> ES)}    
 	      | NOUNJOIN_VAL    {getNJVAL   ::   (ES -> ES -> ES)}
 	      | VBPHJOIN_VAL    {getVJVAL   ::   (ES -> ES -> ES)}    
-	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((ES -> Bool) -> (ES -> Bool)  -> (ES -> Bool))}
+	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((ES -> Bool) -> (ES -> Bool)  -> ES -> Bool)}
 	      | PREP_VAL        {getPREPVAL ::   (ES -> ES)}
 	      | LINKINGVB_VAL   {getLINKVAL ::   (ES -> ES)}
 	      | SENTJOIN_VAL    {getSJVAL   ::   (Bool -> Bool -> Bool)}
@@ -49,10 +49,12 @@ attFunc
     (QUEST2_VAL,getQU2VAL),(QUEST3_VAL,getQU3VAL)   
    ]
 -}
-type Entity         =  Integer  
+type Entity         =  String  
 type Entityset      =  [Entity]   
 type ES             =  Entityset -- [Int]
-type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
+--type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
+--type Relation		= (ES -> Bool) -> ES
+type Relation = String
 
 data DisplayTree = B [DisplayTree]
                  | N Int

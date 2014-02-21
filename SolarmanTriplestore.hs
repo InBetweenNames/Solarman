@@ -1,10 +1,11 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
+module SolarmanTriplestore where
 
 import Getts
 import Data.List as List
 import qualified Data.Set as Set
-import AGParser
-import TypeAg
+import AGParser2
+import TypeAg2
 
 
 dataStore =
@@ -1208,13 +1209,16 @@ two nph vbph =
 	length (intersect  nph vbph) == 2 
   
 
-which nph vbph =
-	intersect nph vbph
+which nph vbph = if result /= [] then result else "none."
+	where result = unwords $ intersect nph vbph
 
 how_many nph vbph =
-	length (intersect nph vbph)
+	show $ length (intersect nph vbph)
 
 who vbph = which person vbph
+
+--New
+what = which thing
 
 --end of copied from gangster_v4
 
@@ -1227,14 +1231,25 @@ sun		= get_members dataStore (gts "sun")
 planet	= get_members dataStore (gts "planet")
 moon	= get_members dataStore (gts "moon")
 person	= get_members dataStore (gts "person")
-things	= get_members dataStore (gts "thing")
+thing	= get_members dataStore (gts "thing")
+
+atmospheric = get_members dataStore (gts "atmospheric")
+blue = get_members dataStore (gts "blue")
+depressed = get_members dataStore (gts "depressed")
+solid = get_members dataStore (gts "solid")
+brown 	= get_members dataStore (gts "brown")
+gaseous = get_members dataStore (gts "gaseous")
+green 	= get_members dataStore (gts "green")
+red		= get_members dataStore (gts "red")
+ringed  = get_members dataStore (gts "ringed")
+vacuumous = get_members dataStore (gts "vacuumous")
+exists = thing
+spin   = get_members dataStore (gts "spin")
+
 
 --Need to ensure uniqueness in output?  I.e. discover_intrans has multiple "hall"s in list
 discover_intrans	= get_subjs_of_event_type dataStore (gts "discover_ev")
 orbit_intrans		= get_subjs_of_event_type dataStore (gts "orbit_ev")
-
---image_discover = make_image dataStore "discover_ev"
---image_orbit = make_image dataStore "orbit_ev"
 
 discover = make_relation dataStore "discover_ev" 
 discovered = discover
@@ -1256,12 +1271,19 @@ could be mixed together.  By having make_relation handle that itself, that progr
 2) Haskell is lazily evaluated and GHC does a lot of caching in the background anyway.  It'd likely be done automatically
 -}
 
+--Need two, because one needs to be inverted for a grammar rule to work.  
+--Could just flip arguments, but this is more readable
 make_relation :: (TripleStore m) => m -> String -> ([String] -> Bool) -> [String]
 make_relation ev_data rel tmph
-	= [subj | (subj, evs) <- make_image ev_data rel,
+	= [subj | (subj, evs) <- make_image ev_data rel "subject",
 				tmph (concat [getts_3 ev_data (ev, gts "object", "?") | ev <- evs])]
 				
---Prepositional filtering
+make_inverted_relation :: (TripleStore m) => m -> String -> ([String] -> Bool) -> [String]
+make_inverted_relation ev_data rel tmph
+	= [obj | (obj, evs) <- make_image ev_data rel "object",
+				tmph (concat [getts_3 ev_data (ev, gts "subject", "?") | ev <- evs])]
+				
+--Prepositional filtering (not used yet)
 
 filter_ev :: (TripleStore m) => m -> Event -> [(String, [String] -> Bool)] -> Bool
 filter_ev ev_data ev [] = True
@@ -1280,12 +1302,393 @@ filter_ev ev_data ev (prep:list_of_preps)
 --TODO:
 --Move combinators and relation stuff into modules?
 
+--Copied from old solarman:
+yesno x = if x then "yes." else "no"
+sand True True = True
+sand any any'  = False
+
+
 {-
+||-----------------------------------------------------------------------------
+||  BASIC INTERPRETERS
+||-----------------------------------------------------------------------------
+-}
+
+
+pnoun           =  pre_processed Pnoun
+cnoun           =  pre_processed Cnoun
+adj             =  pre_processed Adj
+det             =  pre_processed Det
+intransvb       =  pre_processed Intransvb
+transvb         =  pre_processed Transvb
+linkingvb       =  pre_processed Linkingvb
+relpron         =  pre_processed Relpron
+termphjoin      =  pre_processed Termphjoin
+verbphjoin      =  pre_processed Verbphjoin
+nounjoin        =  pre_processed Nounjoin
+prep            =  pre_processed Prep
+indefpron       =  pre_processed Indefpron
+{-
+terminator      =  uninterpreted (SPECIAL_SYMBOL_TERM ".")
+                   $orelse
+                   uninterpreted (SPECIAL_SYMBOL_TERM "?")
+                   $orelse
+                   uninterpreted (SPECIAL_SYMBOL_TERM "\n")
+-}
+sentjoin        =  pre_processed Sentjoin
+quest1          =  pre_processed Quest1
+quest2          =  pre_processed Quest2
+quest3          =  pre_processed Quest3
+quest4a         =  pre_processed Quest4a
+quest4b         =  pre_processed Quest4b
+
+pre_processed key 
+ = let formAlts altTerminals  = memoize key (altTerminals) 
+       formTerminal [x]       = x
+       formTerminal (x:xs)    = x <|>  formTerminal xs
+       list_of_ters           = [ terminal (term a) z 
+                                | (a,b,z) <- dictionary
+                                , b == key]
+   in  formAlts (formTerminal list_of_ters)
+
+
+meaning_of p dInp key
+ = let dInput     = words dInp
+       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) [] 
+       upperBound = (length dInput) + 1
+   in  formFinal key upperBound (snd $ appParser)   
+
+meaning_of_ p dInp key
+ = let dInput     = words dInp
+       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) [] 
+       upperBound = (length dInput) + 1
+   in  (snd $ appParser)   
+
+formAtts key ePoint t 
+ = concat $ concat $ concat $ concat  
+   [[[[  val1 |(id1,val1)<-synAtts]
+   	       |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]     
+   	        |((i,inAt1),((cs,ct),rs)) <- sr ]
+   	         |(s,sr) <- t, s == key ]
+formFinal key ePoint t 
+ = concat $ concat $ concat $ concat  
+   [[[[  val1 |(id1,val1)<-synAtts]
+   	       |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]     
+   	        |((i,inAt1),((cs,ct),rs)) <- sr ]
+   	         |(s,sr) <- t, s == key ]  	         
+{-
+test p = unState (p ((1,[]),input) ([],[])) [] 
+
+main   = do putStr  $ render80 $ formatAtts Question $ snd $ test (question T0 [])
+
+type Start1   = (Int, InsAttVals)
+type Start    = ((Int,InsAttVals), [String])
+type End      = (Int, InsAttVals)
+type Atts     = [AttValue] -- [(AttType, AttValue)]
+type InsAttVals = [(Instance, Atts)]
+
+
+type Mtable   = [(MemoL
+                 ,[(Start1,(Context,Result))]
+                 )
+                ] 
+type Result   = [((Start1, End),[Tree MemoL])]
+||-----------------------------------------------------------------------------
+|| THE ATTRIBUTE GRAMMAR
+||-----------------------------------------------------------------------------
+-}
+
+snouncla 
+ = memoize Snouncla
+ (parser
+  (nt cnoun S3) 
+  [rule_s NOUNCLA_VAL OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL OF S3]]
+  <|>
+  parser (nt adjs S1  *> nt cnoun S2)
+  [rule_s NOUNCLA_VAL OF LHS ISEQUALTO intrsct1 [synthesized ADJ_VAL      OF  S1,
+                                                 synthesized NOUNCLA_VAL  OF  S2]]
+                                               
+ )
+
+-------------------------------------------------------------------------------
+relnouncla   
+ = memoize Relnouncla
+   (parser 
+    (nt snouncla S1  *> nt relpron S2  *> nt joinvbph S3)
+    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle1[synthesized NOUNCLA_VAL  OF S1,
+                                                       synthesized RELPRON_VAL  OF S2,
+                                                       synthesized VERBPH_VAL   OF S3]]
+    <|>   
+    parser
+    (nt snouncla S4)
+    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL OF S4]]
+   )
+----------------------------------------------------------------------------
+
+
+
+nouncla 
+ = memoize Nouncla 
+   (parser (nt relnouncla S1 *> nt nounjoin S2 *> nt nouncla S3)
+    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle2 [synthesized NOUNCLA_VAL  OF S1,
+                                                        synthesized NOUNJOIN_VAL OF S2,
+                                                        synthesized NOUNCLA_VAL  OF S3]]
+    <|>
+    parser (nt relnouncla S1 *> nt relpron S2 *> nt linkingvb S3 *> nt nouncla S4)
+    [rule_s NOUNCLA_VAL  OF LHS ISEQUALTO apply_middle3 [synthesized NOUNCLA_VAL  OF S1,
+                                                         synthesized RELPRON_VAL  OF S2,
+                                                         synthesized NOUNCLA_VAL  OF S4]]
+    <|>
+    parser (nt relnouncla S1)
+    [rule_s NOUNCLA_VAL  OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL  OF S1]]
+   )
+
+------------------------------------------------------------------------------
+adjs   
+ = memoize Adjs      
+   (parser (nt adj S1 *> nt adjs S2)
+    [rule_s ADJ_VAL  OF LHS ISEQUALTO intrsct2 [synthesized ADJ_VAL  OF S1,
+                                                synthesized ADJ_VAL  OF S2]]
+    <|>
+    parser (nt adj S3)
+    [rule_s ADJ_VAL  OF LHS ISEQUALTO copy [synthesized ADJ_VAL  OF S3]]
+   )
+------------------------------------------------------------------------------
+
+detph     
+ = memoize Detph
+   (parser (nt indefpron S3)
+    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S3]]
+    <|>
+    parser (nt det S1 *> nt nouncla S2)
+    [rule_s TERMPH_VAL OF LHS ISEQUALTO applydet [synthesized DET_VAL      OF S1,
+                                                  synthesized NOUNCLA_VAL  OF S2]]
+   )                                              
+
+----------------------------------------------------------------------------------
+transvbph 
+ = memoize Transvbph
+   (parser (nt transvb S1 *> nt jointermph S2)
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb [synthesized VERB_VAL    OF S1,
+                                                      synthesized TERMPH_VAL  OF S2]]
+    <|>
+    parser (nt linkingvb S1 *> nt transvb S2 *> nt prep S3 *> nt jointermph S4)
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rd [synthesized LINKINGVB_VAL  OF  S1,
+                                                  synthesized VERB_VAL       OF  S2,
+                                                  synthesized PREP_VAL       OF  S3,
+                                                  synthesized TERMPH_VAL     OF  S4]]
+   )
+
+-------------------------------------------------------------------------------
+
+verbph 
+ = memoize Verbph
+   (
+    parser (nt transvbph S4)
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S4]]
+   <|>
+    parser (nt intransvb S5)
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S5]]
+   <|>
+    parser (nt linkingvb S1 *> nt det S2 *> nt nouncla S3)
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applyvbph [synthesized NOUNCLA_VAL OF S3]]
+   )
+------------------------------------------------------------------------------------
+
+termph    
+ = memoize Termph  
+   (
+   parser (nt pnoun S1) 
+   [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S1]]
+   <|>  
+   parser (nt detph S2)
+   [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S2]]
+   )
+             
+
+------------------------------------------------------------------------------------
+jointermph 
+ = memoize Jointermph 
+   (
+{-    parser (nt jointermph S1 *> nt termphjoin S2 *> nt termph S3)
+        [rule_s TERMPH_VAL  OF LHS ISEQUALTO appjoin1 [synthesized TERMPH_VAL     OF S1,
+                                                       synthesized TERMPHJOIN_VAL OF S2,
+                                                       synthesized TERMPH_VAL     OF S3]]
+   <|>
+-}
+    parser (nt jointermph S1 *> nt termphjoin S2 *> nt jointermph S3)
+    [rule_s TERMPH_VAL  OF LHS ISEQUALTO appjoin1 [synthesized TERMPH_VAL     OF S1,
+                                                   synthesized TERMPHJOIN_VAL OF S2,
+                                                   synthesized TERMPH_VAL     OF S3]]
+   <|>
+    parser (nt termph S4)
+    [rule_s TERMPH_VAL  OF LHS ISEQUALTO copy [synthesized TERMPH_VAL  OF S4]]
+   )
+------------------------------------------------------------------------------------
+joinvbph  
+ = memoize Joinvbph   
+   (
+   parser (nt verbph S1  *> nt verbphjoin S2  *> nt joinvbph S3)
+   [rule_s VERBPH_VAL  OF LHS ISEQUALTO appjoin2 [synthesized VERBPH_VAL    OF S1,
+                                                  synthesized VBPHJOIN_VAL  OF S2,
+                                                  synthesized VERBPH_VAL    OF S3]]
+    <|>
+    parser (nt verbph S4)
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO copy [synthesized VERBPH_VAL  OF S4]]
+   )
+---------------------------------------------------------------------------
+sent  
+ = memoize Sent
+   (
+    parser (nt jointermph S1  *> nt joinvbph S2)
+    [rule_s SENT_VAL OF LHS ISEQUALTO apply_termphrase [synthesized TERMPH_VAL  OF  S1,
+                                                        synthesized VERBPH_VAL  OF  S2]]
+   )
+-- **************************************************************************** --
+two_sent 
+ = memoize Two_sent
+   (
+    parser (nt sent S1 *> nt sentjoin S2 *> nt sent S3)
+    [rule_s SENT_VAL OF LHS ISEQUALTO sent_val_comp [synthesized SENT_VAL      OF  S1,
+                                                     synthesized SENTJOIN_VAL  OF  S2,
+                                                     synthesized SENT_VAL      OF  S3]] 
+   )
+------------------------------------------------------------------------------------
+
+question   
+ = memoize Question  
+   (
+    parser (nt quest1 S1  *> nt sent S2 )
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
+                                              synthesized SENT_VAL    OF  S2]]  
+    <|>
+    parser (nt quest2 S1 *> nt joinvbph S2)
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
+                                              synthesized VERBPH_VAL    OF  S2]] 
+    <|>
+    parser (nt quest3 S1 *> nt nouncla S2 *> nt joinvbph S3)
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans3 [synthesized QUEST3_VAL  OF S1,
+                                              synthesized NOUNCLA_VAL OF S2,
+                                              synthesized VERBPH_VAL  OF  S3]]
+    <|>
+    parser (nt quest4 S1 *> nt nouncla S2 *> nt joinvbph S3)
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans3 [synthesized QUEST3_VAL  OF  S1,
+                                              synthesized NOUNCLA_VAL OF  S2,
+                                              synthesized VERBPH_VAL  OF  S3]]
+    <|>
+    parser (nt two_sent S1)
+    [rule_s QUEST_VAL OF LHS ISEQUALTO truefalse [synthesized SENT_VAL OF  S1]]  
+    <|>
+    parser (nt sent S1)
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO truefalse [synthesized SENT_VAL OF  S1]]
+
+   )
+quest4 = memoize Quest4 
+   (
+   parser (nt quest4a S1 *> nt quest4b S2) 
+   [rule_s QUEST3_VAL  OF LHS ISEQUALTO copy [synthesized QUEST3_VAL  OF  S1]] 
+   )
+---------------------------------------------------------------------------------
+
+query = memoize Query
+        (
+        parser (nt question S1) -- *> nt terminator S2)
+        [rule_s QUEST_VAL  OF LHS ISEQUALTO copy [synthesized QUEST_VAL  OF  S1]]
+        )
+
+
+
+{-
+|| -----------------------------------------------------------------------------
+|| THE SEMANTICS - PART I : The attribute evaluation  functions
+||-----------------------------------------------------------------------------
+applyBiOp [e1,op,e2] 
+                  = \atts -> VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
+
+-}
+-- getAtts f (y,i) x = f (head (x y i))
+-- copy      [b]     = \(atts,i) -> head (b atts i)
+
+intrsct1         [x, y]    
+ = \atts -> NOUNCLA_VAL (intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+
+intrsct2         [x, y]         
+ = \atts -> ADJ_VAL (intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+
+applydet         [x, y]                 
+ = \atts -> TERMPH_VAL ((getAtts getDVAL atts x) (getAtts getAVALS atts y) )
+ 
+--make_trans_vb is very similar to make_relation.  getBR must mean "get binary relation"
+--getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
+--Changed to get rid of make_trans_vb, since the getBR attribute was changed to not 
+--be a binary relation but instead a function that make_relation would give
+--I.e., the kind of function that make_trans_vb would have generated, since they were
+--nearly identical
+applytransvb     [x, y]     
+ -- = \atts -> VERBPH_VAL ((make_trans_vb (getAtts getBR atts x)) (getAtts getTVAL atts y))
+ = \atts -> VERBPH_VAL (make_relation dataStore (getAtts getBR atts x) (getAtts getTVAL atts y))
+
+applyvbph        [z]    
+ = \atts -> VERBPH_VAL (getAtts getAVALS atts z)
+ 
+appjoin1         [x, y, z]     
+ = \atts -> TERMPH_VAL ((getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z))
+
+appjoin2         [x, y, z]    
+ = \atts -> VERBPH_VAL ((getAtts getVJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+
+apply_middle1    [x, y, z]    
+ = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+
+apply_middle2    [x, y, z]                  
+ = \atts -> NOUNCLA_VAL ((getAtts getNJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+
+apply_middle3    [x, y, z]    
+ = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+
+--DONE
+drop3rd          [w, x, y, z]     
+-- = \atts -> VERBPH_VAL ((make_trans_vb (invert (getAtts getBR atts x))) (getAtts getTVAL atts z))
+-- Think "a orbited by b" vs "b orbits a"
+	= \atts -> VERBPH_VAL (make_inverted_relation dataStore (getAtts getBR atts x) (getAtts getTVAL atts z))
+
+apply_termphrase [x, y]     
+ = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y) )
+ 
+sent_val_comp    [s1, f, s2]      
+ = \atts -> SENT_VAL ((getAtts getSJVAL atts f) (getAtts getSV atts s1) (getAtts getSV atts s2))
+
+ans1             [x, y]       
+ = \atts -> QUEST_VAL ((getAtts getQU1VAL atts x) (getAtts getSV atts y) )
+
+ans2             [x, y]     
+ = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getAVALS atts y))
+
+ans3             [x, y, z]     
+ = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
+
+truefalse        [x]       
+ = \atts -> if (getAtts getSV atts x) then (QUEST_VAL "true.") else (QUEST_VAL "false.")
+
+
+{-
+||-----------------------------------------------------------------------------
+|| THE SEMANTICS - PART II : Functions used to obtain objects denoted by 
+||   proper nouns, verbs, etc.
+||-----------------------------------------------------------------------------
+
+|| FUNCTION USED TO DEFINE OBJECTS ASSOCIATED WITH PROPER NOUNS
+-}
+test_wrt e s = e `elem` s
+
+-- FUNCTION USED TO DEFINE MEANINGS OF VERBS IN TERMS OF RELATIONS
+make_trans_vb rel p = [x | (x, image_x) <- collect rel, p image_x] -- Similar to make_relation
+
 dictionary = 
- [("thing",              Cnoun,     [NOUNCLA_VAL things]),
-  ("things",             Cnoun,     [NOUNCLA_VAL things]),
-  ("planets",            Cnoun,     [NOUNCLA_VAL planets]),
-  ("planet",             Cnoun,     [NOUNCLA_VAL planets]),
+ [("thing",              Cnoun,     [NOUNCLA_VAL thing]),
+  ("things",             Cnoun,     [NOUNCLA_VAL thing]),
+  ("planets",            Cnoun,     [NOUNCLA_VAL planet]),
+  ("planet",             Cnoun,     [NOUNCLA_VAL planet]),
   ("person",              Cnoun,    [NOUNCLA_VAL person]),   
   ("sun",                Cnoun,     [NOUNCLA_VAL sun]), 
   ("moon",               Cnoun,     [NOUNCLA_VAL moon]), 
@@ -1294,21 +1697,21 @@ dictionary =
   ("satellites",         Cnoun,     [NOUNCLA_VAL moon]),
   --DONE
   --should replace with set constructions as defined below by get_members
-  ("atmospheric",        Adj,       [ADJ_VAL     set_of_atmospheric]),
-  ("blue",               Adj,       [ADJ_VAL     set_of_blue]),
-  ("blue",               Adj,       [ADJ_VAL     set_of_depressed]),
-  ("solid",              Adj,       [ADJ_VAL     set_of_solid]),     
-  ("brown",              Adj,       [ADJ_VAL     set_of_brown]),   
-  ("gaseous",            Adj,       [ADJ_VAL     set_of_gaseous]),  
-  ("green",              Adj,       [ADJ_VAL     set_of_green]),  
-  ("red",                Adj,       [ADJ_VAL     set_of_red]),  
-  ("ringed",             Adj,       [ADJ_VAL     set_of_ringed]),  
-  ("vacuumous",          Adj,       [ADJ_VAL     set_of_vacuumous]),
-  ("exist",              Intransvb, [VERBPH_VAL  set_of_things]),
-  ("exists",             Intransvb, [VERBPH_VAL  set_of_things]),
-  ("spin",               Intransvb, [VERBPH_VAL  set_of_spin]),
-  ("spins",              Intransvb, [VERBPH_VAL  set_of_spin]),
-  --TODO
+  ("atmospheric",        Adj,       [ADJ_VAL     atmospheric]),
+  ("blue",               Adj,       [ADJ_VAL     blue]),
+  ("blue",               Adj,       [ADJ_VAL     depressed]),
+  ("solid",              Adj,       [ADJ_VAL     solid]),     
+  ("brown",              Adj,       [ADJ_VAL     brown]),   
+  ("gaseous",            Adj,       [ADJ_VAL     gaseous]),  
+  ("green",              Adj,       [ADJ_VAL     green]),  
+  ("red",                Adj,       [ADJ_VAL     red]),  
+  ("ringed",             Adj,       [ADJ_VAL     ringed]),  
+  ("vacuumous",          Adj,       [ADJ_VAL     vacuumous]),
+  ("exist",              Intransvb, [VERBPH_VAL  thing]),
+  ("exists",             Intransvb, [VERBPH_VAL  thing]),
+  ("spin",               Intransvb, [VERBPH_VAL  spin]),
+  ("spins",              Intransvb, [VERBPH_VAL  spin]),
+  --TODO: DONE
   --replace sets of things with a gts call to (gts "?" "property" "spin/thing/ringed/red/blue/etc")
   ("the",                Det,       [DET_VAL a]),
   ("a",                  Det,       [DET_VAL a]),
@@ -1392,13 +1795,13 @@ dictionary =
   ("uranus",             Pnoun,     [TERMPH_VAL (List.elem $ gts "uranus")]),
   ("venus",              Pnoun,     [TERMPH_VAL (List.elem $ gts "venus")]),
   --these should be converted to [TERMPH_VAL (List.elem $ gts "subject")] DONE
-  ("discover",           Transvb,   [VERB_VAL (trans_verb rel_discover)]),
-  ("discovers",          Transvb,   [VERB_VAL (trans_verb rel_discover)]),
-  ("discovered",         Transvb,   [VERB_VAL (trans_verb rel_discover)]),
-  ("orbit",              Transvb,   [VERB_VAL (trans_verb rel_orbit)]),
-  ("orbited",            Transvb,   [VERB_VAL (trans_verb rel_orbit)]),
-  ("orbits",             Transvb,   [VERB_VAL (trans_verb rel_orbit)]),
-  --Instead of rel_orbit or rel_discover
+  ("discover",           Transvb,   [VERB_VAL ("discover_ev")]),
+  ("discovers",          Transvb,   [VERB_VAL ("discover_ev")]),
+  ("discovered",         Transvb,   [VERB_VAL ("discover_ev")]),
+  ("orbit",              Transvb,   [VERB_VAL ("orbit_ev")]),
+  ("orbited",            Transvb,   [VERB_VAL ("orbit_ev")]),
+  ("orbits",             Transvb,   [VERB_VAL ("orbit_ev")]),
+  --Instead of rel_orbit or rel_discover (DONE)
   --we should link to the function denoted by the verb, or maybe get every event by type "discover"/"steal"
   ("is",                 Linkingvb, [LINKINGVB_VAL  id]),
   ("was",                Linkingvb, [LINKINGVB_VAL  id]), 
@@ -1407,33 +1810,31 @@ dictionary =
   ("that",               Relpron,   [RELPRON_VAL    that]),
   ("who",                Relpron,   [RELPRON_VAL    that]),
   ("which",              Relpron,   [RELPRON_VAL    that]),
-  ("and",                Verbphjoin,[VBPHJOIN_VAL   termand]),
-  ("or",                 Verbphjoin,[VBPHJOIN_VAL   termor]),
+  ("and",                Verbphjoin,[VBPHJOIN_VAL   nounand]),
+  ("or",                 Verbphjoin,[VBPHJOIN_VAL   nounor]),
   ("and",                Nounjoin,  [NOUNJOIN_VAL   nounand]),
   ("or",                 Nounjoin,  [NOUNJOIN_VAL   nounor]),
   ("by",                 Prep,      [PREP_VAL       id]),
   ("and",                Termphjoin,[TERMPHJOIN_VAL termand]),
-  ("or",                 Termphjoin,[TERMPHJOIN_VAL termor]), --TODO: possible that nounor/nounand and termor/termand were misused properly
-  ("and",                Sentjoin,  [SENTJOIN_VAL   termand]), --TODO: check on the definition of sand in original to see what we should replace with
-	--sand True True = True
-	--sand any any'  = False
+  ("or",                 Termphjoin,[TERMPHJOIN_VAL termor]), 
+  ("and",                Sentjoin,  [SENTJOIN_VAL   sand]), --TODO checked.  sand was fine
   ("does",               Quest1,    [QUEST1_VAL     yesno]),
   ("did",                Quest1  ,  [QUEST1_VAL     yesno]),
-  ("do",                 Quest1,    [QUEST1_VAL     yesno] ),
-  ("what",               Quest2,    [QUEST2_VAL     what]),
-  ("who",                Quest2,    [QUEST2_VAL     who]),
+  ("do",                 Quest1,    [QUEST1_VAL     yesno]),
+  ("what",               Quest2,    [QUEST2_VAL     what]), --TODO: definition for what
+  ("who",                Quest2,    [QUEST2_VAL     who]), --Correct, according to orignal definition
   ("which",              Quest3,    [QUEST3_VAL     which]),
   ("what",               Quest3,    [QUEST3_VAL     which]),
   ("how",                Quest4a,   [QUEST3_VAL     how_many]),
-  ("many",               Quest4b,   [QUEST3_VAL     how_many])  ]
+  ("many",               Quest4b,   [QUEST3_VAL     how_many])]
   ++
-  [("human",       Cnoun,    meaning_of nouncla "man or woman" Nouncla),
+  [("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
    ("discoverer",  Cnoun,    meaning_of nouncla 
                                "person who discovered something" Nouncla),
    ("discoverers", Cnoun,    meaning_of nouncla 
                                "person who discovered something" Nouncla), 
-   ("humans",      Cnoun,    meaning_of nouncla "man or woman" Nouncla), 
-   ("people",      Cnoun,    meaning_of nouncla "man or woman" Nouncla),
+   ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
+   ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
    ("orbit",       Intransvb,meaning_of verbph  "orbit something" Verbph),
    ("orbits",      Intransvb,meaning_of verbph  "orbit something" Verbph),
    ("anyone",      Indefpron,meaning_of detph   "a person" Detph),
@@ -1447,4 +1848,39 @@ dictionary =
    ("everybody",   Indefpron,meaning_of detph   "every person" Detph),
    ("nobody",      Indefpron,meaning_of detph   "no person" Detph),
    ("noone",       Indefpron,meaning_of detph   "no person" Detph)]
--}
+
+
+test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) [] 
+test p input = unState (p ((1,[]),input) ([],[])) [] 
+
+
+
+main  i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
+
+
+findStart st ((s,ss):rest) | s == st   = [(s,ss)]
+                           | otherwise = findStart st rest
+findStart st []                        = []     
+
+input = words i1
+
+i1 = "which moons that were discovered by hall orbit mars" -- OK
+i2 = "who discovered a moon that orbits mars" -- OK
+i3 = "did hall discover every moon that orbits mars" -- OK
+i4 = "how many moons were discovered by hall and kuiper" -- OK
+i5 = "how many moons were discovered by hall or kuiper" -- OK
+i6 = "every moon was discovered by a person" -- OK
+i7 = "which planets are orbited by a moon that was discovered by galileo" -- OK
+i8 = "which moons were discovered by nobody" -- OK
+i9 = "is every planet orbited by a moon" -- Broken in original too
+i10 = "which planets are orbited by two moons" -- OK
+i11 = "who was the discoverer of phobos" -- Broken in original too
+i12 = "hall discovered a moon that orbits mars" -- OK
+i13 = "which moons that orbit mars were discovered by hall" -- OK
+i14 = "every moon orbits every planet" -- OK
+i15 = "every planet is orbited by a moon" -- OK
+i16 = "a planet is orbited by a moon" -- OK
+i17 = "does phobos orbit mars" -- OK
+--
+i18 = "did hall discover deimos or phobos and miranda" -- Broken in original too
+i19 = "did hall discover deimos or phobos and miranda or deimos and deimos" -- Broken in original too
