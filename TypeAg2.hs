@@ -62,42 +62,37 @@ data DisplayTree = B [DisplayTree]
                    deriving (Show, Eq)
 
 
-instance Show AttValue where
-      show (VAL  j)     = "VAL "    ++ show j
-      show (MaxVal j)   = "MaxVal " ++ show j
-      show (SubVal j)   = "SubVal " ++ show j
-      show (RepVal j)   = "RepVal " ++ show j
-      show (Res j)      = "Tree: "  ++ show j
-      show (B_OP j)     = "B_OP"
-      show (U_OP j)     = "U_OP"
-      show (SENT_VAL j) = show $ unsafePerformIO j
-      show (ErrorVal j) = {-show-} j
-      show (NOUNCLA_VAL j) = "NOUNCLA_VAL " -- ++ showListOfInt j      
-      show (VERBPH_VAL j)  = "VERBPH_VAL "  -- ++ showListOfInt j      
-      show (ADJ_VAL    j)  = "ADJ_VAL "     -- ++ showListOfInt j      
-      show (TERMPH_VAL j)  = "TERMPH_VAL "      
-      show (DET_VAL j)     = "DET_VAL " 
-      show (VERB_VAL j)    = "VERB_VAL "    -- ++   showListOfPInt j
-      show (RELPRON_VAL j)  = "RELPRON_VAL "
-      show (NOUNJOIN_VAL j)  = "NOUNJOIN_VAL "
-      show (VBPHJOIN_VAL j)  = "VBPHJOIN_VAL "
-      show (TERMPHJOIN_VAL j)  = "TERMPHJOIN_VAL "
-      show (PREP_VAL j)  = "PREP_VAL "
-      show (LINKINGVB_VAL j)  = "LINKINGVB_VAL "
-      show (SENTJOIN_VAL j)  = "SENTJOIN_VAL "
-      show (DOT_VAL j) = unsafePerformIO j {-show j-} 
-      show (QM_VAL j) = unsafePerformIO j {-show j-}
-      show (QUEST_VAL j) = unsafePerformIO j {-show j-}
-      show (QUEST1_VAL j)  = "QUEST1_VAL"
-      show (QUEST2_VAL j)  = "QUEST2_VAL"
-      show (QUEST3_VAL j)  = "SENTJOIN_VAL"
+--instance Show AttValue where
 
-
-
-showListOfInt (x:xs) = show x ++ " " ++ showListOfInt xs
-showListOfInt []     = " "
-showListOfPInt ((a,b):abs) = show a ++ " & " ++ show b ++ " " ++ showListOfPInt abs
-showListOfPInt []    = " "
+showio :: AttValue -> IO String
+showio (VAL  j)     = return $ "VAL "    ++ show j
+showio (MaxVal j)   = return $ "MaxVal " ++ show j
+showio (SubVal j)   = return $ "SubVal " ++ show j
+showio (RepVal j)   = return $ "RepVal " ++ show j
+showio (Res j)      = return $ "Tree: "  ++ show j
+showio (B_OP j)     = return $ "B_OP"
+showio (U_OP j)     = return $ "U_OP"
+showio (SENT_VAL j) = j >>= return . show 
+showio (ErrorVal j) = return j
+showio (NOUNCLA_VAL j) = j >>= return . (++) "NOUNCLA_VAL " . unwords
+showio (VERBPH_VAL j)  = j >>= return . (++) "VERBPH_VAL " . unwords
+showio (ADJ_VAL    j)  = j >>= return . (++) "ADJ_VAL " . unwords
+showio (TERMPH_VAL j)  = return "TERMPH_VAL "      
+showio (DET_VAL j)     = return "DET_VAL " 
+showio (VERB_VAL j)    = return $ "VERB_VAL " ++ j
+showio (RELPRON_VAL j)  = return "RELPRON_VAL "
+showio (NOUNJOIN_VAL j)  = return "NOUNJOIN_VAL "
+showio (VBPHJOIN_VAL j)  = return "VBPHJOIN_VAL "
+showio (TERMPHJOIN_VAL j)  = return "TERMPHJOIN_VAL "
+showio (PREP_VAL j)  = return "PREP_VAL "
+showio (LINKINGVB_VAL j)  = return "LINKINGVB_VAL "
+showio (SENTJOIN_VAL j)  = return "SENTJOIN_VAL "
+showio (DOT_VAL j) = j 
+showio (QM_VAL j) = j 
+showio (QUEST_VAL j) = j 
+showio (QUEST1_VAL j)  = return "QUEST1_VAL"
+showio (QUEST2_VAL j)  = return "QUEST2_VAL"
+showio (QUEST3_VAL j)  = return "SENTJOIN_VAL"
 
 instance Eq AttValue where
       (VAL  j)           == (VAL  j')     = True

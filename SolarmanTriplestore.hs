@@ -1663,7 +1663,7 @@ drop3rd          [w, x, y, z]
 -- Think "a orbited by b" vs "b orbits a"
 	= \atts -> VERBPH_VAL $
 		let reln = getAtts getBR atts x in
-		let predicate = getAtts getTVAL atts y in
+		let predicate = getAtts getTVAL atts z in
 		make_inverted_relation dataStore reln predicate
 		
 apply_termphrase [x, y]     
@@ -1865,7 +1865,7 @@ dictionary =
    ("noone",       Indefpron,meaning_of detph   "no person" Detph)]
 
 
-test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) [] 
+--test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) [] 
 test p input = unState (p ((1,[]),input) ([],[])) [] 
 
 

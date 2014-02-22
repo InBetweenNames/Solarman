@@ -2,6 +2,7 @@ module AGParser2 where
 import Text.PrettyPrint.HughesPJ as PPH hiding (empty)  -- ((PPH.<+>), vcat, text, render,($$),nest,Doc)
 import Data.List
 import TypeAg2
+import Control.Monad
 
 
 
@@ -32,7 +33,7 @@ type SemRule =  (Instance,(InsAttVals, Id) -> InsAttVals)
 data Tree a = Leaf (a,Instance)
             | Branch [Tree a] 
             | SubNode ((NodeName, Instance), (Start1,End))
-              deriving (Eq,Show)
+              deriving (Eq)
 
 
 type NodeName = MemoL
@@ -564,47 +565,51 @@ op   = memoize Op
 
 ----------- PrettyPrint ------------------------
 po :: (PP' a) => (String -> IO ()) -> a -> IO ()
-po act = act . render80 . pp'
+po act x = do
+	stuff <- pp' x
+	act $ render80 stuff
+	
 render80 = renderStyle (style{lineLength = 80})
 
 
 class PP' a where
-      pp' :: a -> Doc
+      pp' :: a -> IO Doc
 
 instance PP' Doc where
-      pp' c = c
+      pp' c = return c
 
 instance PP' Char where
-      pp' c = text $ show c
+      pp' c = return $ text $ show c
 instance PP' AttValue where
-      pp' (VAL i) = text $ show (VAL i)
-      pp' (B_OP i)= text $ show (B_OP i)
+      pp' (VAL i) = showio (VAL i) >>= return . text
+      pp' (B_OP i)= showio (B_OP i) >>= return .text
       
       
 instance PP' Int where
-      pp' i = text $ show i
+      pp' i = return $ text $ show i
     
 instance PP' Id where
-      pp' i = text $ show i       
+      pp' i = return $ text $ show i       
 
 instance PP' a => PP' (Maybe a) where
-      pp' Nothing  = text "Nothing"
-      pp' (Just x) = parens $ text "Just" PPH.<+> pp' x
+      pp' Nothing  = return $ text "Nothing"
+      pp' (Just x) = pp' x >>= (\y -> return $ parens $ text "Just" PPH.<+> y)
 
 instance (PP' a, PP' b) => PP' (a,b) where
       -- pp' (a,b) = parens $ pp' a PPH.<+> text "->" PPH.<+> pp' b
-      pp' (a,b) = pp' a PPH.<+> text "->" PPH.<+> pp' b
+      pp' (a,b) =  pp' a >>= \z -> (pp' b >>= (\y -> return $ z PPH.<+> text "->" PPH.<+> y))
 instance PP' a => PP' [a] where
-      pp' []     = brackets $ text ""
-      pp' (x:xs) = sep $ ( pp' x): [ pp' y | y <- xs ]
+      pp' []     = return $ brackets $ text ""
+      pp' (x:xs) = liftM sep $ (liftM2 (:)) (pp' x) (sequence [ pp' y | y <- xs ])
                       
 instance (Show t) => PP' (Tree t) where
       -- pp' Empty             = text "{_}"
-      pp' (Leaf x)          = text "Leaf" PPH.<+> text (show x)
-      pp' (Branch ts)       = text "Branch" PPH.<+> brackets (sep $ punctuate comma $ map pp' ts)
-      pp' (SubNode (x,(s,e))) = text "SubNode" PPH.<+> text (show x) PPH.<+> text (show (s,e)) 
+      pp' (Leaf x)          = return $ text "Leaf" PPH.<+> text (show x)
+      pp' (Branch ts)       = liftM2 (PPH.<+>) (return $ text "Branch") (liftM brackets $ liftM sep $ liftM (punctuate comma) $ sequence $ map pp' ts)
+      --TODO: pp' (SubNode (x,(s,e))) = return $ text "SubNode" PPH.<+> text (show x) PPH.<+> text (show (s,e)) 
       -- PPH.<+> pp' ts
 
+{-
 format :: Mtable -> Doc
 format t
  = vcat
@@ -631,13 +636,14 @@ format t
    
    
    | (s,sr) <- t ]
-   
+-}
    
 
 showID (x,y) = show y -- only the instance
 
 
 --- ** printing ony own atts ** ---
+{-
 formatAtts :: MemoL -> Mtable -> Doc
 formatAtts key t
  = vcat
@@ -659,21 +665,23 @@ formatAtts key t
    
    
    | (s,sr) <- t, s == key ]
+-}
  
-
+formatAttsFinalAlt :: MemoL -> Int -> State -> IO [Doc]
 formatAttsFinalAlt  key e t  = 
-   [(pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
+	--return [pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
+	sequence [(sequence [liftM vcat $ sequence [(liftM vcat $ sequence [liftM vcat $ sequence [liftM vcat $ sequence [liftM text (showio ty1v1) | ty1v1<-val1]
    							|(id1,val1)<-synAtts]] )
-   							|(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e] 
-                                   
-              | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ] 
-formatAttsFinal  key t  = 
+   							|(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
+    	| ((i,inAt1),((cs,ct),rs)) <- sr ]) >>= pp' | (s,sr) <- t, s == key ]
+
+{-formatAttsFinal  key t  = 
    [(pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]] )|(((st,inAtt2),(end,synAtts)), ts)<-rs] 
                                    
-                | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]
+                | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]-}
                 	
 -- *************** for printing the fist element of the return pair ***************
-
+{-
 formatForFst ::Result -> Doc
 formatForFst res = vcat 
                  -- [text (show ty0v0) |ty0v0 <-val0]|(id0,val0)<-inAt1]] PPH.PPH.<+> text "" $$ vcat 
@@ -695,7 +703,7 @@ formatForFst res = vcat
                     |(((st,inAtt2),(end,synAtts)), ts)<-res] 
 
 
-
+-}
 -- *************** for printing the fist element of the return pair ***************
 
 ----------- PrettyPrint --------------------------
