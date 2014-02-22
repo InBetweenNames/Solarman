@@ -6,6 +6,7 @@ import Data.List as List
 import qualified Data.Set as Set
 import AGParser2
 import TypeAg2
+import Control.Monad
 
 
 dataStore =
@@ -1173,15 +1174,11 @@ subset s t = (s \\ t) == []
 makeset x = Set.toList $ Set.fromList x
 	
 --copied from gangster_v4: combinators
-termor tmph1 tmph2 = f
-    where
-	f setofevs =
-		(tmph1 setofevs) || (tmph2 setofevs)
+termor tmph1 tmph2 setofevs =
+		liftM2 (||) (tmph1 setofevs) (tmph2 setofevs)
 
-termand tmph1 tmph2 = f
-    where
-	f setofevs =
-		(tmph1 setofevs) && (tmph2 setofevs)
+termand tmph1 tmph2 setofevs =
+		liftM2 (&&) (tmph1 setofevs) (tmph2 setofevs)
 
 that = nounand
 
@@ -1209,13 +1206,19 @@ two nph vbph =
 	length (intersect  nph vbph) == 2 
   
 
-which nph vbph = if result /= [] then result else "none."
-	where result = unwords $ intersect nph vbph
+--which nph vbph = if result /= [] then result else "none."
+--	where result = unwords $ intersect nph vbph
 
+which nph vbph = do
+	nph_ <- nph
+	vbph_ <- vbph
+	let result = unwords $ intersect nph_ vbph_
+	return $ if result /= [] then result else "none."
+	
 how_many nph vbph =
 	show $ length (intersect nph vbph)
 
-who vbph = which person vbph
+who = which person
 
 --New
 what nph = if result /= [] then result else "nothing."
@@ -1274,22 +1277,26 @@ could be mixed together.  By having make_relation handle that itself, that progr
 
 --Need two, because one needs to be inverted for a grammar rule to work.  
 --Could just flip arguments, but this is more readable
-make_relation :: (TripleStore m) => m -> String -> ([String] -> Bool) -> [String]
-make_relation ev_data rel tmph
-	= [subj | (subj, evs) <- make_image ev_data rel "subject",
-				tmph (concat [getts_3 ev_data (ev, gts "object", "?") | ev <- evs])]
+make_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
+make_relation ev_data rel tmph = do
+		images <- make_image ev_data rel "subject"
+		subPairs <- filterM (\(_, evs) ->
+			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, gts "object", "?")) evs) images
+		return $ map fst subPairs
 				
-make_inverted_relation :: (TripleStore m) => m -> String -> ([String] -> Bool) -> [String]
-make_inverted_relation ev_data rel tmph
-	= [obj | (obj, evs) <- make_image ev_data rel "object",
-				tmph (concat [getts_3 ev_data (ev, gts "subject", "?") | ev <- evs])]
+make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
+make_inverted_relation ev_data rel tmph = do
+		images <- make_image ev_data rel "object"
+		objPairs <- filterM (\(_, evs) ->
+			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, gts "subject", "?")) evs) images
+		return $ map fst objPairs
 				
 --Prepositional filtering (not used yet)
 
-filter_ev :: (TripleStore m) => m -> Event -> [(String, [String] -> Bool)] -> Bool
-filter_ev ev_data ev [] = True
-filter_ev ev_data ev (prep:list_of_preps)
-	= ((snd (prep)) (getts_3 ev_data (ev,fst (prep),"?"))) && filter_ev ev_data ev list_of_preps
+--filter_ev :: (TripleStore m) => m -> Event -> [(String, [String] -> Bool)] -> Bool
+--filter_ev ev_data ev [] = True
+--filter_ev ev_data ev (prep:list_of_preps)
+--	= ((snd (prep)) (getts_3 ev_data (ev,fst (prep),"?"))) && filter_ev ev_data ev list_of_preps
 	
 --New from Eric
 --make_filtered_image tmph preps image =
@@ -1611,10 +1618,10 @@ applyBiOp [e1,op,e2]
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
 intrsct1         [x, y]    
- = \atts -> NOUNCLA_VAL (intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> NOUNCLA_VAL (liftM2 intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 intrsct2         [x, y]         
- = \atts -> ADJ_VAL (intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> ADJ_VAL (liftM2 intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 applydet         [x, y]                 
  = \atts -> TERMPH_VAL ((getAtts getDVAL atts x) (getAtts getAVALS atts y) )
@@ -1627,7 +1634,10 @@ applydet         [x, y]
 --nearly identical
 applytransvb     [x, y]     
  -- = \atts -> VERBPH_VAL ((make_trans_vb (getAtts getBR atts x)) (getAtts getTVAL atts y))
- = \atts -> VERBPH_VAL (make_relation dataStore (getAtts getBR atts x) (getAtts getTVAL atts y))
+ = \atts -> VERBPH_VAL $
+		let reln = getAtts getBR atts x in
+		let predicate = getAtts getTVAL atts y in
+		make_relation dataStore reln predicate
 
 applyvbph        [z]    
  = \atts -> VERBPH_VAL (getAtts getAVALS atts z)
@@ -1651,8 +1661,11 @@ apply_middle3    [x, y, z]
 drop3rd          [w, x, y, z]     
 -- = \atts -> VERBPH_VAL ((make_trans_vb (invert (getAtts getBR atts x))) (getAtts getTVAL atts z))
 -- Think "a orbited by b" vs "b orbits a"
-	= \atts -> VERBPH_VAL (make_inverted_relation dataStore (getAtts getBR atts x) (getAtts getTVAL atts z))
-
+	= \atts -> VERBPH_VAL $
+		let reln = getAtts getBR atts x in
+		let predicate = getAtts getTVAL atts y in
+		make_inverted_relation dataStore reln predicate
+		
 apply_termphrase [x, y]     
  = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y) )
  
@@ -1669,9 +1682,10 @@ ans3             [x, y, z]
  = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
 
 truefalse        [x]       
- = \atts -> if (getAtts getSV atts x) then (QUEST_VAL "true.") else (QUEST_VAL "false.")
-
-
+ = \atts -> QUEST_VAL $ do
+		bool <- (getAtts getSV atts x)
+		return $ if bool then "true." else "false."
+		
 {-
 ||-----------------------------------------------------------------------------
 || THE SEMANTICS - PART II : Functions used to obtain objects denoted by 
@@ -1714,16 +1728,16 @@ dictionary =
   ("spins",              Intransvb, [VERBPH_VAL  spin]),
   --TODO: DONE
   --replace sets of things with a gts call to (gts "?" "property" "spin/thing/ringed/red/blue/etc")
-  ("the",                Det,       [DET_VAL a]),
-  ("a",                  Det,       [DET_VAL a]),
-  ("one",                Det,       [DET_VAL one]), 
-  ("an",                 Det,       [DET_VAL a]), 
-  ("some",               Det,       [DET_VAL a]), 
-  ("any",                Det,       [DET_VAL a]), 
-  ("no",                 Det,       [DET_VAL no]), 
-  ("every",              Det,       [DET_VAL every]), 
-  ("all",                Det,       [DET_VAL every]),  
-  ("two",                Det,       [DET_VAL two]),
+  ("the",                Det,       [DET_VAL $ liftM2 a]),
+  ("a",                  Det,       [DET_VAL $ liftM2 a]),
+  ("one",                Det,       [DET_VAL $ liftM2 one]), 
+  ("an",                 Det,       [DET_VAL $ liftM2 a]), 
+  ("some",               Det,       [DET_VAL $ liftM2 a]), 
+  ("any",                Det,       [DET_VAL $ liftM2 a]), 
+  ("no",                 Det,       [DET_VAL $ liftM2 no]), 
+  ("every",              Det,       [DET_VAL $ liftM2 every]), 
+  ("all",                Det,       [DET_VAL $ liftM2 every]),  
+  ("two",                Det,       [DET_VAL $ liftM2 two]),
   {-DONE
 	function_denoted_by_a xs ys       = length( intersect xs ys ) > 0
 	function_denoted_by_every xs ys   = includes xs ys
@@ -1731,71 +1745,71 @@ dictionary =
 	function_denoted_by_one xs ys     = length( intersect xs ys ) == 1
 	function_denoted_by_two xs ys     = length( intersect xs ys ) == 2
   -}
-  ("bernard",            Pnoun,     [TERMPH_VAL (List.elem $ gts "bernard")]),
-  ("bond",               Pnoun,     [TERMPH_VAL (List.elem $ gts "bond")]),
-  ("venus",              Pnoun,     [TERMPH_VAL (List.elem $ gts "venus")]),
-  ("cassini",            Pnoun,     [TERMPH_VAL (List.elem $ gts "cassini")]),
-  ("dollfus",            Pnoun,     [TERMPH_VAL (List.elem $ gts "dollfus")]),
-  ("Fouuntain",          Pnoun,     [TERMPH_VAL (List.elem $ gts "Fouuntain")]),
-  ("galileo",            Pnoun,     [TERMPH_VAL (List.elem $ gts "galileo")]),
-  ("hall",               Pnoun,     [TERMPH_VAL (List.elem $ gts "hall")]),
-  ("herschel",           Pnoun,     [TERMPH_VAL (List.elem $ gts "herschel")]),
-  ("huygens",            Pnoun,     [TERMPH_VAL (List.elem $ gts "huygens")]),
-  ("kowal",              Pnoun,     [TERMPH_VAL (List.elem $ gts "kowal")]),
-  ("kuiper",             Pnoun,     [TERMPH_VAL (List.elem $ gts "kuiper")]),
-  ("larsen",             Pnoun,     [TERMPH_VAL (List.elem $ gts "larsen")]),
-  ("lassell",            Pnoun,     [TERMPH_VAL (List.elem $ gts "lassell")]),
-  ("melotte",            Pnoun,     [TERMPH_VAL (List.elem $ gts "melotte")]),
-  ("nicholson",          Pnoun,     [TERMPH_VAL (List.elem $ gts "nicholson")]),
-  ("perrine",            Pnoun,     [TERMPH_VAL (List.elem $ gts "perrine")]),
-  ("pickering",          Pnoun,     [TERMPH_VAL (List.elem $ gts "pickering")]),
-  ("almathea",           Pnoun,     [TERMPH_VAL (List.elem $ gts "almathea")]),
-  ("ariel",              Pnoun,     [TERMPH_VAL (List.elem $ gts "ariel")]),
-  ("callisto",           Pnoun,     [TERMPH_VAL (List.elem $ gts "callisto")]),
-  ("charon",             Pnoun,     [TERMPH_VAL (List.elem $ gts "charon")]),
-  ("deimos",             Pnoun,     [TERMPH_VAL (List.elem $ gts "deimos")]),
-  ("dione",              Pnoun,     [TERMPH_VAL (List.elem $ gts "dione")]),
-  ("earth",              Pnoun,     [TERMPH_VAL (List.elem $ gts "earth")]),
-  ("enceladus",          Pnoun,     [TERMPH_VAL (List.elem $ gts "enceladus")]),
-  ("europa",             Pnoun,     [TERMPH_VAL (List.elem $ gts "europa")]),
-  ("ganymede",           Pnoun,     [TERMPH_VAL (List.elem $ gts "ganymede")]),
-  ("hyperion",           Pnoun,     [TERMPH_VAL (List.elem $ gts "hyperion")]),
-  ("iapetus",            Pnoun,     [TERMPH_VAL (List.elem $ gts "iapetus")]),
-  ("io",                 Pnoun,     [TERMPH_VAL (List.elem $ gts "io")]),
-  ("janus",              Pnoun,     [TERMPH_VAL (List.elem $ gts "janus")]),
-  ("jupiter",            Pnoun,     [TERMPH_VAL (List.elem $ gts "jupiter")]),
-  ("jupitereighth",      Pnoun,     [TERMPH_VAL (List.elem $ gts "jupitereighth")]),
-  ("jupitereleventh",    Pnoun,     [TERMPH_VAL (List.elem $ gts "jupitereleventh")]),
-  ("jupiterfourteenth",  Pnoun,     [TERMPH_VAL (List.elem $ gts "jupiterfourteenth")]),
-  ("jupiterninth",       Pnoun,     [TERMPH_VAL (List.elem $ gts "jupiterninth")]),
-  ("jupiterseventh",     Pnoun,     [TERMPH_VAL (List.elem $ gts "jupiterseventh")]),
-  ("jupitersixth",       Pnoun,     [TERMPH_VAL (List.elem $ gts "jupitersixth")]),
-  ("jupitertenth",       Pnoun,     [TERMPH_VAL (List.elem $ gts "jupitertenth")]),
-  ("jupiterthirteenth",  Pnoun,     [TERMPH_VAL (List.elem $ gts "jupiterthirteenth")]),
-  ("jupitertwelfth",     Pnoun,     [TERMPH_VAL (List.elem $ gts "jupitertwelfth")]),
-  ("luna",               Pnoun,     [TERMPH_VAL (List.elem $ gts "luna")]),
-  ("mars",               Pnoun,     [TERMPH_VAL (List.elem $ gts "mars")]),
-  ("mercury",            Pnoun,     [TERMPH_VAL (List.elem $ gts "mercury")]),
-  ("mimas",              Pnoun,     [TERMPH_VAL (List.elem $ gts "mimas")]),
-  ("miranda",            Pnoun,     [TERMPH_VAL (List.elem $ gts "miranda")]),
-  ("neptune",            Pnoun,     [TERMPH_VAL (List.elem $ gts "neptune")]),
-  ("nereid",             Pnoun,     [TERMPH_VAL (List.elem $ gts "nereid")]),
-  ("oberon",             Pnoun,     [TERMPH_VAL (List.elem $ gts "oberon")]),
-  ("phobos",             Pnoun,     [TERMPH_VAL (List.elem $ gts "phobos")]),
-  ("phoebe",             Pnoun,     [TERMPH_VAL (List.elem $ gts "phoebe")]),
-  ("pluto",              Pnoun,     [TERMPH_VAL (List.elem $ gts "pluto")]),
-  ("rhea",               Pnoun,     [TERMPH_VAL (List.elem $ gts "rhea")]),
-  ("saturn",             Pnoun,     [TERMPH_VAL (List.elem $ gts "saturn")]),
-  ("saturnfirst",        Pnoun,     [TERMPH_VAL (List.elem $ gts "saturnfirst")]),
-  ("sol",                Pnoun,     [TERMPH_VAL (List.elem $ gts "sol")]),
-  ("tethys",             Pnoun,     [TERMPH_VAL (List.elem $ gts "tethys")]),
-  ("titan",              Pnoun,     [TERMPH_VAL (List.elem $ gts "titan")]),
-  ("titania",            Pnoun,     [TERMPH_VAL (List.elem $ gts "titania")]),
-  ("triton",             Pnoun,     [TERMPH_VAL (List.elem $ gts "triton")]),
-  ("umbriel",            Pnoun,     [TERMPH_VAL (List.elem $ gts "umbriel")]),
-  ("uranus",             Pnoun,     [TERMPH_VAL (List.elem $ gts "uranus")]),
-  ("venus",              Pnoun,     [TERMPH_VAL (List.elem $ gts "venus")]),
-  --these should be converted to [TERMPH_VAL (List.elem $ gts "subject")] DONE
+  ("bernard",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "bernard")]),
+  ("bond",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "bond")]),
+  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "venus")]),
+  ("cassini",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "cassini")]),
+  ("dollfus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "dollfus")]),
+  ("Fouuntain",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "Fouuntain")]),
+  ("galileo",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "galileo")]),
+  ("hall",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "hall")]),
+  ("herschel",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "herschel")]),
+  ("huygens",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "huygens")]),
+  ("kowal",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "kowal")]),
+  ("kuiper",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "kuiper")]),
+  ("larsen",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "larsen")]),
+  ("lassell",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "lassell")]),
+  ("melotte",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "melotte")]),
+  ("nicholson",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "nicholson")]),
+  ("perrine",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "perrine")]),
+  ("pickering",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "pickering")]),
+  ("almathea",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "almathea")]),
+  ("ariel",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "ariel")]),
+  ("callisto",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "callisto")]),
+  ("charon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "charon")]),
+  ("deimos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "deimos")]),
+  ("dione",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "dione")]),
+  ("earth",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "earth")]),
+  ("enceladus",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "enceladus")]),
+  ("europa",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "europa")]),
+  ("ganymede",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "ganymede")]),
+  ("hyperion",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "hyperion")]),
+  ("iapetus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "iapetus")]),
+  ("io",                 Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "io")]),
+  ("janus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "janus")]),
+  ("jupiter",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiter")]),
+  ("jupitereighth",      Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitereighth")]),
+  ("jupitereleventh",    Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitereleventh")]),
+  ("jupiterfourteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterfourteenth")]),
+  ("jupiterninth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterninth")]),
+  ("jupiterseventh",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterseventh")]),
+  ("jupitersixth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitersixth")]),
+  ("jupitertenth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitertenth")]),
+  ("jupiterthirteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterthirteenth")]),
+  ("jupitertwelfth",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitertwelfth")]),
+  ("luna",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "luna")]),
+  ("mars",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "mars")]),
+  ("mercury",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "mercury")]),
+  ("mimas",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "mimas")]),
+  ("miranda",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "miranda")]),
+  ("neptune",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "neptune")]),
+  ("nereid",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "nereid")]),
+  ("oberon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "oberon")]),
+  ("phobos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "phobos")]),
+  ("phoebe",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "phoebe")]),
+  ("pluto",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "pluto")]),
+  ("rhea",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "rhea")]),
+  ("saturn",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "saturn")]),
+  ("saturnfirst",        Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "saturnfirst")]),
+  ("sol",                Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "sol")]),
+  ("tethys",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "tethys")]),
+  ("titan",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "titan")]),
+  ("titania",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "titania")]),
+  ("triton",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "triton")]),
+  ("umbriel",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "umbriel")]),
+  ("uranus",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "uranus")]),
+  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "venus")]),
+  --these should be converted to [TERMPH_VAL (liftM2 List.elem $ return $ gts "subject")] DONE
   ("discover",           Transvb,   [VERB_VAL ("discover_ev")]),
   ("discovers",          Transvb,   [VERB_VAL ("discover_ev")]),
   ("discovered",         Transvb,   [VERB_VAL ("discover_ev")]),
@@ -1808,26 +1822,26 @@ dictionary =
   ("was",                Linkingvb, [LINKINGVB_VAL  id]), 
   ("are",                Linkingvb, [LINKINGVB_VAL  id]),
   ("were",               Linkingvb, [LINKINGVB_VAL  id]),
-  ("that",               Relpron,   [RELPRON_VAL    that]),
-  ("who",                Relpron,   [RELPRON_VAL    that]),
-  ("which",              Relpron,   [RELPRON_VAL    that]),
-  ("and",                Verbphjoin,[VBPHJOIN_VAL   nounand]),
-  ("or",                 Verbphjoin,[VBPHJOIN_VAL   nounor]),
-  ("and",                Nounjoin,  [NOUNJOIN_VAL   nounand]),
-  ("or",                 Nounjoin,  [NOUNJOIN_VAL   nounor]),
+  ("that",               Relpron,   [RELPRON_VAL    $ liftM2 that]),
+  ("who",                Relpron,   [RELPRON_VAL    $ liftM2 that]),
+  ("which",              Relpron,   [RELPRON_VAL    $ liftM2 that]),
+  ("and",                Verbphjoin,[VBPHJOIN_VAL   $ liftM2 nounand]),
+  ("or",                 Verbphjoin,[VBPHJOIN_VAL   $ liftM2 nounor]),
+  ("and",                Nounjoin,  [NOUNJOIN_VAL   $ liftM2 nounand]),
+  ("or",                 Nounjoin,  [NOUNJOIN_VAL   $ liftM2 nounor]),
   ("by",                 Prep,      [PREP_VAL       id]),
   ("and",                Termphjoin,[TERMPHJOIN_VAL termand]),
   ("or",                 Termphjoin,[TERMPHJOIN_VAL termor]), 
-  ("and",                Sentjoin,  [SENTJOIN_VAL   sand]), --TODO checked.  sand was fine
-  ("does",               Quest1,    [QUEST1_VAL     yesno]),
-  ("did",                Quest1  ,  [QUEST1_VAL     yesno]),
-  ("do",                 Quest1,    [QUEST1_VAL     yesno]),
-  ("what",               Quest2,    [QUEST2_VAL     what]), --TODO: definition for what
+  ("and",                Sentjoin,  [SENTJOIN_VAL   $ liftM2 sand]), --TODO checked.  sand was fine
+  ("does",               Quest1,    [QUEST1_VAL     $ liftM yesno]),
+  ("did",                Quest1  ,  [QUEST1_VAL     $ liftM yesno]),
+  ("do",                 Quest1,    [QUEST1_VAL     $ liftM yesno]),
+  ("what",               Quest2,    [QUEST2_VAL     $ liftM what]), --TODO: definition for what
   ("who",                Quest2,    [QUEST2_VAL     who]), --Correct, according to orignal definition
   ("which",              Quest3,    [QUEST3_VAL     which]),
   ("what",               Quest3,    [QUEST3_VAL     which]),
-  ("how",                Quest4a,   [QUEST3_VAL     how_many]),
-  ("many",               Quest4b,   [QUEST3_VAL     how_many])]
+  ("how",                Quest4a,   [QUEST3_VAL     $ liftM2 how_many]),
+  ("many",               Quest4b,   [QUEST3_VAL     $ liftM2 how_many])]
   ++
   [("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
    ("discoverer",  Cnoun,    meaning_of nouncla 

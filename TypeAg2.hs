@@ -1,5 +1,6 @@
 module TypeAg2 where
 
+import System.IO.Unsafe
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -8,27 +9,27 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)} 
               | U_OP            {getU_OP    ::   (Int -> Int)} 
-              | SENT_VAL        {getSV      ::   Bool}
+              | SENT_VAL        {getSV      ::   IO Bool}
               | ErrorVal        {getEVAL    ::   String}    
-	      | NOUNCLA_VAL     {getAVALS   ::   ES} 
-	      | VERBPH_VAL      {getAVALS   ::   ES}  
-	      | ADJ_VAL         {getAVALS   ::   ES} 
-	      | TERMPH_VAL      {getTVAL    ::   (ES -> Bool)}     
-	      | DET_VAL         {getDVAL    ::   (ES -> ES -> Bool)} 
+	      | NOUNCLA_VAL     {getAVALS   ::   IO ES} 
+	      | VERBPH_VAL      {getAVALS   ::   IO ES}  
+	      | ADJ_VAL         {getAVALS   ::   IO ES} 
+	      | TERMPH_VAL      {getTVAL    ::   (IO ES -> IO Bool)}     
+	      | DET_VAL         {getDVAL    ::   (IO ES -> IO ES -> IO Bool)} 
 	      | VERB_VAL        {getBR      ::   Relation}      
-	      | RELPRON_VAL     {getRELVAL  ::   (ES -> ES -> ES)}    
-	      | NOUNJOIN_VAL    {getNJVAL   ::   (ES -> ES -> ES)}
-	      | VBPHJOIN_VAL    {getVJVAL   ::   (ES -> ES -> ES)}    
-	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((ES -> Bool) -> (ES -> Bool)  -> ES -> Bool)}
-	      | PREP_VAL        {getPREPVAL ::   (ES -> ES)}
-	      | LINKINGVB_VAL   {getLINKVAL ::   (ES -> ES)}
-	      | SENTJOIN_VAL    {getSJVAL   ::   (Bool -> Bool -> Bool)}
-	      | DOT_VAL         {getDOTVAL  ::   String}
-	      | QM_VAL          {getQMVAL   ::   String}
-	      | QUEST_VAL       {getQUVAL   ::   String}
-	      | QUEST1_VAL      {getQU1VAL  ::   (Bool -> String)}
-	      | QUEST2_VAL      {getQU2VAL  ::   (ES -> String)}
-	      | QUEST3_VAL      {getQU3VAL  ::   (ES -> ES -> String)}
+	      | RELPRON_VAL     {getRELVAL  ::   (IO ES -> IO ES -> IO ES)}    
+	      | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
+	      | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
+	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO Bool) -> (IO ES -> IO Bool) -> (IO ES -> IO Bool)) }
+	      | PREP_VAL        {getPREPVAL ::   (IO ES -> IO ES)}
+	      | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
+	      | SENTJOIN_VAL    {getSJVAL   ::   (IO Bool -> IO Bool -> IO Bool)}
+	      | DOT_VAL         {getDOTVAL  ::   IO String}
+	      | QM_VAL          {getQMVAL   ::   IO String}
+	      | QUEST_VAL       {getQUVAL   ::   IO String}
+	      | QUEST1_VAL      {getQU1VAL  ::   (IO Bool -> IO String)}
+	      | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO String)}
+	      | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO String)}
 
 --            | RESULT [sys_message]
 data MemoL    = Start | Tree | Num | Emp | ALeaf String | Expr | Op  | ET
@@ -69,11 +70,11 @@ instance Show AttValue where
       show (Res j)      = "Tree: "  ++ show j
       show (B_OP j)     = "B_OP"
       show (U_OP j)     = "U_OP"
-      show (SENT_VAL j) = show j
+      show (SENT_VAL j) = show $ unsafePerformIO j
       show (ErrorVal j) = {-show-} j
-      show (NOUNCLA_VAL j) = "NOUNCLA_VAL " ++ showListOfInt j      
-      show (VERBPH_VAL j)  = "VERBPH_VAL "  ++ showListOfInt j      
-      show (ADJ_VAL    j)  = "ADJ_VAL "     ++ showListOfInt j      
+      show (NOUNCLA_VAL j) = "NOUNCLA_VAL " -- ++ showListOfInt j      
+      show (VERBPH_VAL j)  = "VERBPH_VAL "  -- ++ showListOfInt j      
+      show (ADJ_VAL    j)  = "ADJ_VAL "     -- ++ showListOfInt j      
       show (TERMPH_VAL j)  = "TERMPH_VAL "      
       show (DET_VAL j)     = "DET_VAL " 
       show (VERB_VAL j)    = "VERB_VAL "    -- ++   showListOfPInt j
@@ -84,9 +85,9 @@ instance Show AttValue where
       show (PREP_VAL j)  = "PREP_VAL "
       show (LINKINGVB_VAL j)  = "LINKINGVB_VAL "
       show (SENTJOIN_VAL j)  = "SENTJOIN_VAL "
-      show (DOT_VAL j) = {-show-} j
-      show (QM_VAL j) = {-show-} j
-      show (QUEST_VAL j) = {-show-} j
+      show (DOT_VAL j) = unsafePerformIO j {-show j-} 
+      show (QM_VAL j) = unsafePerformIO j {-show j-}
+      show (QUEST_VAL j) = unsafePerformIO j {-show j-}
       show (QUEST1_VAL j)  = "QUEST1_VAL"
       show (QUEST2_VAL j)  = "QUEST2_VAL"
       show (QUEST3_VAL j)  = "SENTJOIN_VAL"
