@@ -606,10 +606,10 @@ instance (Show t) => PP' (Tree t) where
       -- pp' Empty             = text "{_}"
       pp' (Leaf x)          = return $ text "Leaf" PPH.<+> text (show x)
       pp' (Branch ts)       = liftM2 (PPH.<+>) (return $ text "Branch") (liftM brackets $ liftM sep $ liftM (punctuate comma) $ sequence $ map pp' ts)
-      --TODO: pp' (SubNode (x,(s,e))) = return $ text "SubNode" PPH.<+> text (show x) PPH.<+> text (show (s,e)) 
+      --pp' (SubNode (x,(s,e))) = return $ text "SubNode" PPH.<+> text (show x) PPH.<+> text (show (s,e)) 
       -- PPH.<+> pp' ts
 
-{-
+{-TODO:
 format :: Mtable -> Doc
 format t
  = vcat
@@ -643,7 +643,7 @@ showID (x,y) = show y -- only the instance
 
 
 --- ** printing ony own atts ** ---
-{-
+{-TODO:
 formatAtts :: MemoL -> Mtable -> Doc
 formatAtts key t
  = vcat
@@ -681,7 +681,7 @@ formatAttsFinalAlt  key e t  =
                 | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]-}
                 	
 -- *************** for printing the fist element of the return pair ***************
-{-
+{-TODO:
 formatForFst ::Result -> Doc
 formatForFst res = vcat 
                  -- [text (show ty0v0) |ty0v0 <-val0]|(id0,val0)<-inAt1]] PPH.PPH.<+> text "" $$ vcat 
