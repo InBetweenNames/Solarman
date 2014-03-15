@@ -8,8 +8,11 @@ import AGParser2
 import TypeAg2
 import Control.Monad
 
+--change between remoteData and localData
+dataStore = remoteData
 
-dataStore =
+remoteData = endpoint_uri
+localData =
 	---------------- orbit relation -------------
 	[("event1000", "subject", "mercury"),
 	("event1000", "type", "orbit_ev"),
@@ -1226,34 +1229,29 @@ what nph = if result /= [] then result else "nothing."
 
 --end of copied from gangster_v4
 
---namespace_gts = "http://richard.myweb.cs.uwindsor.ca/ESWC/solarman_triplestore#"
-namespace_gts = "" --Don't need URIs yet
+sun		= get_members dataStore ("sun")
+planet	= get_members dataStore ("planet")
+moon	= get_members dataStore ("moon")
+person	= get_members dataStore ("person")
+thing	= get_members dataStore ("thing")
 
-gts fragment = namespace_gts ++ fragment
-
-sun		= get_members dataStore (gts "sun")
-planet	= get_members dataStore (gts "planet")
-moon	= get_members dataStore (gts "moon")
-person	= get_members dataStore (gts "person")
-thing	= get_members dataStore (gts "thing")
-
-atmospheric = get_members dataStore (gts "atmospheric")
-blue = get_members dataStore (gts "blue")
-depressed = get_members dataStore (gts "depressed")
-solid = get_members dataStore (gts "solid")
-brown 	= get_members dataStore (gts "brown")
-gaseous = get_members dataStore (gts "gaseous")
-green 	= get_members dataStore (gts "green")
-red		= get_members dataStore (gts "red")
-ringed  = get_members dataStore (gts "ringed")
-vacuumous = get_members dataStore (gts "vacuumous")
+atmospheric = get_members dataStore ("atmospheric")
+blue = get_members dataStore ("blue")
+depressed = get_members dataStore ("depressed")
+solid = get_members dataStore ("solid")
+brown 	= get_members dataStore ("brown")
+gaseous = get_members dataStore ("gaseous")
+green 	= get_members dataStore ("green")
+red		= get_members dataStore ("red")
+ringed  = get_members dataStore ("ringed")
+vacuumous = get_members dataStore ("vacuumous")
 exists = thing
-spin   = get_members dataStore (gts "spin")
+spin   = get_members dataStore ("spin")
 
 
 --Need to ensure uniqueness in output?  I.e. discover_intrans has multiple "hall"s in list
-discover_intrans	= get_subjs_of_event_type dataStore (gts "discover_ev")
-orbit_intrans		= get_subjs_of_event_type dataStore (gts "orbit_ev")
+discover_intrans	= get_subjs_of_event_type dataStore ("discover_ev")
+orbit_intrans		= get_subjs_of_event_type dataStore ("orbit_ev")
 
 discover = make_relation dataStore "discover_ev" 
 discovered = discover
@@ -1261,9 +1259,9 @@ discovered = discover
 orbit = make_relation dataStore "orbit_ev" 
 orbited = orbit
 
-hall = elem $ gts "hall"
-phobos = elem $ gts "phobos"
-mars = elem $ gts "mars"
+hall = elem $ "hall"
+phobos = elem $ "phobos"
+mars = elem $ "mars"
 
 {-Renamed from make_trans_image_from_intrans, does not cache anymore.
 Reason:
@@ -1281,14 +1279,14 @@ make_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> I
 make_relation ev_data rel tmph = do
 		images <- make_image ev_data rel "subject"
 		subPairs <- filterM (\(_, evs) ->
-			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, gts "object", "?")) evs) images
+			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) evs) images
 		return $ map fst subPairs
 				
 make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
 		images <- make_image ev_data rel "object"
 		objPairs <- filterM (\(_, evs) ->
-			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, gts "subject", "?")) evs) images
+			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "subject", "?")) evs) images
 		return $ map fst objPairs
 				
 --Prepositional filtering (not used yet)
@@ -1301,7 +1299,7 @@ make_inverted_relation ev_data rel tmph = do
 --New from Eric
 --make_filtered_image tmph preps image =
 --	[subj | (subj, evs) <- image,
---				tmph (concat [getts_3 ev_data (ev, gts "object", "?") | ev <- evs, filter_ev ev preps])]
+--				tmph (concat [getts_3 ev_data (ev, "object", "?") | ev <- evs, filter_ev ev preps])]
 			   
 --The prime version of these functions denote filtered versions based on a set of prepositions
 --discover' tmph preps = make_filtered_image tmph preps discover_image
@@ -1727,7 +1725,7 @@ dictionary =
   ("spin",               Intransvb, [VERBPH_VAL  spin]),
   ("spins",              Intransvb, [VERBPH_VAL  spin]),
   --TODO: DONE
-  --replace sets of things with a gts call to (gts "?" "property" "spin/thing/ringed/red/blue/etc")
+  --replace sets of things with a call to ("?" "property" "spin/thing/ringed/red/blue/etc")
   ("the",                Det,       [DET_VAL $ liftM2 a]),
   ("a",                  Det,       [DET_VAL $ liftM2 a]),
   ("one",                Det,       [DET_VAL $ liftM2 one]), 
@@ -1745,71 +1743,71 @@ dictionary =
 	function_denoted_by_one xs ys     = length( intersect xs ys ) == 1
 	function_denoted_by_two xs ys     = length( intersect xs ys ) == 2
   -}
-  ("bernard",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "bernard")]),
-  ("bond",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "bond")]),
-  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "venus")]),
-  ("cassini",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "cassini")]),
-  ("dollfus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "dollfus")]),
-  ("Fouuntain",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "Fouuntain")]),
-  ("galileo",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "galileo")]),
-  ("hall",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "hall")]),
-  ("herschel",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "herschel")]),
-  ("huygens",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "huygens")]),
-  ("kowal",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "kowal")]),
-  ("kuiper",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "kuiper")]),
-  ("larsen",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "larsen")]),
-  ("lassell",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "lassell")]),
-  ("melotte",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "melotte")]),
-  ("nicholson",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "nicholson")]),
-  ("perrine",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "perrine")]),
-  ("pickering",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "pickering")]),
-  ("almathea",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "almathea")]),
-  ("ariel",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "ariel")]),
-  ("callisto",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "callisto")]),
-  ("charon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "charon")]),
-  ("deimos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "deimos")]),
-  ("dione",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "dione")]),
-  ("earth",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "earth")]),
-  ("enceladus",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "enceladus")]),
-  ("europa",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "europa")]),
-  ("ganymede",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "ganymede")]),
-  ("hyperion",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "hyperion")]),
-  ("iapetus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "iapetus")]),
-  ("io",                 Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "io")]),
-  ("janus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "janus")]),
-  ("jupiter",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiter")]),
-  ("jupitereighth",      Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitereighth")]),
-  ("jupitereleventh",    Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitereleventh")]),
-  ("jupiterfourteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterfourteenth")]),
-  ("jupiterninth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterninth")]),
-  ("jupiterseventh",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterseventh")]),
-  ("jupitersixth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitersixth")]),
-  ("jupitertenth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitertenth")]),
-  ("jupiterthirteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupiterthirteenth")]),
-  ("jupitertwelfth",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "jupitertwelfth")]),
-  ("luna",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "luna")]),
-  ("mars",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "mars")]),
-  ("mercury",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "mercury")]),
-  ("mimas",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "mimas")]),
-  ("miranda",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "miranda")]),
-  ("neptune",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "neptune")]),
-  ("nereid",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "nereid")]),
-  ("oberon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "oberon")]),
-  ("phobos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "phobos")]),
-  ("phoebe",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "phoebe")]),
-  ("pluto",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "pluto")]),
-  ("rhea",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "rhea")]),
-  ("saturn",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "saturn")]),
-  ("saturnfirst",        Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "saturnfirst")]),
-  ("sol",                Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "sol")]),
-  ("tethys",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "tethys")]),
-  ("titan",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "titan")]),
-  ("titania",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "titania")]),
-  ("triton",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "triton")]),
-  ("umbriel",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "umbriel")]),
-  ("uranus",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "uranus")]),
-  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ gts "venus")]),
-  --these should be converted to [TERMPH_VAL (liftM2 List.elem $ return $ gts "subject")] DONE
+  ("bernard",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "bernard")]),
+  ("bond",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "bond")]),
+  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "venus")]),
+  ("cassini",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "cassini")]),
+  ("dollfus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "dollfus")]),
+  ("Fouuntain",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "Fouuntain")]),
+  ("galileo",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "galileo")]),
+  ("hall",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "hall")]),
+  ("herschel",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "herschel")]),
+  ("huygens",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "huygens")]),
+  ("kowal",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "kowal")]),
+  ("kuiper",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "kuiper")]),
+  ("larsen",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "larsen")]),
+  ("lassell",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "lassell")]),
+  ("melotte",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "melotte")]),
+  ("nicholson",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "nicholson")]),
+  ("perrine",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "perrine")]),
+  ("pickering",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "pickering")]),
+  ("almathea",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "almathea")]),
+  ("ariel",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "ariel")]),
+  ("callisto",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "callisto")]),
+  ("charon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "charon")]),
+  ("deimos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "deimos")]),
+  ("dione",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "dione")]),
+  ("earth",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "earth")]),
+  ("enceladus",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "enceladus")]),
+  ("europa",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "europa")]),
+  ("ganymede",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "ganymede")]),
+  ("hyperion",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "hyperion")]),
+  ("iapetus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "iapetus")]),
+  ("io",                 Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "io")]),
+  ("janus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "janus")]),
+  ("jupiter",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiter")]),
+  ("jupitereighth",      Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitereighth")]),
+  ("jupitereleventh",    Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitereleventh")]),
+  ("jupiterfourteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterfourteenth")]),
+  ("jupiterninth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterninth")]),
+  ("jupiterseventh",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterseventh")]),
+  ("jupitersixth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitersixth")]),
+  ("jupitertenth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitertenth")]),
+  ("jupiterthirteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterthirteenth")]),
+  ("jupitertwelfth",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitertwelfth")]),
+  ("luna",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "luna")]),
+  ("mars",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "mars")]),
+  ("mercury",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "mercury")]),
+  ("mimas",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "mimas")]),
+  ("miranda",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "miranda")]),
+  ("neptune",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "neptune")]),
+  ("nereid",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "nereid")]),
+  ("oberon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "oberon")]),
+  ("phobos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "phobos")]),
+  ("phoebe",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "phoebe")]),
+  ("pluto",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "pluto")]),
+  ("rhea",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "rhea")]),
+  ("saturn",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "saturn")]),
+  ("saturnfirst",        Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "saturnfirst")]),
+  ("sol",                Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "sol")]),
+  ("tethys",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "tethys")]),
+  ("titan",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "titan")]),
+  ("titania",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "titania")]),
+  ("triton",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "triton")]),
+  ("umbriel",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "umbriel")]),
+  ("uranus",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "uranus")]),
+  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "venus")]),
+  --these should be converted to [TERMPH_VAL (liftM2 List.elem $ return $ "subject")] DONE
   ("discover",           Transvb,   [VERB_VAL ("discover_ev")]),
   ("discovers",          Transvb,   [VERB_VAL ("discover_ev")]),
   ("discovered",         Transvb,   [VERB_VAL ("discover_ev")]),

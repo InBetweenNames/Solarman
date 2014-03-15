@@ -4,6 +4,18 @@ module Getts where
 import Data.List
 import Control.Monad
 
+--For endpoint query
+import Data.RDF hiding (triple, Triple)
+import Database.HSparql.Connection
+import Database.HSparql.QueryGenerator
+import Data.Text hiding (head, concat, map, zip, drop, length)
+import System.IO.Unsafe
+
+addUri fragment = namespace_uri ++ fragment
+
+endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
+namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
+
 --getts returns all triples in the triple store that match the given parameters
 class TripleStore m where
 	getts_1 :: m -> (Event, String, String) -> IO [String]
@@ -19,6 +31,65 @@ instance TripleStore [Triple] where
 	getts_2 ev_data (a, "?", c) = return [y | (x,y,z) <- ev_data, a == x, c == z]
 	getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
 
+--the String in this instance is to be the endpoint that you wish to query
+instance TripleStore String where
+	getts_1 endpoint ("?", b, c) = return $ removeUri $ preprocess $ getts_1'(pack "?", pack (addUri b), pack (addUri c))
+		where
+			getts_1' :: (t, Text, Text) -> IO [[BindingValue]]
+			getts_1' (a, b, c) = do
+				 (Just s) <- selectQuery endpoint getts_1_query 
+				 return s
+				 where
+				   getts_1_query = do 
+					  x <- var
+					  triple x (iriRef b) (iriRef c)
+					  return SelectQuery { queryVars = [x] }
+					  
+	getts_2 endpoint (a, "?", c) = return $ removeUri $ preprocess  $ getts_2'(pack (addUri a), pack "?", pack (addUri c))
+		where
+			getts_2' :: (Text, Text, Text) -> IO [[BindingValue]]
+			getts_2' (a, b, c) = do
+				 (Just s) <- selectQuery endpoint getts_2_query  
+				 return s
+				 where
+				   getts_2_query = do 
+					  x <- var
+					  triple  (iriRef a) x (iriRef c)
+					  return SelectQuery { queryVars = [x] }
+					  
+	getts_3 endpoint (a, b, "?") = return $ removeUri $ preprocess $ getts_3'(pack (addUri a), pack (addUri b), pack "?")
+		where
+			getts_3' :: (Text, Text, Text) -> IO [[BindingValue]]
+			getts_3' (a, b, c) = do
+				 (Just s) <- selectQuery endpoint getts_3_query  
+				 return s
+				 where
+				   getts_3_query = do 
+					  x <- var
+					  triple (iriRef a) (iriRef b) x
+					  return SelectQuery { queryVars = [x] }
+
+	--addUri endpoint entry = namespace_uri ++ entry --the namespace of the entry
+			
+removeUri :: [String] -> [String]			
+removeUri s = let l = length namespace_uri in
+				map (drop l) s
+					  
+preprocess :: IO [[BindingValue]] -> [String]
+preprocess = map deconstruct . concat . dropDups . unsafeDupablePerformIO
+
+deconstruct :: BindingValue -> String
+deconstruct value = do
+    let (Bound node) = value
+    case node of
+        UNode strURI -> unpack strURI
+        LNode (PlainL strLit) -> unpack strLit
+
+dropDups :: (Eq a) => [a] -> [a]        
+dropDups [] = []
+dropDups (x:xs) = if elem x xs 
+                    then dropDups xs
+                    else x : dropDups xs
 
 get_subjs_for_ev :: (TripleStore m) => m -> Event -> IO [String]
 get_subjs_for_ev ev_data ev = getts_3 ev_data (ev, "subject", "?")
