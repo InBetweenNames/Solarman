@@ -2062,7 +2062,7 @@ dictionary = [
 	("mt_hopkins", Pnoun, [TERMPH_VAL $ make_pnoun "mt_hopkins"]),
 	("fort_davis", Pnoun, [TERMPH_VAL $ make_pnoun "fort_davis"]),
 	("cerro_tololo", Pnoun, [TERMPH_VAL $ make_pnoun "cerro_tololo"]),
-	("US_naval_observatory", Pnoun, [TERMPH_VAL $ make_pnoun "US_naval_observatory"]),
+	("us_naval_observatory", Pnoun, [TERMPH_VAL $ make_pnoun "US_naval_observatory"]),
 	("padua", Pnoun, [TERMPH_VAL $ make_pnoun "padua"]),
 	("mt_hamilton", Pnoun, [TERMPH_VAL $ make_pnoun "mt_hamilton"]),
 	("greenwich", Pnoun, [TERMPH_VAL $ make_pnoun "greenwich"]),
