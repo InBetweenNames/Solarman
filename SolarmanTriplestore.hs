@@ -1376,6 +1376,8 @@ quest4b         =  pre_processed Quest4b
 
 --NEW FOR PREPOSITIONAL PHRASES
 prep			=  pre_processed Prepn
+year			=  pre_processed Year
+
 
 pre_processed key 
  = let formAlts altTerminals  = memoize key (altTerminals) 
@@ -1541,7 +1543,11 @@ prepph
  = memoize Prepph
 	(parser (nt prep S1 *> nt jointermph S2)
 	 [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
-	                                                synthesized TERMPH_VAL OF S2]]
+	                                                 synthesized TERMPH_VAL OF S2]]
+	<|>
+	parser (nt prep S1 *> nt year S2) --Temporary: will likely classify prepositions later under a better system (i.e. different types for location vs temporal preps)
+	 [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepphyear [synthesized PREPN_VAL OF S1,
+	                                                      synthesized YEAR_VAL OF S2]]
 	)
 
 ----------------------------------------------------------------------------------
@@ -1710,6 +1716,12 @@ applyprepph		[x, y]
 		    termph = getAtts getTVAL atts y in
 		(prep_names, termph)
 		
+applyprepphyear		[x, y]
+ = \atts -> PREPPH_VAL $
+		let prep_names = getAtts getPREPNVAL atts x
+		    year = getAtts getYEARVAL atts y in
+		(prep_names, make_pnoun $ show year)
+		
 applyprep	[x]
  = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
  
@@ -1749,6 +1761,7 @@ drop3rdprep          [w, x, p]
 		let reln = getAtts getBR atts x in
 		let	preps = getAtts getPREPVAL atts p in
 		make_inverted_filtered_relation dataStore reln preps
+--END PREPOSITIONAL PHRASES
 		
 apply_termphrase [x, y]     
  = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y) )
@@ -2194,7 +2207,14 @@ dictionary = [
 	("kerberos",           Pnoun,     [TERMPH_VAL $ make_pnoun "kerberos"]),
 	("styx",               Pnoun,     [TERMPH_VAL $ make_pnoun "styx"])
 
-	]
+	] ++ list_of_years
+	
+{-Major hack: Since the basic unit that the parser understands is strings (not characters), we have to manually add all years that we can query into the dictionary...
+That is, we can't make the parser understand "1984" and "1245" by having it recognize four numbers, instead it must recognize the entire string of numbers at once
+as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of "1", "9", "8", and "4").  Therefore, all possible strings must be added to the dictionary so that the parser can match them.
+-}
+
+list_of_years = map (\n -> (show n, Year, [YEAR_VAL n])) $ concat [[1000 + x, 2000 + x] | x <- [0..999]]
 	
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) [] 
 test p input = unState (p ((1,[]),input) ([],[])) [] 

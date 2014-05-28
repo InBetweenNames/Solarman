@@ -32,11 +32,12 @@ data AttValue = VAL             {getAVAL    ::   Int}
 	      | QUEST1_VAL      {getQU1VAL  ::   (IO Bool -> IO String)}
 	      | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO String)}
 	      | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO String)}
+		  | YEAR_VAL		{getYEARVAL ::   Int}
 
 --            | RESULT [sys_message]
 data MemoL    = Start | Tree | Num | Emp | ALeaf String | Expr | Op  | ET
               | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
-              | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query
+              | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year
                 deriving (Eq,Ord,Show)
 
 data Id       = O0|S0 |S1|S2|S3|S4|S5|S6|S7|S8|S9|T0|T1 | T2 | T3 |T4 | N1| N2 | N3 | E0 |E1 |E2 | O1| LHS  deriving (Eq,Ord,Show, Enum)
@@ -97,36 +98,37 @@ showio (QUEST2_VAL j)  = return "QUEST2_VAL"
 showio (QUEST3_VAL j)  = return "SENTJOIN_VAL"
 
 instance Eq AttValue where
-      (VAL  j)           == (VAL  j')     = True
-      (MaxVal j)         == (MaxVal j')   = True
-      (SubVal j)         == (SubVal j')   = True
-      (RepVal j)         == (RepVal j')   = True
-      (Res j)            == (Res j')      = True
-      (B_OP j)           == (B_OP j')     = True
-      (U_OP j)           == (U_OP j')     = True
-      (SENT_VAL j)       == (SENT_VAL j') = True
-      (NOUNCLA_VAL j)    == (NOUNCLA_VAL j') = True
-      (VERBPH_VAL j)     == (VERBPH_VAL j') = True
-      (ADJ_VAL j)        == (ADJ_VAL j') = True
-      (TERMPH_VAL j)     == (TERMPH_VAL j') = True
-      (DET_VAL j)        == (DET_VAL j') = True
-      (VERB_VAL j)       == (VERB_VAL j') = True
-      (RELPRON_VAL j)    == (RELPRON_VAL j') = True
-      (NOUNJOIN_VAL j)   == (NOUNJOIN_VAL j') = True
-      (VBPHJOIN_VAL j)   == (VBPHJOIN_VAL j') = True
-      (TERMPHJOIN_VAL j) == (TERMPHJOIN_VAL j') = True
-      (LINKINGVB_VAL j)  == (LINKINGVB_VAL j') = True
-      (SENTJOIN_VAL j)   == (SENTJOIN_VAL j') = True
-      (DOT_VAL j)        == (DOT_VAL j') = True
-      (QM_VAL j)         == (QM_VAL j') = True
-      (QUEST_VAL j)      == (QUEST_VAL j') = True
-      (QUEST1_VAL j)     == (QUEST1_VAL j') = True
-      (QUEST2_VAL j)     == (QUEST2_VAL j') = True
-      (QUEST3_VAL j)     == (QUEST3_VAL j') = True
-      (PREP_VAL s1)		 == (PREP_VAL s) = True
-      (PREPN_VAL s1)	 == (PREPN_VAL s) = True
-      (PREPPH_VAL s1)	 == (PREPPH_VAL s) = True
-      _            == _              = False
+	(VAL  j)           == (VAL  j')     = True
+	(MaxVal j)         == (MaxVal j')   = True
+	(SubVal j)         == (SubVal j')   = True
+	(RepVal j)         == (RepVal j')   = True
+	(Res j)            == (Res j')      = True
+	(B_OP j)           == (B_OP j')     = True
+	(U_OP j)           == (U_OP j')     = True
+	(SENT_VAL j)       == (SENT_VAL j') = True
+	(NOUNCLA_VAL j)    == (NOUNCLA_VAL j') = True
+	(VERBPH_VAL j)     == (VERBPH_VAL j') = True
+	(ADJ_VAL j)        == (ADJ_VAL j') = True
+	(TERMPH_VAL j)     == (TERMPH_VAL j') = True
+	(DET_VAL j)        == (DET_VAL j') = True
+	(VERB_VAL j)       == (VERB_VAL j') = True
+	(RELPRON_VAL j)    == (RELPRON_VAL j') = True
+	(NOUNJOIN_VAL j)   == (NOUNJOIN_VAL j') = True
+	(VBPHJOIN_VAL j)   == (VBPHJOIN_VAL j') = True
+	(TERMPHJOIN_VAL j) == (TERMPHJOIN_VAL j') = True
+	(LINKINGVB_VAL j)  == (LINKINGVB_VAL j') = True
+	(SENTJOIN_VAL j)   == (SENTJOIN_VAL j') = True
+	(DOT_VAL j)        == (DOT_VAL j') = True
+	(QM_VAL j)         == (QM_VAL j') = True
+	(QUEST_VAL j)      == (QUEST_VAL j') = True
+	(QUEST1_VAL j)     == (QUEST1_VAL j') = True
+	(QUEST2_VAL j)     == (QUEST2_VAL j') = True
+	(QUEST3_VAL j)     == (QUEST3_VAL j') = True
+	(PREP_VAL s1)	   == (PREP_VAL s) = True
+	(PREPN_VAL s1)	   == (PREPN_VAL s) = True
+	(PREPPH_VAL s1)    == (PREPPH_VAL s) = True
+	(YEAR_VAL s1)	   == (YEAR_VAL s) = True
+	_                  == _              = False
 
 
 
@@ -177,6 +179,7 @@ setAtt (QUEST3_VAL  s1)   (QUEST3_VAL  s)     = [QUEST3_VAL s]
 setAtt (PREP_VAL s1) (PREP_VAL s) = [PREP_VAL s]
 setAtt (PREPN_VAL s1) (PREPN_VAL s) = [PREPN_VAL s]
 setAtt (PREPPH_VAL s1) (PREPPH_VAL s) = [PREPPH_VAL s]
+setAtt (YEAR_VAL s1) (YEAR_VAL s) = [YEAR_VAL s]
 
 
 --------- *********************** --------------
