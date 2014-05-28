@@ -3,6 +3,7 @@
 module Getts where
 import Data.List
 import Control.Monad
+import Debug.Trace
 
 --For endpoint query
 import Data.RDF hiding (triple, Triple)
@@ -31,13 +32,15 @@ instance TripleStore [Triple] where
 	getts_2 ev_data (a, "?", c) = return [y | (x,y,z) <- ev_data, a == x, c == z]
 	getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
 
+data SPARQLBackend = SPARQL String
+	
 --the String in this instance is to be the endpoint that you wish to query
-instance TripleStore String where
-	getts_1 endpoint ("?", b, c) = return $ removeUri $ preprocess $ getts_1'(pack "?", pack (addUri b), pack (addUri c))
+instance TripleStore SPARQLBackend where
+	getts_1 (SPARQL endpoint) ("?", b, c) = return $ removeUri $ preprocess $ getts_1'(pack "?", pack (addUri b), pack (addUri c))
 		where
 			getts_1' :: (t, Text, Text) -> IO [[BindingValue]]
 			getts_1' (a, b, c) = do
-				 (Just s) <- selectQuery endpoint getts_1_query 
+				 (Just s) <- selectQuery endpoint getts_1_query
 				 return s
 				 where
 				   getts_1_query = do 
@@ -45,7 +48,7 @@ instance TripleStore String where
 					  triple x (iriRef b) (iriRef c)
 					  return SelectQuery { queryVars = [x] }
 					  
-	getts_2 endpoint (a, "?", c) = return $ removeUri $ preprocess  $ getts_2'(pack (addUri a), pack "?", pack (addUri c))
+	getts_2 (SPARQL endpoint) (a, "?", c) = return $ removeUri $ preprocess  $ getts_2'(pack (addUri a), pack "?", pack (addUri c))
 		where
 			getts_2' :: (Text, Text, Text) -> IO [[BindingValue]]
 			getts_2' (a, b, c) = do
@@ -57,7 +60,7 @@ instance TripleStore String where
 					  triple  (iriRef a) x (iriRef c)
 					  return SelectQuery { queryVars = [x] }
 					  
-	getts_3 endpoint (a, b, "?") = return $ removeUri $ preprocess $ getts_3'(pack (addUri a), pack (addUri b), pack "?")
+	getts_3 (SPARQL endpoint) (a, b, "?") = return $ removeUri $ preprocess $ getts_3'(pack (addUri a), pack (addUri b), pack "?")
 		where
 			getts_3' :: (Text, Text, Text) -> IO [[BindingValue]]
 			getts_3' (a, b, c) = do
@@ -141,3 +144,5 @@ make_image ev_data ev_type entity_type = do
 		ents <- getts_3 ev_data (ev, entity_type,"?")
 		return $ zip ents (repeat ev)) evs
 	return $ collect pairs
+	
+	

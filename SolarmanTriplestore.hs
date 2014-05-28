@@ -7,9 +7,10 @@ import qualified Data.Set as Set
 import AGParser2
 import TypeAg2
 import Control.Monad
+import Debug.Trace
 
 --change between remoteData and localData
-dataStore = remoteData
+dataStore = SPARQL remoteData
 
 remoteData = endpoint_uri
 localData =
@@ -1185,28 +1186,34 @@ termand tmph1 tmph2 setofevs =
 
 that = nounand
 
-nounand s t = intersect s t
+nounand = liftM2 intersect
 
-nounor s t = makeset(s ++ t)
-                       
-a nph vbph =
+nounor' s t = makeset(s ++ t)
+nounor = liftM2 nounor'
+	   
+a' nph vbph =
 	length (intersect  nph vbph) /= 0 
-
-every nph vbph =
-	subset  nph vbph 
-
-no nph vbph =
-	length (intersect nph vbph) == 0
+a = liftM2 a'	
 	
-none nph vbph =
-	no nph vbph
-  
-one nph vbph =
-	length (intersect  nph vbph) == 1 
-  
+every' nph vbph =
+	subset  nph vbph 
+every = liftM2 every'
 
-two nph vbph =
+no' nph vbph =
+	length (intersect nph vbph) == 0
+no = liftM2 no'
+	
+none' nph vbph =
+	no nph vbph
+none = liftM2 none'
+  
+one' nph vbph =
+	length (intersect  nph vbph) == 1 
+one = liftM2 one'
+
+two' nph vbph =
 	length (intersect  nph vbph) == 2 
+two = liftM2 two'
   
 
 --which nph vbph = if result /= [] then result else "none."
@@ -1218,14 +1225,22 @@ which nph vbph = do
 	let result = unwords $ intersect nph_ vbph_
 	return $ if result /= [] then result else "none."
 	
-how_many nph vbph =
+how_many' nph vbph =
 	show $ length (intersect nph vbph)
+how_many = liftM2 how_many'
 
-who = which person
+who = which (person `nounor` science_team)
 
 --New
-what nph = if result /= [] then result else "nothing."
+what' nph = if result /= [] then result else "nothing."
 	where result = unwords nph
+what = liftM what'
+
+with :: (IO [String] -> IO Bool) -> (String, IO [String] -> IO Bool)
+with tmph = ("with_implement", tmph)
+
+make_pnoun noun = liftM2 List.elem $ return noun
+
 
 --end of copied from gangster_v4
 
@@ -1234,6 +1249,10 @@ planet	= get_members dataStore ("planet")
 moon	= get_members dataStore ("moon")
 person	= get_members dataStore ("person")
 thing	= get_members dataStore ("thing")
+telescope = get_members dataStore ("telescope")
+science_team = get_members dataStore ("science_team")
+spacecraft = get_members dataStore ("spacecraft")
+place = get_members dataStore ("place")
 
 atmospheric = get_members dataStore ("atmospheric")
 blue = get_members dataStore ("blue")
@@ -1259,19 +1278,17 @@ discovered = discover
 orbit = make_relation dataStore "orbit_ev" 
 orbited = orbit
 
-hall = elem $ "hall"
-phobos = elem $ "phobos"
-mars = elem $ "mars"
+--For prepositional phrases
+discover' = make_filtered_relation dataStore "discover_ev"
+discovered' = discover'
 
-{-Renamed from make_trans_image_from_intrans, does not cache anymore.
-Reason:
-1) with the triple store backend interface being separated from the implementation,
-it is now necessary to pass the store into any function that would use it.
-Since image_discover/orbit uses dataStore, if make_relation were to use, say a different store by accident,
-(it must be passed in alongside the cached image), it's possible the results from two different stores
-could be mixed together.  By having make_relation handle that itself, that programming error will never happen.
-2) Haskell is lazily evaluated and GHC does a lot of caching in the background anyway.  It'd likely be done automatically
--}
+orbit' = make_filtered_relation dataStore "orbit_ev" 
+orbited' = orbit'
+
+hall = make_pnoun "hall"
+phobos = make_pnoun "phobos"
+mars = make_pnoun "mars"
+refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 
 --Need two, because one needs to be inverted for a grammar rule to work.  
 --Could just flip arguments, but this is more readable
@@ -1282,37 +1299,47 @@ make_relation ev_data rel tmph = do
 			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) evs) images
 		return $ map fst subPairs
 				
-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
+{-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
 		images <- make_image ev_data rel "object"
 		objPairs <- filterM (\(_, evs) ->
 			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "subject", "?")) evs) images
-		return $ map fst objPairs
-				
---Prepositional filtering (not used yet)
+		return $ map fst objPairs-}
+		
+--Prepositional filtering
 
---filter_ev :: (TripleStore m) => m -> Event -> [(String, [String] -> Bool)] -> Bool
---filter_ev ev_data ev [] = True
---filter_ev ev_data ev (prep:list_of_preps)
---	= ((snd (prep)) (getts_3 ev_data (ev,fst (prep),"?"))) && filter_ev ev_data ev list_of_preps
+--filter_ev takes a list of ([String], IO [String] -> IO Bool) where the [String] is the list of identifiers corresponding
+--to the data the preposition predicate needs to evaluate (e.g., for location predicates the list will contain "location",
+filter_ev :: (TripleStore m) => m -> [([String], IO [String] -> IO Bool)] -> Event -> IO Bool
+filter_ev ev_data [] ev = return True
+filter_ev ev_data ((names,pred):list) ev = do
+	relevant_list <- mapM (\name -> getts_3 ev_data (ev, name, "?")) names
+	res <- pred $ return $ concat relevant_list
+	if res then filter_ev ev_data list ev else return False
 	
---New from Eric
---make_filtered_image tmph preps image =
---	[subj | (subj, evs) <- image,
---				tmph (concat [getts_3 ev_data (ev, "object", "?") | ev <- evs, filter_ev ev preps])]
-			   
---The prime version of these functions denote filtered versions based on a set of prepositions
---discover' tmph preps = make_filtered_image tmph preps discover_image
---orbit' tmph preps = make_filtered_image tmph preps orbit_image
-
---TODO:
---Move combinators and relation stuff into modules?
+make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_filtered_relation ev_data rel tmph preps = do
+	images <- make_image ev_data rel "subject"
+	subPairs <- filterM (\(_, evs) -> do
+		filtEvents <- filterM (filter_ev ev_data preps) evs
+		tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
+	return $ map fst subPairs
+	
+make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_inverted_filtered_relation ev_data rel preps = do
+		images <- make_image ev_data rel "object"
+		objPairs <- filterM (\(_, evs) -> anyM (filter_ev ev_data preps) evs) images
+		return $ map fst objPairs
+		where
+			anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
+			anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst 
+	
 
 --Copied from old solarman:
-yesno x = if x then "yes." else "no"
-sand True True = True
-sand any any'  = False
+yesno' x = if x then "yes." else "no"
+yesno = liftM yesno'
 
+sand = liftM2 (&&)
 
 {-
 ||-----------------------------------------------------------------------------
@@ -1332,7 +1359,6 @@ relpron         =  pre_processed Relpron
 termphjoin      =  pre_processed Termphjoin
 verbphjoin      =  pre_processed Verbphjoin
 nounjoin        =  pre_processed Nounjoin
-prep            =  pre_processed Prep
 indefpron       =  pre_processed Indefpron
 {-
 terminator      =  uninterpreted (SPECIAL_SYMBOL_TERM ".")
@@ -1347,6 +1373,9 @@ quest2          =  pre_processed Quest2
 quest3          =  pre_processed Quest3
 quest4a         =  pre_processed Quest4a
 quest4b         =  pre_processed Quest4b
+
+--NEW FOR PREPOSITIONAL PHRASES
+prep			=  pre_processed Prepn
 
 pre_processed key 
  = let formAlts altTerminals  = memoize key (altTerminals) 
@@ -1394,8 +1423,8 @@ type Atts     = [AttValue] -- [(AttType, AttValue)]
 type InsAttVals = [(Instance, Atts)]
 
 
-type Mtable   = [(MemoL
                  ,[(Start1,(Context,Result))]
+type Mtable   = [(MemoL
                  )
                 ] 
 type Result   = [((Start1, End),[Tree MemoL])]
@@ -1474,18 +1503,48 @@ detph
 ----------------------------------------------------------------------------------
 transvbph 
  = memoize Transvbph
-   (parser (nt transvb S1 *> nt jointermph S2)
+   (parser (nt transvb S1 *> nt jointermph S2) --"discovered phobos (and blah and blah and blah)"
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb [synthesized VERB_VAL    OF S1,
                                                       synthesized TERMPH_VAL  OF S2]]
-    <|>
-    parser (nt linkingvb S1 *> nt transvb S2 *> nt prep S3 *> nt jointermph S4)
+    {-<|>
+    parser (nt linkingvb S1 *> nt transvb S2 *> nt prepa S3 *> nt jointermph S4) --"was discovered by hall" --OBSOLETE
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rd [synthesized LINKINGVB_VAL  OF  S1,
                                                   synthesized VERB_VAL       OF  S2,
-                                                  synthesized PREP_VAL       OF  S3,
-                                                  synthesized TERMPH_VAL     OF  S4]]
+                                                  synthesized PREPA_VAL      OF  S3,
+                                                  synthesized TERMPH_VAL     OF  S4]]-}
+	<|> -- NEW FOR PREPOSITIONAL PHRASES
+	parser (nt transvb S1 *> nt jointermph S2 *> nt preps S3)
+	[rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep [synthesized VERB_VAL OF S1,
+														  synthesized TERMPH_VAL OF S2,
+														  synthesized PREP_VAL OF S3]]
+	<|>
+    parser (nt linkingvb S1 *> nt transvb S2 *> nt preps S3) --"was discovered by hall in..."
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
+												  synthesized VERB_VAL       OF  S2,
+												  synthesized PREP_VAL       OF  S3]]
    )
+   
+----------------------------------------------------------------------------------
+--NEW FOR PREPOSITIONAL PHRASES
 
--------------------------------------------------------------------------------
+preps
+ = memoize Preps
+	(parser (nt prepph S1)
+	 [rule_s PREP_VAL OF LHS ISEQUALTO applyprep [synthesized PREPPH_VAL OF S1]]
+	 <|>
+	 parser (nt prepph S1 *> nt preps S2)
+	 [rule_s PREP_VAL OF LHS ISEQUALTO applypreps [synthesized PREPPH_VAL OF S1,
+												   synthesized PREP_VAL OF S2]]
+	)
+	
+prepph
+ = memoize Prepph
+	(parser (nt prep S1 *> nt jointermph S2)
+	 [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
+	                                                synthesized TERMPH_VAL OF S2]]
+	)
+
+----------------------------------------------------------------------------------
 
 verbph 
  = memoize Verbph
@@ -1522,7 +1581,7 @@ jointermph
                                                        synthesized TERMPH_VAL     OF S3]]
    <|>
 -}
-    parser (nt jointermph S1 *> nt termphjoin S2 *> nt jointermph S3)
+    parser (nt jointermph S1 *> nt termphjoin S2 *> nt jointermph S3) --"hall and galileo discovered...?"
     [rule_s TERMPH_VAL  OF LHS ISEQUALTO appjoin1 [synthesized TERMPH_VAL     OF S1,
                                                    synthesized TERMPHJOIN_VAL OF S2,
                                                    synthesized TERMPH_VAL     OF S3]]
@@ -1622,7 +1681,7 @@ intrsct2         [x, y]
  = \atts -> ADJ_VAL (liftM2 intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 applydet         [x, y]                 
- = \atts -> TERMPH_VAL ((getAtts getDVAL atts x) (getAtts getAVALS atts y) )
+ = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
  
 --make_trans_vb is very similar to make_relation.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
@@ -1633,15 +1692,37 @@ applydet         [x, y]
 applytransvb     [x, y]     
  -- = \atts -> VERBPH_VAL ((make_trans_vb (getAtts getBR atts x)) (getAtts getTVAL atts y))
  = \atts -> VERBPH_VAL $
-		let reln = getAtts getBR atts x in
-		let predicate = getAtts getTVAL atts y in
+		let reln = getAtts getBR atts x
+		    predicate = getAtts getTVAL atts y in
 		make_relation dataStore reln predicate
-
+		
+--NEW FOR PREPOSITIONAL PHRASES
+applytransvbprep	[x, y, z]
+ = \atts -> VERBPH_VAL $
+		let reln = getAtts getBR atts x
+		    predicate = getAtts getTVAL atts y
+		    preps = getAtts getPREPVAL atts z in
+		make_filtered_relation dataStore reln predicate preps
+		
+applyprepph		[x, y]
+ = \atts -> PREPPH_VAL $
+		let prep_names = getAtts getPREPNVAL atts x
+		    termph = getAtts getTVAL atts y in
+		(prep_names, termph)
+		
+applyprep	[x]
+ = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
+ 
+applypreps		[x, y]
+ = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x):(getAtts getPREPVAL atts y)
+ 
+--END PREPOSITIONAL PHRASES
+		
 applyvbph        [z]    
  = \atts -> VERBPH_VAL (getAtts getAVALS atts z)
  
 appjoin1         [x, y, z]     
- = \atts -> TERMPH_VAL ((getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z))
+ = \atts -> TERMPH_VAL $ (getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z)
 
 appjoin2         [x, y, z]    
  = \atts -> VERBPH_VAL ((getAtts getVJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
@@ -1655,14 +1736,19 @@ apply_middle2    [x, y, z]
 apply_middle3    [x, y, z]    
  = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
---DONE
-drop3rd          [w, x, y, z]     
--- = \atts -> VERBPH_VAL ((make_trans_vb (invert (getAtts getBR atts x))) (getAtts getTVAL atts z))
 -- Think "a orbited by b" vs "b orbits a"
-	= \atts -> VERBPH_VAL $
+{-drop3rd          [w, x, y, z]     
+ = \atts -> VERBPH_VAL $
 		let reln = getAtts getBR atts x in
-		let predicate = getAtts getTVAL atts z in
-		make_inverted_relation dataStore reln predicate
+		let	predicate = getAtts getTVAL atts z in
+		make_inverted_relation dataStore reln predicate-}
+
+--NEW FOR PREPOSITIONAL PHRASES
+drop3rdprep          [w, x, p]     
+ = \atts -> VERBPH_VAL $
+		let reln = getAtts getBR atts x in
+		let	preps = getAtts getPREPVAL atts p in
+		make_inverted_filtered_relation dataStore reln preps
 		
 apply_termphrase [x, y]     
  = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y) )
@@ -1692,177 +1778,424 @@ truefalse        [x]
 
 || FUNCTION USED TO DEFINE OBJECTS ASSOCIATED WITH PROPER NOUNS
 -}
-test_wrt e s = e `elem` s
+--test_wrt e s = e `elem` s
 
 -- FUNCTION USED TO DEFINE MEANINGS OF VERBS IN TERMS OF RELATIONS
-make_trans_vb rel p = [x | (x, image_x) <- collect rel, p image_x] -- Similar to make_relation
+--make_trans_vb rel p = [x | (x, image_x) <- collect rel, p image_x] -- Similar to make_relation
 
-dictionary = 
- [("thing",              Cnoun,     [NOUNCLA_VAL thing]),
-  ("things",             Cnoun,     [NOUNCLA_VAL thing]),
-  ("planets",            Cnoun,     [NOUNCLA_VAL planet]),
-  ("planet",             Cnoun,     [NOUNCLA_VAL planet]),
-  ("person",              Cnoun,    [NOUNCLA_VAL person]),   
-  ("sun",                Cnoun,     [NOUNCLA_VAL sun]), 
-  ("moon",               Cnoun,     [NOUNCLA_VAL moon]), 
-  ("moons",              Cnoun,     [NOUNCLA_VAL moon]),
-  ("satellite",          Cnoun,     [NOUNCLA_VAL moon]),
-  ("satellites",         Cnoun,     [NOUNCLA_VAL moon]),
-  --DONE
-  --should replace with set constructions as defined below by get_members
-  ("atmospheric",        Adj,       [ADJ_VAL     atmospheric]),
-  ("blue",               Adj,       [ADJ_VAL     blue]),
-  ("blue",               Adj,       [ADJ_VAL     depressed]),
-  ("solid",              Adj,       [ADJ_VAL     solid]),     
-  ("brown",              Adj,       [ADJ_VAL     brown]),   
-  ("gaseous",            Adj,       [ADJ_VAL     gaseous]),  
-  ("green",              Adj,       [ADJ_VAL     green]),  
-  ("red",                Adj,       [ADJ_VAL     red]),  
-  ("ringed",             Adj,       [ADJ_VAL     ringed]),  
-  ("vacuumous",          Adj,       [ADJ_VAL     vacuumous]),
-  ("exist",              Intransvb, [VERBPH_VAL  thing]),
-  ("exists",             Intransvb, [VERBPH_VAL  thing]),
-  ("spin",               Intransvb, [VERBPH_VAL  spin]),
-  ("spins",              Intransvb, [VERBPH_VAL  spin]),
-  --TODO: DONE
-  --replace sets of things with a call to ("?" "property" "spin/thing/ringed/red/blue/etc")
-  ("the",                Det,       [DET_VAL $ liftM2 a]),
-  ("a",                  Det,       [DET_VAL $ liftM2 a]),
-  ("one",                Det,       [DET_VAL $ liftM2 one]), 
-  ("an",                 Det,       [DET_VAL $ liftM2 a]), 
-  ("some",               Det,       [DET_VAL $ liftM2 a]), 
-  ("any",                Det,       [DET_VAL $ liftM2 a]), 
-  ("no",                 Det,       [DET_VAL $ liftM2 no]), 
-  ("every",              Det,       [DET_VAL $ liftM2 every]), 
-  ("all",                Det,       [DET_VAL $ liftM2 every]),  
-  ("two",                Det,       [DET_VAL $ liftM2 two]),
-  {-DONE
-	function_denoted_by_a xs ys       = length( intersect xs ys ) > 0
-	function_denoted_by_every xs ys   = includes xs ys
-	function_denoted_by_none xs ys    = length( intersect xs ys ) == 0
-	function_denoted_by_one xs ys     = length( intersect xs ys ) == 1
-	function_denoted_by_two xs ys     = length( intersect xs ys ) == 2
-  -}
-  ("bernard",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "bernard")]),
-  ("bond",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "bond")]),
-  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "venus")]),
-  ("cassini",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "cassini")]),
-  ("dollfus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "dollfus")]),
-  ("Fouuntain",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "Fouuntain")]),
-  ("galileo",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "galileo")]),
-  ("hall",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "hall")]),
-  ("herschel",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "herschel")]),
-  ("huygens",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "huygens")]),
-  ("kowal",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "kowal")]),
-  ("kuiper",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "kuiper")]),
-  ("larsen",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "larsen")]),
-  ("lassell",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "lassell")]),
-  ("melotte",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "melotte")]),
-  ("nicholson",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "nicholson")]),
-  ("perrine",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "perrine")]),
-  ("pickering",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "pickering")]),
-  ("almathea",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "almathea")]),
-  ("ariel",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "ariel")]),
-  ("callisto",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "callisto")]),
-  ("charon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "charon")]),
-  ("deimos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "deimos")]),
-  ("dione",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "dione")]),
-  ("earth",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "earth")]),
-  ("enceladus",          Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "enceladus")]),
-  ("europa",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "europa")]),
-  ("ganymede",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "ganymede")]),
-  ("hyperion",           Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "hyperion")]),
-  ("iapetus",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "iapetus")]),
-  ("io",                 Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "io")]),
-  ("janus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "janus")]),
-  ("jupiter",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiter")]),
-  ("jupitereighth",      Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitereighth")]),
-  ("jupitereleventh",    Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitereleventh")]),
-  ("jupiterfourteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterfourteenth")]),
-  ("jupiterninth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterninth")]),
-  ("jupiterseventh",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterseventh")]),
-  ("jupitersixth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitersixth")]),
-  ("jupitertenth",       Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitertenth")]),
-  ("jupiterthirteenth",  Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupiterthirteenth")]),
-  ("jupitertwelfth",     Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "jupitertwelfth")]),
-  ("luna",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "luna")]),
-  ("mars",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "mars")]),
-  ("mercury",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "mercury")]),
-  ("mimas",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "mimas")]),
-  ("miranda",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "miranda")]),
-  ("neptune",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "neptune")]),
-  ("nereid",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "nereid")]),
-  ("oberon",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "oberon")]),
-  ("phobos",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "phobos")]),
-  ("phoebe",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "phoebe")]),
-  ("pluto",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "pluto")]),
-  ("rhea",               Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "rhea")]),
-  ("saturn",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "saturn")]),
-  ("saturnfirst",        Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "saturnfirst")]),
-  ("sol",                Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "sol")]),
-  ("tethys",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "tethys")]),
-  ("titan",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "titan")]),
-  ("titania",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "titania")]),
-  ("triton",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "triton")]),
-  ("umbriel",            Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "umbriel")]),
-  ("uranus",             Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "uranus")]),
-  ("venus",              Pnoun,     [TERMPH_VAL (liftM2 List.elem $ return $ "venus")]),
-  --these should be converted to [TERMPH_VAL (liftM2 List.elem $ return $ "subject")] DONE
-  ("discover",           Transvb,   [VERB_VAL ("discover_ev")]),
-  ("discovers",          Transvb,   [VERB_VAL ("discover_ev")]),
-  ("discovered",         Transvb,   [VERB_VAL ("discover_ev")]),
-  ("orbit",              Transvb,   [VERB_VAL ("orbit_ev")]),
-  ("orbited",            Transvb,   [VERB_VAL ("orbit_ev")]),
-  ("orbits",             Transvb,   [VERB_VAL ("orbit_ev")]),
-  --Instead of rel_orbit or rel_discover (DONE)
-  --we should link to the function denoted by the verb, or maybe get every event by type "discover"/"steal"
-  ("is",                 Linkingvb, [LINKINGVB_VAL  id]),
-  ("was",                Linkingvb, [LINKINGVB_VAL  id]), 
-  ("are",                Linkingvb, [LINKINGVB_VAL  id]),
-  ("were",               Linkingvb, [LINKINGVB_VAL  id]),
-  ("that",               Relpron,   [RELPRON_VAL    $ liftM2 that]),
-  ("who",                Relpron,   [RELPRON_VAL    $ liftM2 that]),
-  ("which",              Relpron,   [RELPRON_VAL    $ liftM2 that]),
-  ("and",                Verbphjoin,[VBPHJOIN_VAL   $ liftM2 nounand]),
-  ("or",                 Verbphjoin,[VBPHJOIN_VAL   $ liftM2 nounor]),
-  ("and",                Nounjoin,  [NOUNJOIN_VAL   $ liftM2 nounand]),
-  ("or",                 Nounjoin,  [NOUNJOIN_VAL   $ liftM2 nounor]),
-  ("by",                 Prep,      [PREP_VAL       id]),
-  ("and",                Termphjoin,[TERMPHJOIN_VAL termand]),
-  ("or",                 Termphjoin,[TERMPHJOIN_VAL termor]), 
-  ("and",                Sentjoin,  [SENTJOIN_VAL   $ liftM2 sand]), --TODO checked.  sand was fine
-  ("does",               Quest1,    [QUEST1_VAL     $ liftM yesno]),
-  ("did",                Quest1  ,  [QUEST1_VAL     $ liftM yesno]),
-  ("do",                 Quest1,    [QUEST1_VAL     $ liftM yesno]),
-  ("what",               Quest2,    [QUEST2_VAL     $ liftM what]), --TODO: definition for what
-  ("who",                Quest2,    [QUEST2_VAL     who]), --Correct, according to orignal definition
-  ("which",              Quest3,    [QUEST3_VAL     which]),
-  ("what",               Quest3,    [QUEST3_VAL     which]),
-  ("how",                Quest4a,   [QUEST3_VAL     $ liftM2 how_many]),
-  ("many",               Quest4b,   [QUEST3_VAL     $ liftM2 how_many])]
-  ++
-  [("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
-   ("discoverer",  Cnoun,    meaning_of nouncla 
-                               "person who discovered something" Nouncla),
-   ("discoverers", Cnoun,    meaning_of nouncla 
-                               "person who discovered something" Nouncla), 
-   ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
-   ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
-   ("orbit",       Intransvb,meaning_of verbph  "orbit something" Verbph),
-   ("orbits",      Intransvb,meaning_of verbph  "orbit something" Verbph),
-   ("anyone",      Indefpron,meaning_of detph   "a person" Detph),
-   ("anything",    Indefpron,meaning_of detph   "a thing" Detph),
-   ("anybody",     Indefpron,meaning_of detph   "a person" Detph),
-   ("someone",     Indefpron,meaning_of detph   "a person" Detph),
-   ("something",   Indefpron,meaning_of detph   "a thing" Detph),
-   ("somebody",    Indefpron,meaning_of detph   "a person" Detph),
-   ("everyone",    Indefpron,meaning_of detph   "every person" Detph),
-   ("everything",  Indefpron,meaning_of detph   "every thing" Detph),
-   ("everybody",   Indefpron,meaning_of detph   "every person" Detph),
-   ("nobody",      Indefpron,meaning_of detph   "no person" Detph),
-   ("noone",       Indefpron,meaning_of detph   "no person" Detph)]
+dictionary = [
+	("thing",              Cnoun,     [NOUNCLA_VAL thing]),
+	("things",             Cnoun,     [NOUNCLA_VAL thing]),
+	("planets",            Cnoun,     [NOUNCLA_VAL planet]),
+	("planet",             Cnoun,     [NOUNCLA_VAL planet]),
+	("person",             Cnoun,     [NOUNCLA_VAL person]),   
+	("sun",                Cnoun,     [NOUNCLA_VAL sun]), 
+	("moon",               Cnoun,     [NOUNCLA_VAL moon]), 
+	("moons",              Cnoun,     [NOUNCLA_VAL moon]),
+	("satellite",          Cnoun,     [NOUNCLA_VAL moon]),
+	("satellites",         Cnoun,     [NOUNCLA_VAL moon]),
+	("atmospheric",        Adj,       [ADJ_VAL     atmospheric]),
+	("blue",               Adj,       [ADJ_VAL     blue]),
+	("blue",               Adj,       [ADJ_VAL     depressed]),
+	("solid",              Adj,       [ADJ_VAL     solid]),     
+	("brown",              Adj,       [ADJ_VAL     brown]),   
+	("gaseous",            Adj,       [ADJ_VAL     gaseous]),  
+	("green",              Adj,       [ADJ_VAL     green]),  
+	("red",                Adj,       [ADJ_VAL     red]),  
+	("ringed",             Adj,       [ADJ_VAL     ringed]),  
+	("vacuumous",          Adj,       [ADJ_VAL     vacuumous]),
+	("exist",              Intransvb, [VERBPH_VAL  thing]),
+	("exists",             Intransvb, [VERBPH_VAL  thing]),
+	("spin",               Intransvb, [VERBPH_VAL  spin]),
+	("spins",              Intransvb, [VERBPH_VAL  spin]),
+	("the",                Det,       [DET_VAL $ a]),
+	("a",                  Det,       [DET_VAL $ a]),
+	("one",                Det,       [DET_VAL $ one]), 
+	("an",                 Det,       [DET_VAL $ a]), 
+	("some",               Det,       [DET_VAL $ a]), 
+	("any",                Det,       [DET_VAL $ a]), 
+	("no",                 Det,       [DET_VAL $ no]), 
+	("every",              Det,       [DET_VAL $ every]), 
+	("all",                Det,       [DET_VAL $ every]),  
+	("two",                Det,       [DET_VAL $ two]),
+	("bernard",            Pnoun,     [TERMPH_VAL $ make_pnoun "bernard"]),
+	("bond",               Pnoun,     [TERMPH_VAL $ make_pnoun "bond"]),
+	("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
+	("cassini",            Pnoun,     [TERMPH_VAL $ make_pnoun "cassini"]),
+	("dollfus",            Pnoun,     [TERMPH_VAL $ make_pnoun "dollfus"]),
+	("Fouuntain",          Pnoun,     [TERMPH_VAL $ make_pnoun "Fouuntain"]),
+	("galileo",            Pnoun,     [TERMPH_VAL $ make_pnoun "galileo"]),
+	("hall",               Pnoun,     [TERMPH_VAL $ make_pnoun "hall"]),
+	("herschel",           Pnoun,     [TERMPH_VAL $ make_pnoun "herschel"]),
+	("huygens",            Pnoun,     [TERMPH_VAL $ make_pnoun "huygens"]),
+	("kowal",              Pnoun,     [TERMPH_VAL $ make_pnoun "kowal"]),
+	("kuiper",             Pnoun,     [TERMPH_VAL $ make_pnoun "kuiper"]),
+	("larsen",             Pnoun,     [TERMPH_VAL $ make_pnoun "larsen"]),
+	("lassell",            Pnoun,     [TERMPH_VAL $ make_pnoun "lassell"]),
+	("melotte",            Pnoun,     [TERMPH_VAL $ make_pnoun "melotte"]),
+	("nicholson",          Pnoun,     [TERMPH_VAL $ make_pnoun "nicholson"]),
+	("perrine",            Pnoun,     [TERMPH_VAL $ make_pnoun "perrine"]),
+	("pickering",          Pnoun,     [TERMPH_VAL $ make_pnoun "pickering"]),
+	("almathea",           Pnoun,     [TERMPH_VAL $ make_pnoun "almathea"]),
+	("ariel",              Pnoun,     [TERMPH_VAL $ make_pnoun "ariel"]),
+	("callisto",           Pnoun,     [TERMPH_VAL $ make_pnoun "callisto"]),
+	("charon",             Pnoun,     [TERMPH_VAL $ make_pnoun "charon"]),
+	("deimos",             Pnoun,     [TERMPH_VAL $ make_pnoun "deimos"]),
+	("dione",              Pnoun,     [TERMPH_VAL $ make_pnoun "dione"]),
+	("earth",              Pnoun,     [TERMPH_VAL $ make_pnoun "earth"]),
+	("enceladus",          Pnoun,     [TERMPH_VAL $ make_pnoun "enceladus"]),
+	("europa",             Pnoun,     [TERMPH_VAL $ make_pnoun "europa"]),
+	("ganymede",           Pnoun,     [TERMPH_VAL $ make_pnoun "ganymede"]),
+	("hyperion",           Pnoun,     [TERMPH_VAL $ make_pnoun "hyperion"]),
+	("iapetus",            Pnoun,     [TERMPH_VAL $ make_pnoun "iapetus"]),
+	("io",                 Pnoun,     [TERMPH_VAL $ make_pnoun "io"]),
+	("janus",              Pnoun,     [TERMPH_VAL $ make_pnoun "janus"]),
+	("jupiter",            Pnoun,     [TERMPH_VAL $ make_pnoun "jupiter"]),
+	("jupitereighth",      Pnoun,     [TERMPH_VAL $ make_pnoun "jupitereighth"]),
+	("jupitereleventh",    Pnoun,     [TERMPH_VAL $ make_pnoun "jupitereleventh"]),
+	("jupiterfourteenth",  Pnoun,     [TERMPH_VAL $ make_pnoun "jupiterfourteenth"]),
+	("jupiterninth",       Pnoun,     [TERMPH_VAL $ make_pnoun "jupiterninth"]),
+	("jupiterseventh",     Pnoun,     [TERMPH_VAL $ make_pnoun "jupiterseventh"]),
+	("jupitersixth",       Pnoun,     [TERMPH_VAL $ make_pnoun "jupitersixth"]),
+	("jupitertenth",       Pnoun,     [TERMPH_VAL $ make_pnoun "jupitertenth"]),
+	("jupiterthirteenth",  Pnoun,     [TERMPH_VAL $ make_pnoun "jupiterthirteenth"]),
+	("jupitertwelfth",     Pnoun,     [TERMPH_VAL $ make_pnoun "jupitertwelfth"]),
+	("luna",               Pnoun,     [TERMPH_VAL $ make_pnoun "luna"]),
+	("mars",               Pnoun,     [TERMPH_VAL $ make_pnoun "mars"]),
+	("mercury",            Pnoun,     [TERMPH_VAL $ make_pnoun "mercury"]),
+	("mimas",              Pnoun,     [TERMPH_VAL $ make_pnoun "mimas"]),
+	("miranda",            Pnoun,     [TERMPH_VAL $ make_pnoun "miranda"]),
+	("neptune",            Pnoun,     [TERMPH_VAL $ make_pnoun "neptune"]),
+	("nereid",             Pnoun,     [TERMPH_VAL $ make_pnoun "nereid"]),
+	("oberon",             Pnoun,     [TERMPH_VAL $ make_pnoun "oberon"]),
+	("phobos",             Pnoun,     [TERMPH_VAL $ make_pnoun "phobos"]),
+	("phoebe",             Pnoun,     [TERMPH_VAL $ make_pnoun "phoebe"]),
+	("pluto",              Pnoun,     [TERMPH_VAL $ make_pnoun "pluto"]),
+	("rhea",               Pnoun,     [TERMPH_VAL $ make_pnoun "rhea"]),
+	("saturn",             Pnoun,     [TERMPH_VAL $ make_pnoun "saturn"]),
+	("saturnfirst",        Pnoun,     [TERMPH_VAL $ make_pnoun "saturnfirst"]),
+	("sol",                Pnoun,     [TERMPH_VAL $ make_pnoun "sol"]),
+	("tethys",             Pnoun,     [TERMPH_VAL $ make_pnoun "tethys"]),
+	("titan",              Pnoun,     [TERMPH_VAL $ make_pnoun "titan"]),
+	("titania",            Pnoun,     [TERMPH_VAL $ make_pnoun "titania"]),
+	("triton",             Pnoun,     [TERMPH_VAL $ make_pnoun "triton"]),
+	("umbriel",            Pnoun,     [TERMPH_VAL $ make_pnoun "umbriel"]),
+	("uranus",             Pnoun,     [TERMPH_VAL $ make_pnoun "uranus"]),
+	("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
+	("discover",           Transvb,   [VERB_VAL ("discover_ev")]),
+	("discovers",          Transvb,   [VERB_VAL ("discover_ev")]),
+	("discovered",         Transvb,   [VERB_VAL ("discover_ev")]),
+	("orbit",              Transvb,   [VERB_VAL ("orbit_ev")]),
+	("orbited",            Transvb,   [VERB_VAL ("orbit_ev")]),
+	("orbits",             Transvb,   [VERB_VAL ("orbit_ev")]),
+	("is",                 Linkingvb, [LINKINGVB_VAL  id]),
+	("was",                Linkingvb, [LINKINGVB_VAL  id]), 
+	("are",                Linkingvb, [LINKINGVB_VAL  id]),
+	("were",               Linkingvb, [LINKINGVB_VAL  id]),
+	("that",               Relpron,   [RELPRON_VAL    $ that]),
+	("who",                Relpron,   [RELPRON_VAL    $ that]),
+	("which",              Relpron,   [RELPRON_VAL    $ that]),
+	("and",                Verbphjoin,[VBPHJOIN_VAL   $ nounand]),
+	("or",                 Verbphjoin,[VBPHJOIN_VAL   $ nounor]),
+	("and",                Nounjoin,  [NOUNJOIN_VAL   $ nounand]),
+	("or",                 Nounjoin,  [NOUNJOIN_VAL   $ nounor]),
+	("and",                Termphjoin,[TERMPHJOIN_VAL termand]),
+	("or",                 Termphjoin,[TERMPHJOIN_VAL termor]), 
+	("and",                Sentjoin,  [SENTJOIN_VAL   $ sand]),
+	("does",               Quest1,    [QUEST1_VAL     $ yesno]),
+	("did",                Quest1  ,  [QUEST1_VAL     $ yesno]),
+	("do",                 Quest1,    [QUEST1_VAL     $ yesno]),
+	("what",               Quest2,    [QUEST2_VAL     $ what]),
+	("who",                Quest2,    [QUEST2_VAL     who]),
+	("which",              Quest3,    [QUEST3_VAL     which]),
+	("what",               Quest3,    [QUEST3_VAL     which]),
+	("how",                Quest4a,   [QUEST3_VAL     $ how_many]),
+	("many",               Quest4b,   [QUEST3_VAL     $ how_many]),
+	("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
+	("discoverer",  Cnoun,    meaning_of nouncla  "person who discovered something" Nouncla),
+	("discoverers", Cnoun,    meaning_of nouncla  "person who discovered something" Nouncla), 
+	("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
+	("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
+	("orbit",       Intransvb,meaning_of verbph  "orbit something" Verbph),
+	("orbits",      Intransvb,meaning_of verbph  "orbit something" Verbph),
+	("anyone",      Indefpron,meaning_of detph   "a person" Detph),
+	("anything",    Indefpron,meaning_of detph   "a thing" Detph),
+	("anybody",     Indefpron,meaning_of detph   "a person" Detph),
+	("someone",     Indefpron,meaning_of detph   "a person" Detph),
+	("something",   Indefpron,meaning_of detph   "a thing" Detph),
+	("somebody",    Indefpron,meaning_of detph   "a person" Detph),
+	("everyone",    Indefpron,meaning_of detph   "every person" Detph),
+	("everything",  Indefpron,meaning_of detph   "every thing" Detph),
+	("everybody",   Indefpron,meaning_of detph   "every person" Detph),
+	("nobody",      Indefpron,meaning_of detph   "no person" Detph),
+	("noone",       Indefpron,meaning_of detph   "no person" Detph),
+	--Begin prepositional stuff--
+	("with",		Prepn, [PREPN_VAL ["with_implement"]]),
+	("in",			Prepn, [PREPN_VAL ["location","year"]]),
+	("at",			Prepn, [PREPN_VAL ["location"]]),
+	("by",          Prepn, [PREPN_VAL ["subject"]]),
+	--Begin telescope stuff--
+	("telescope",	Cnoun, [NOUNCLA_VAL telescope]),
+	("telescopes",	Cnoun, [NOUNCLA_VAL telescope]),
+	("cassegrain_telescope",			Pnoun,[TERMPH_VAL $ make_pnoun "cassegrain_telescope"]),
+	("hooker_telescope",				Pnoun,[TERMPH_VAL $ make_pnoun "hooker_telescope"]),
+	("schmidt_telescope",				Pnoun,[TERMPH_VAL $ make_pnoun "schmidt_telescope"]),
+	("subaru_reflector_telescope",		Pnoun,[TERMPH_VAL $ make_pnoun "subaru_reflector_telescope"]),
+	("canada-france-hawaii_telescope",	Pnoun,[TERMPH_VAL $ make_pnoun "canada-france-hawaii_telescope"]),
+	("aerial_telescope_1",				Pnoun,[TERMPH_VAL $ make_pnoun "aerial_telescope_1"]),
+	("bruce_astrograph",				Pnoun,[TERMPH_VAL $ make_pnoun "bruce_astrograph"]),
+	("telescope_1",						Pnoun,[TERMPH_VAL $ make_pnoun "telescope_1"]),
+	("hale_telescope",					Pnoun,[TERMPH_VAL $ make_pnoun "hale_telescope"]),
+	("hubble_space_telescope",			Pnoun,[TERMPH_VAL $ make_pnoun "hubble_space_telescope"]),
+	("blanco_telescope",				Pnoun,[TERMPH_VAL $ make_pnoun "blanco_telescope"]),
+	("crossley_reflector_telescope",	Pnoun,[TERMPH_VAL $ make_pnoun "crossley_reflector_telescope"]),
+	("refractor_telescope_1",			Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_1"]),
+	("refractor_telescope_2",			Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_2"]),
+	("refractor_telescope_3",			Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_3"]),
+	("refractor_telescope_4",			Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_4"]),
+	("reflector_telescope_1",			Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_1"]),
+	("reflector_telescope_2",			Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_2"]),
+	("reflector_telescope_3",			Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_3"]),
+	("reflector_telescope_4",			Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_4"]),
+	("ground_based_telescope_1",		Pnoun,[TERMPH_VAL $ make_pnoun "ground_based_telescope_1"]),
+	("ground_based_telescope_2",		Pnoun,[TERMPH_VAL $ make_pnoun "ground_based_telescope_2"]),
+	("ground_based_telescope_3",		Pnoun,[TERMPH_VAL $ make_pnoun "ground_based_telescope_3"]),
+	("galilean_telescope_1",			Pnoun,[TERMPH_VAL $ make_pnoun "galilean_telescope_1"]),
+	--Begin science team stuff
+	("team",							Cnoun, [NOUNCLA_VAL science_team]),
+	("teams",							Cnoun, [NOUNCLA_VAL science_team]),
+	("voyager_science_team",			Pnoun,[TERMPH_VAL $ make_pnoun "voyager_science_team"]),
+	("cassini_imaging_science_team",	Pnoun,[TERMPH_VAL $ make_pnoun "cassini_imaging_science_team"]),
+	("science_team_1",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_1"]),
+	("science_team_2",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_2"]),
+	("science_team_3",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_3"]),
+	("science_team_4",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_4"]),
+	("science_team_5",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_5"]),
+	("science_team_6",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_6"]),
+	("science_team_7",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_7"]),
+	("science_team_8",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_8"]),
+	("science_team_9",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_9"]),
+	("science_team_10",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_10"]),
+	("science_team_11",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_11"]),
+	("science_team_12",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_12"]),
+	("science_team_13",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_13"]),
+	("science_team_14",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_14"]),
+	("science_team_15",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_15"]),
+	("science_team_16",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_16"]),
+	("science_team_17",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_17"]),
+	("science_team_18",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_18"]),
+	("science_team_19",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_19"]),
+	("science_team_20",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_20"]),
+	("science_team_21",					Pnoun,[TERMPH_VAL $ make_pnoun "science_team_21"]),
+	--Begin new people stuff--
+	("larson", Pnoun, [TERMPH_VAL $ make_pnoun "larson"]),
+	("fountain", Pnoun, [TERMPH_VAL $ make_pnoun "fountain"]),
+	("scotti", Pnoun, [TERMPH_VAL $ make_pnoun "scotti"]),
+	("spahr", Pnoun, [TERMPH_VAL $ make_pnoun "spahr"]),
+	("mcmillan", Pnoun, [TERMPH_VAL $ make_pnoun "mcmillan"]),
+	("montani", Pnoun, [TERMPH_VAL $ make_pnoun "montani"]),
+	("gleason", Pnoun, [TERMPH_VAL $ make_pnoun "gleason"]),
+	("gehrels", Pnoun, [TERMPH_VAL $ make_pnoun "gehrels"]),
+	("roemer", Pnoun, [TERMPH_VAL $ make_pnoun "roemer"]),
+	("sheppard", Pnoun, [TERMPH_VAL $ make_pnoun "sheppard"]),
+	("jewitt", Pnoun, [TERMPH_VAL $ make_pnoun "jewitt"]),
+	("fernandez", Pnoun, [TERMPH_VAL $ make_pnoun "fernandez"]),
+	("magnier", Pnoun, [TERMPH_VAL $ make_pnoun "magnier"]),
+	("kleyna", Pnoun, [TERMPH_VAL $ make_pnoun "kleyna"]),
+	("gladman", Pnoun, [TERMPH_VAL $ make_pnoun "gladman"]),
+	("kavelaars", Pnoun, [TERMPH_VAL $ make_pnoun "kavelaars"]),
+	("petit", Pnoun, [TERMPH_VAL $ make_pnoun "petit"]),
+	("allen", Pnoun, [TERMPH_VAL $ make_pnoun "allen"]),
+	("laques", Pnoun, [TERMPH_VAL $ make_pnoun "laques"]),
+	("lecacheux", Pnoun, [TERMPH_VAL $ make_pnoun "lecacheux"]),
+	("smith", Pnoun, [TERMPH_VAL $ make_pnoun "smith"]),
+	("reitsema", Pnoun, [TERMPH_VAL $ make_pnoun "reitsema"]),
+	("pascu", Pnoun, [TERMPH_VAL $ make_pnoun "pascu"]),
+	("seidelmann", Pnoun, [TERMPH_VAL $ make_pnoun "seidelmann"]),
+	("baum", Pnoun, [TERMPH_VAL $ make_pnoun "baum"]),
+	("currie", Pnoun, [TERMPH_VAL $ make_pnoun "currie"]),
+	("showalter", Pnoun, [TERMPH_VAL $ make_pnoun "showalter"]),
+	("scholl", Pnoun, [TERMPH_VAL $ make_pnoun "scholl"]),
+	("holman", Pnoun, [TERMPH_VAL $ make_pnoun "holman"]),
+	("marsden", Pnoun, [TERMPH_VAL $ make_pnoun "marsden"]),
+	("burns", Pnoun, [TERMPH_VAL $ make_pnoun "burns"]),
+	("milisavljevic", Pnoun, [TERMPH_VAL $ make_pnoun "milisavljevic"]),
+	("grav", Pnoun, [TERMPH_VAL $ make_pnoun "grav"]),
+	("karkoschka", Pnoun, [TERMPH_VAL $ make_pnoun "karkoschka"]),
+	("lissauer", Pnoun, [TERMPH_VAL $ make_pnoun "lissauer"]),
+	("fraser", Pnoun, [TERMPH_VAL $ make_pnoun "fraser"]),
+	("christy", Pnoun, [TERMPH_VAL $ make_pnoun "christy"]),
+	("weaver", Pnoun, [TERMPH_VAL $ make_pnoun "weaver"]),
+	("stern", Pnoun, [TERMPH_VAL $ make_pnoun "stern"]),
+	("mutchler", Pnoun, [TERMPH_VAL $ make_pnoun "mutchler"]),
+	("steffl", Pnoun, [TERMPH_VAL $ make_pnoun "steffl"]),
+	("buie", Pnoun, [TERMPH_VAL $ make_pnoun "buie"]),
+	("merline", Pnoun, [TERMPH_VAL $ make_pnoun "merline"]),
+	("spencer", Pnoun, [TERMPH_VAL $ make_pnoun "spencer"]),
+	("young_e_f", Pnoun, [TERMPH_VAL $ make_pnoun "young_e_f"]),
+	("young_l_a", Pnoun, [TERMPH_VAL $ make_pnoun "young_l_a"]),
+	("hamilton", Pnoun, [TERMPH_VAL $ make_pnoun "hamilton"]),
+	("soummer", Pnoun, [TERMPH_VAL $ make_pnoun "soummer"]),
+	("throop", Pnoun, [TERMPH_VAL $ make_pnoun "throop"]),
+	--Begin new spacecraft stuff--
+	("spacecraft",	Cnoun, [NOUNCLA_VAL spacecraft]),
+	("spacecrafts",	Cnoun, [NOUNCLA_VAL spacecraft]),
+	("voyager_1",	Pnoun, [TERMPH_VAL $ make_pnoun "voyager_1"]),
+	("voyager_2",	Pnoun, [TERMPH_VAL $ make_pnoun "voyager_2"]),
+	("cassini",	Pnoun, [TERMPH_VAL $ make_pnoun "voyager_2"]),
+	--Begin new places stuff--
+	("place",	Cnoun, [NOUNCLA_VAL place]),
+	("places",	Cnoun, [NOUNCLA_VAL place]),
+	("mt_hopkins", Pnoun, [TERMPH_VAL $ make_pnoun "mt_hopkins"]),
+	("fort_davis", Pnoun, [TERMPH_VAL $ make_pnoun "fort_davis"]),
+	("cerro_tololo", Pnoun, [TERMPH_VAL $ make_pnoun "cerro_tololo"]),
+	("US_naval_observatory", Pnoun, [TERMPH_VAL $ make_pnoun "US_naval_observatory"]),
+	("padua", Pnoun, [TERMPH_VAL $ make_pnoun "padua"]),
+	("mt_hamilton", Pnoun, [TERMPH_VAL $ make_pnoun "mt_hamilton"]),
+	("greenwich", Pnoun, [TERMPH_VAL $ make_pnoun "greenwich"]),
+	("mt_wilson", Pnoun, [TERMPH_VAL $ make_pnoun "mt_wilson"]),
+	("mt_palomar", Pnoun, [TERMPH_VAL $ make_pnoun "mt_palomar"]),
+	("kitt_peak", Pnoun, [TERMPH_VAL $ make_pnoun "kitt_peak"]),
+	("mauna_kea", Pnoun, [TERMPH_VAL $ make_pnoun "mauna_kea"]),
+	("slough", Pnoun, [TERMPH_VAL $ make_pnoun "slough"]),
+	("paris", Pnoun, [TERMPH_VAL $ make_pnoun "paris"]),
+	("the_hague", Pnoun, [TERMPH_VAL $ make_pnoun "the_hague"]),
+	("cambridge", Pnoun, [TERMPH_VAL $ make_pnoun "cambridge"]),
+	("liverpool", Pnoun, [TERMPH_VAL $ make_pnoun "liverpool"]),
+	("arequipa", Pnoun, [TERMPH_VAL $ make_pnoun "arequipa"]),
+	("pic_du_midi", Pnoun, [TERMPH_VAL $ make_pnoun "pic_du_midi"]),
+	("flagstaff", Pnoun, [TERMPH_VAL $ make_pnoun "flagstaff"]),
+	("la_silla", Pnoun, [TERMPH_VAL $ make_pnoun "la_silla"]),
+	--Begin new moons stuff--
+	("himalia",            Pnoun,     [TERMPH_VAL $ make_pnoun "himalia"]),
+	("elara",              Pnoun,     [TERMPH_VAL $ make_pnoun "elara"]),
+	("pasiphae",           Pnoun,     [TERMPH_VAL $ make_pnoun "pasiphae"]),
+	("sinope",             Pnoun,     [TERMPH_VAL $ make_pnoun "sinope"]),
+	("lysithea",           Pnoun,     [TERMPH_VAL $ make_pnoun "lysithea"]),
+	("carme",              Pnoun,     [TERMPH_VAL $ make_pnoun "carme"]),
+	("ananke",             Pnoun,     [TERMPH_VAL $ make_pnoun "ananke"]),
+	("leda",               Pnoun,     [TERMPH_VAL $ make_pnoun "leda"]),
+	("thebe",              Pnoun,     [TERMPH_VAL $ make_pnoun "thebe"]),
+	("adrastea",           Pnoun,     [TERMPH_VAL $ make_pnoun "adrastea"]),
+	("metis",              Pnoun,     [TERMPH_VAL $ make_pnoun "metis"]),
+	("callirrhoe",         Pnoun,     [TERMPH_VAL $ make_pnoun "callirrhoe"]),
+	("themisto",           Pnoun,     [TERMPH_VAL $ make_pnoun "themisto"]),
+	("megaclite",          Pnoun,     [TERMPH_VAL $ make_pnoun "megaclite"]),
+	("taygete",            Pnoun,     [TERMPH_VAL $ make_pnoun "taygete"]),
+	("chaldene",           Pnoun,     [TERMPH_VAL $ make_pnoun "chaldene"]),
+	("harpalyke",          Pnoun,     [TERMPH_VAL $ make_pnoun "harpalyke"]),
+	("kalyke",             Pnoun,     [TERMPH_VAL $ make_pnoun "kalyke"]),
+	("iocaste",            Pnoun,     [TERMPH_VAL $ make_pnoun "iocaste"]),
+	("erinome",            Pnoun,     [TERMPH_VAL $ make_pnoun "erinome"]),
+	("isonoe",             Pnoun,     [TERMPH_VAL $ make_pnoun "isonoe"]),
+	("praxidike",          Pnoun,     [TERMPH_VAL $ make_pnoun "praxidike"]),
+	("autonoe",            Pnoun,     [TERMPH_VAL $ make_pnoun "autonoe"]),
+	("thyone",             Pnoun,     [TERMPH_VAL $ make_pnoun "thyone"]),
+	("hermippe",           Pnoun,     [TERMPH_VAL $ make_pnoun "hermippe"]),
+	("aitne",              Pnoun,     [TERMPH_VAL $ make_pnoun "aitne"]),
+	("eurydome",           Pnoun,     [TERMPH_VAL $ make_pnoun "eurydome"]),
+	("euanthe",            Pnoun,     [TERMPH_VAL $ make_pnoun "euanthe"]),
+	("euporie",            Pnoun,     [TERMPH_VAL $ make_pnoun "euporie"]),
+	("orthosie",           Pnoun,     [TERMPH_VAL $ make_pnoun "orthosie"]),
+	("sponde",             Pnoun,     [TERMPH_VAL $ make_pnoun "sponde"]),
+	("kale",               Pnoun,     [TERMPH_VAL $ make_pnoun "kale"]),
+	("pasithee",           Pnoun,     [TERMPH_VAL $ make_pnoun "pasithee"]),
+	("hegemone",           Pnoun,     [TERMPH_VAL $ make_pnoun "hegemone"]),
+	("mneme",              Pnoun,     [TERMPH_VAL $ make_pnoun "mneme"]),
+	("aoede",              Pnoun,     [TERMPH_VAL $ make_pnoun "aoede"]),
+	("thelxinoe",          Pnoun,     [TERMPH_VAL $ make_pnoun "thelxinoe"]),
+	("arche",              Pnoun,     [TERMPH_VAL $ make_pnoun "arche"]),
+	("kallichore",         Pnoun,     [TERMPH_VAL $ make_pnoun "kallichore"]),
+	("helike",             Pnoun,     [TERMPH_VAL $ make_pnoun "helike"]),
+	("carpo",              Pnoun,     [TERMPH_VAL $ make_pnoun "carpo"]),
+	("eukelade",           Pnoun,     [TERMPH_VAL $ make_pnoun "eukelade"]),
+	("cyllene",            Pnoun,     [TERMPH_VAL $ make_pnoun "cyllene"]),
+	("kore",               Pnoun,     [TERMPH_VAL $ make_pnoun "kore"]),
+	("herse",              Pnoun,     [TERMPH_VAL $ make_pnoun "herse"]),
+	("epimetheus",         Pnoun,     [TERMPH_VAL $ make_pnoun "epimetheus"]),
+	("helene",             Pnoun,     [TERMPH_VAL $ make_pnoun "helene"]),
+	("telesto",            Pnoun,     [TERMPH_VAL $ make_pnoun "telesto"]),
+	("calypso",            Pnoun,     [TERMPH_VAL $ make_pnoun "calypso"]),
+	("atlas",              Pnoun,     [TERMPH_VAL $ make_pnoun "atlas"]),
+	("prometheus",         Pnoun,     [TERMPH_VAL $ make_pnoun "prometheus"]),
+	("pandora",            Pnoun,     [TERMPH_VAL $ make_pnoun "pandora"]),
+	("pan",                Pnoun,     [TERMPH_VAL $ make_pnoun "pan"]),
+	("ymir",               Pnoun,     [TERMPH_VAL $ make_pnoun "ymir"]),
+	("paaliaq",            Pnoun,     [TERMPH_VAL $ make_pnoun "paaliaq"]),
+	("tarvos",             Pnoun,     [TERMPH_VAL $ make_pnoun "tarvos"]),
+	("ijiraq",             Pnoun,     [TERMPH_VAL $ make_pnoun "ijiraq"]),
+	("suttungr",           Pnoun,     [TERMPH_VAL $ make_pnoun "suttungr"]),
+	("kiviuq",             Pnoun,     [TERMPH_VAL $ make_pnoun "kiviuq"]),
+	("mundilfari",         Pnoun,     [TERMPH_VAL $ make_pnoun "mundilfari"]),
+	("albiorix",           Pnoun,     [TERMPH_VAL $ make_pnoun "albiorix"]),
+	("skathi",             Pnoun,     [TERMPH_VAL $ make_pnoun "skathi"]),
+	("erriapus",           Pnoun,     [TERMPH_VAL $ make_pnoun "erriapus"]),
+	("siarnaq",            Pnoun,     [TERMPH_VAL $ make_pnoun "siarnaq"]),
+	("thrymr",             Pnoun,     [TERMPH_VAL $ make_pnoun "thrymr"]),
+	("narvi",              Pnoun,     [TERMPH_VAL $ make_pnoun "narvi"]),
+	("methone",            Pnoun,     [TERMPH_VAL $ make_pnoun "methone"]),
+	("pallene",            Pnoun,     [TERMPH_VAL $ make_pnoun "pallene"]),
+	("polydeuces",         Pnoun,     [TERMPH_VAL $ make_pnoun "polydeuces"]),
+	("daphnis",            Pnoun,     [TERMPH_VAL $ make_pnoun "daphnis"]),
+	("aegir",              Pnoun,     [TERMPH_VAL $ make_pnoun "aegir"]),
+	("bebhionn",           Pnoun,     [TERMPH_VAL $ make_pnoun "bebhionn"]),
+	("bergelmir",          Pnoun,     [TERMPH_VAL $ make_pnoun "bergelmir"]),
+	("bestla",             Pnoun,     [TERMPH_VAL $ make_pnoun "bestla"]),
+	("farbauti",           Pnoun,     [TERMPH_VAL $ make_pnoun "farbauti"]),
+	("fenrir",             Pnoun,     [TERMPH_VAL $ make_pnoun "fenrir"]),
+	("fornjot",            Pnoun,     [TERMPH_VAL $ make_pnoun "fornjot"]),
+	("hati",               Pnoun,     [TERMPH_VAL $ make_pnoun "hati"]),
+	("hyrrokkin",          Pnoun,     [TERMPH_VAL $ make_pnoun "hyrrokkin"]),
+	("kari",               Pnoun,     [TERMPH_VAL $ make_pnoun "kari"]),
+	("loge",               Pnoun,     [TERMPH_VAL $ make_pnoun "loge"]),
+	("skoll",              Pnoun,     [TERMPH_VAL $ make_pnoun "skoll"]),
+	("surtur",             Pnoun,     [TERMPH_VAL $ make_pnoun "surtur"]),
+	("anthe",              Pnoun,     [TERMPH_VAL $ make_pnoun "anthe"]),
+	("jarnsaxa",           Pnoun,     [TERMPH_VAL $ make_pnoun "jarnsaxa"]),
+	("greip",              Pnoun,     [TERMPH_VAL $ make_pnoun "greip"]),
+	("tarqeq",             Pnoun,     [TERMPH_VAL $ make_pnoun "tarqeq"]),
+	("aegaeon",            Pnoun,     [TERMPH_VAL $ make_pnoun "aegaeon"]),
+	("cordelia",           Pnoun,     [TERMPH_VAL $ make_pnoun "cordelia"]),
+	("ophelia",            Pnoun,     [TERMPH_VAL $ make_pnoun "ophelia"]),
+	("bianca",             Pnoun,     [TERMPH_VAL $ make_pnoun "bianca"]),
+	("cressida",           Pnoun,     [TERMPH_VAL $ make_pnoun "cressida"]),
+	("desdemona",          Pnoun,     [TERMPH_VAL $ make_pnoun "desdemona"]),
+	("juliet",             Pnoun,     [TERMPH_VAL $ make_pnoun "juliet"]),
+	("portia",             Pnoun,     [TERMPH_VAL $ make_pnoun "portia"]),
+	("rosalind",           Pnoun,     [TERMPH_VAL $ make_pnoun "rosalind"]),
+	("belinda",            Pnoun,     [TERMPH_VAL $ make_pnoun "belinda"]),
+	("puck",               Pnoun,     [TERMPH_VAL $ make_pnoun "puck"]),
+	("caliban",            Pnoun,     [TERMPH_VAL $ make_pnoun "caliban"]),
+	("sycorax",            Pnoun,     [TERMPH_VAL $ make_pnoun "sycorax"]),
+	("prospero",           Pnoun,     [TERMPH_VAL $ make_pnoun "prospero"]),
+	("setebos",            Pnoun,     [TERMPH_VAL $ make_pnoun "setebos"]),
+	("stephano",           Pnoun,     [TERMPH_VAL $ make_pnoun "stephano"]),
+	("trinculo",           Pnoun,     [TERMPH_VAL $ make_pnoun "trinculo"]),
+	("francisco",          Pnoun,     [TERMPH_VAL $ make_pnoun "francisco"]),
+	("margaret",           Pnoun,     [TERMPH_VAL $ make_pnoun "margaret"]),
+	("ferdinand",          Pnoun,     [TERMPH_VAL $ make_pnoun "ferdinand"]),
+	("perdita",            Pnoun,     [TERMPH_VAL $ make_pnoun "perdita"]),
+	("mab",                Pnoun,     [TERMPH_VAL $ make_pnoun "mab"]),
+	("cupid",              Pnoun,     [TERMPH_VAL $ make_pnoun "cupid"]),
+	("triton",             Pnoun,     [TERMPH_VAL $ make_pnoun "triton"]),
+	("naiad",              Pnoun,     [TERMPH_VAL $ make_pnoun "naiad"]),
+	("thalassa",           Pnoun,     [TERMPH_VAL $ make_pnoun "thalassa"]),
+	("despina",            Pnoun,     [TERMPH_VAL $ make_pnoun "despina"]),
+	("galatea",            Pnoun,     [TERMPH_VAL $ make_pnoun "galatea"]),
+	("larissa",            Pnoun,     [TERMPH_VAL $ make_pnoun "larissa"]),
+	("proteus",            Pnoun,     [TERMPH_VAL $ make_pnoun "proteus"]),
+	("halimede",           Pnoun,     [TERMPH_VAL $ make_pnoun "halimede"]),
+	("psamathe",           Pnoun,     [TERMPH_VAL $ make_pnoun "psamathe"]),
+	("sao",                Pnoun,     [TERMPH_VAL $ make_pnoun "sao"]),
+	("laomedeia",          Pnoun,     [TERMPH_VAL $ make_pnoun "laomedeia"]),
+	("neso",               Pnoun,     [TERMPH_VAL $ make_pnoun "neso"]),
+	("nix",                Pnoun,     [TERMPH_VAL $ make_pnoun "nix"]),
+	("hydra",              Pnoun,     [TERMPH_VAL $ make_pnoun "hydra"]),
+	("kerberos",           Pnoun,     [TERMPH_VAL $ make_pnoun "kerberos"]),
+	("styx",               Pnoun,     [TERMPH_VAL $ make_pnoun "styx"])
 
-
+	]
+	
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) [] 
 test p input = unState (p ((1,[]),input) ([],[])) [] 
 

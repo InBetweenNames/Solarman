@@ -21,7 +21,9 @@ data AttValue = VAL             {getAVAL    ::   Int}
 	      | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
 	      | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
 	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO Bool) -> (IO ES -> IO Bool) -> (IO ES -> IO Bool)) }
-	      | PREP_VAL        {getPREPVAL ::   (IO ES -> IO ES)}
+		  | PREP_VAL		{getPREPVAL ::  ([([String], IO ES -> IO Bool)])} -- used in "hall discovered phobos with a telescope" as "with".  
+		  | PREPN_VAL		{getPREPNVAL :: [String]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
+		  | PREPPH_VAL		{getPREPPHVAL :: ([String], IO ES -> IO Bool)}
 	      | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
 	      | SENTJOIN_VAL    {getSJVAL   ::   (IO Bool -> IO Bool -> IO Bool)}
 	      | DOT_VAL         {getDOTVAL  ::   IO String}
@@ -33,7 +35,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 
 --            | RESULT [sys_message]
 data MemoL    = Start | Tree | Num | Emp | ALeaf String | Expr | Op  | ET
-              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Prep|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
+              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query
                 deriving (Eq,Ord,Show)
 
@@ -113,7 +115,6 @@ instance Eq AttValue where
       (NOUNJOIN_VAL j)   == (NOUNJOIN_VAL j') = True
       (VBPHJOIN_VAL j)   == (VBPHJOIN_VAL j') = True
       (TERMPHJOIN_VAL j) == (TERMPHJOIN_VAL j') = True
-      (PREP_VAL j)       == (PREP_VAL j') = True
       (LINKINGVB_VAL j)  == (LINKINGVB_VAL j') = True
       (SENTJOIN_VAL j)   == (SENTJOIN_VAL j') = True
       (DOT_VAL j)        == (DOT_VAL j') = True
@@ -122,7 +123,10 @@ instance Eq AttValue where
       (QUEST1_VAL j)     == (QUEST1_VAL j') = True
       (QUEST2_VAL j)     == (QUEST2_VAL j') = True
       (QUEST3_VAL j)     == (QUEST3_VAL j') = True
-      _            ==_              = False
+      (PREP_VAL s1)		 == (PREP_VAL s) = True
+      (PREPN_VAL s1)	 == (PREPN_VAL s) = True
+      (PREPPH_VAL s1)	 == (PREPPH_VAL s) = True
+      _            == _              = False
 
 
 
@@ -169,6 +173,12 @@ setAtt (QUEST_VAL  s1)   (QUEST_VAL  s)     = [QUEST_VAL s]
 setAtt (QUEST1_VAL  s1)   (QUEST1_VAL  s)     = [QUEST1_VAL s]
 setAtt (QUEST2_VAL  s1)   (QUEST2_VAL  s)     = [QUEST2_VAL s]
 setAtt (QUEST3_VAL  s1)   (QUEST3_VAL  s)     = [QUEST3_VAL s]
+
+setAtt (PREP_VAL s1) (PREP_VAL s) = [PREP_VAL s]
+setAtt (PREPN_VAL s1) (PREPN_VAL s) = [PREPN_VAL s]
+setAtt (PREPPH_VAL s1) (PREPPH_VAL s) = [PREPPH_VAL s]
+
+
 --------- *********************** --------------
 
 
