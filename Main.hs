@@ -7,7 +7,7 @@ import Network.CGI
 cgiMain :: CGI CGIResult
 cgiMain = do
 	(Just input) <- getInput "query"
-	let out = interpret input
+	out <- liftIO $ interpret' input
 	output out
 
 
@@ -113,10 +113,14 @@ interpret "can I talk to solar man"
 
 interpret "who do you know" = "i only know three people. Judy, Monty, and Solarman."
 
+interpret _ = "BLANKVALNOTUSED"
 
-interpret input =
-  let out = render $ vcat $ App.main input in
-  if out == []
-  then "Do not know that one yet, will work on it tonight"
-  else out
+interpret' input = do
+	let firstpass = interpret input
+	if firstpass == "BLANKVALNOTUSED" then do
+		output <- App.main input
+		let formatted = render $ vcat $ output
+		if null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
+	else return firstpass
+
 
