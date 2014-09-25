@@ -10,7 +10,8 @@ import Control.Monad
 import Debug.Trace
 
 --change between remoteData and localData
-dataStore = SPARQL remoteData
+--dataStore = remoteData
+dataStore = localData -- selects local database
 
 remoteData = endpoint_uri
 localData =
