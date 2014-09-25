@@ -4282,30 +4282,54 @@ make_inverted_relation ev_data rel tmph = do
 
 --filter_ev takes a list of ([String], IO [String] -> IO Bool) where the [String] is the list of identifiers corresponding
 --to the data the preposition predicate needs to evaluate (e.g., for location predicates the list will contain "location",
-filter_ev :: (TripleStore m) => m -> [([String], IO [String] -> IO Bool)] -> Event -> IO Bool
+{-filter_ev :: (TripleStore m) => m -> [([String], IO [String] -> IO Bool)] -> Event -> IO Bool
 filter_ev ev_data [] ev = return True
 filter_ev ev_data ((names,pred):list) ev = do
 	relevant_list <- mapM (\name -> getts_3 ev_data (ev, name, "?")) names
 	res <- pred $ return $ concat relevant_list
-	if res then filter_ev ev_data list ev else return False
+	if res then filter_ev ev_data list ev else return False-}
 	
-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
+--Modified filter_ev to accommodate predicates like every, one, two, etc...
+--The difference is that it concatenates the data the preposition predicate needs to evaluate across all events and
+--applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
+--given by a specific event
+filter_ev :: (TripleStore m) => m -> [([String], IO [String] -> IO Bool)] -> [Event] -> IO Bool
+filter_ev _ [] _ = return True
+filter_ev ev_data ((names,pred):list) evs = do
+	relevant_list <- mapM (\ev -> mapM (\name -> getts_3 ev_data (ev, name, "?")) names) evs
+	res <- pred $ return $ concat $ concat $ relevant_list
+	if res then filter_ev ev_data list evs else return False
+
+{-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_filtered_relation ev_data rel tmph preps = do
 	images <- make_image ev_data rel "subject"
 	subPairs <- filterM (\(_, evs) -> do
 		filtEvents <- filterM (filter_ev ev_data preps) evs
 		tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
+	return $ map fst subPairs-}
+	
+--Modified version of make_filtered_relation to accomodate new filter_ev
+make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_filtered_relation ev_data rel tmph preps = do
+	images <- make_image ev_data rel "subject"
+	subPairs <- filterM (\(_, evs) -> filter_ev ev_data ((["object"], tmph):preps) evs) images
 	return $ map fst subPairs
 	
+{-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_inverted_filtered_relation ev_data rel preps = do
+	images <- make_image ev_data rel "object"
+	objPairs <- filterM (\(_, evs) -> anyM (filter_ev ev_data preps) evs) images
+	return $ map fst objPairs
+	where
+		anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
+		anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst -}
+
+--Modified version of make_inverted_filtered_relation to accomodate new filter_ev
 make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_inverted_filtered_relation ev_data rel preps = do
-		images <- make_image ev_data rel "object"
-		objPairs <- filterM (\(_, evs) -> anyM (filter_ev ev_data preps) evs) images
-		return $ map fst objPairs
-		where
-			anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
-			anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst 
-	
+	images <- make_image ev_data rel "object"
+	objPairs <- filterM (\(_, evs) -> filter_ev ev_data preps evs) images
+	return $ map fst objPairs
 
 --Copied from old solarman:
 yesno' x = if x then "yes." else "no"
