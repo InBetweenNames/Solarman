@@ -4540,10 +4540,6 @@ prepph
 	(parser (nt prep S1 *> nt jointermph S2)
 	 [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
 	                                                 synthesized TERMPH_VAL OF S2]]
-	<|>
-	parser (nt prep S1 *> nt year S2) --Temporary: will likely classify prepositions later under a better system (i.e. different types for location vs temporal preps)
-	 [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepphyear [synthesized PREPN_VAL OF S1,
-	                                                      synthesized YEAR_VAL OF S2]]
 	)
 
 ----------------------------------------------------------------------------------
@@ -4570,6 +4566,9 @@ termph
    <|>  
    parser (nt detph S2)
    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S2]]
+   <|>
+   parser (nt year S3)
+   [rule_s TERMPH_VAL OF LHS ISEQUALTO applyyear [synthesized YEAR_VAL OF S3]]
    )
              
 
@@ -4712,17 +4711,14 @@ applyprepph		[x, y]
 		    termph = getAtts getTVAL atts y in
 		(prep_names, termph)
 		
-applyprepphyear		[x, y]
- = \atts -> PREPPH_VAL $
-		let prep_names = getAtts getPREPNVAL atts x
-		    year = getAtts getYEARVAL atts y in
-		(prep_names, make_pnoun $ show year)
-		
 applyprep	[x]
  = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
  
 applypreps		[x, y]
  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x):(getAtts getPREPVAL atts y)
+ 
+applyyear [x]
+ = \atts -> TERMPH_VAL $ make_pnoun $ show $ getAtts getYEARVAL atts x
  
 --END PREPOSITIONAL PHRASES
 		
