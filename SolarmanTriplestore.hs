@@ -4271,7 +4271,7 @@ make_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> I
 make_relation ev_data rel tmph = do
 		images <- make_image ev_data rel "subject"
 		subPairs <- filterM (\(_, evs) ->
-			tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) evs) images
+			tmph $ getts_inverse ev_data "object" evs) images
 		return $ map fst subPairs
 				
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
