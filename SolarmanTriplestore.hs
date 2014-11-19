@@ -4299,8 +4299,9 @@ filter_ev ev_data ((names,pred):list) ev = do
 filter_ev :: (TripleStore m) => m -> [([String], IO [String] -> IO Bool)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
-	relevant_list <- mapM (\ev -> mapM (\name -> getts_3 ev_data (ev, name, "?")) names) evs
-	res <- pred $ return $ concat $ concat $ relevant_list
+	relevant_list <- mapM (\name -> getts_inverse ev_data name evs) names
+	--relevant_list <- mapM (\ev -> mapM (\name -> getts_3 ev_data (ev, name, "?")) names) evs
+	res <- pred $ return $ concat $ relevant_list
 	if res then filter_ev ev_data list evs else return False
 
 {-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
