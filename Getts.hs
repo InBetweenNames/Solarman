@@ -12,6 +12,10 @@ import Database.HSparql.Connection
 import Database.HSparql.QueryGenerator
 import Data.Text hiding (head, concat, map, zip, drop, length)
 
+import qualified Data.Map as M
+import Data.IORef
+import System.IO.Unsafe
+
 addUri namespace_uri = (namespace_uri ++)
 
 --getts returns all triples in the triple store that match the given parameters
@@ -33,6 +37,13 @@ class TripleStore m where
 	--getts_inverse returns the entities of entity_type of the events in the list evs
 	getts_inverse :: m -> String -> [Event] -> IO [String]
 	getts_inverse ev_data en_type evs = liftM concat $ mapM (\ev -> getts_3 ev_data (ev, en_type, "?")) evs
+	
+	--getts_members returns
+	getts_members :: (TripleStore m) => m -> String -> IO [String]
+	getts_members ev_data set = do
+		evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
+		evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
+		getts_inverse ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
 			
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
@@ -46,7 +57,7 @@ instance TripleStore [Triple] where
 	getts_2 ev_data (a, "?", c) = return [y | (x,y,z) <- ev_data, a == x, c == z]
 	getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
 
-data SPARQLBackend = SPARQL String String
+data SPARQLBackend = SPARQL String String deriving (Ord, Eq)
 	
 --the String in this instance is to be the endpoint that you wish to query
 instance TripleStore SPARQLBackend where
@@ -123,6 +134,25 @@ instance TripleStore SPARQLBackend where
 				--Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
 				distinct
 				return SelectQuery { queryVars = [subj] } 
+				
+	--Efficient implementation of getts_members for SPARQL backend
+	getts_members (SPARQL endpoint namespace_uri) set = do
+		m <- selectQuery endpoint query
+		case m of
+			(Just res) -> return $ map (removeUri namespace_uri . deconstruct) $ concat res
+			Nothing -> return []
+		where
+			query :: Query SelectQuery
+			query = do
+				sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
+				ev <- var
+				subj <- var
+				triple ev (sol .:. (pack "type")) (sol .:. (pack "membership"))
+				triple ev (sol .:. (pack "subject")) subj
+				triple ev (sol .:. (pack "object")) (sol .:. (pack set))
+				orderNext subj
+				distinct
+				return SelectQuery { queryVars = [subj] }
 	
 			
 removeUri :: String -> String -> String			
@@ -139,13 +169,21 @@ deconstruct value = do
         UNode strURI -> unpack strURI
         LNode (PlainL strLit) -> unpack strLit
 
+{-
+memotable :: IORef (M.Map (SPARQLBackend,String) [String])
+memotable = unsafePerformIO $ newIORef M.empty
 
+memoIO ::(SPARQLBackend -> String -> IO [String]) -> SPARQLBackend -> String -> IO [String]
+memoIO f a b = do
+	m <- readIORef memotable
+	case M.lookup (a,b) m of
+		Nothing -> f a b >>= \c -> (writeIORef memotable (M.insert (a,b) c m) >> return c)
+		Just r -> return r
+-}
+		
 --Get members of named set
 get_members :: (TripleStore m) => m -> String -> IO [String]
-get_members ev_data set = do
-	evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
-	evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
-	getts_inverse ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
+get_members = getts_members
 	
 --Get all subjects of a given event type
 get_subjs_of_event_type :: (TripleStore m) => m -> String -> IO [String]

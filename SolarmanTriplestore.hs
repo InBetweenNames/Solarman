@@ -4921,12 +4921,12 @@ dictionary = [
 	("how",                Quest4a,   [QUEST3_VAL     $ how_many]),
 	("many",               Quest4b,   [QUEST3_VAL     $ how_many]),
 	("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
-	("discoverer",  Cnoun,    meaning_of nouncla  "person who discovered something" Nouncla),
-	("discoverers", Cnoun,    meaning_of nouncla  "person who discovered something" Nouncla), 
+	("discoverer",  Cnoun,            [NOUNCLA_VAL discover_intrans]),
+	("discoverers", Cnoun,            [NOUNCLA_VAL discover_intrans]), 
 	("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
 	("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
-	("orbit",       Intransvb,meaning_of verbph  "orbit something" Verbph),
-	("orbits",      Intransvb,meaning_of verbph  "orbit something" Verbph),
+	("orbit",       Intransvb,        [VERBPH_VAL $ orbit_intrans]), 
+	("orbits",      Intransvb,        [VERBPH_VAL $ orbit_intrans]),
 	("anyone",      Indefpron,meaning_of detph   "a person" Detph),
 	("anything",    Indefpron,meaning_of detph   "a thing" Detph),
 	("anybody",     Indefpron,meaning_of detph   "a person" Detph),
@@ -5218,8 +5218,7 @@ test p input = unState (p ((1,[]),input) ([],[])) []
 
 
 main  i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
-
-
+	
 findStart st ((s,ss):rest) | s == st   = [(s,ss)]
                            | otherwise = findStart st rest
 findStart st []                        = []     
