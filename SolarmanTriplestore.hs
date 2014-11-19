@@ -11,9 +11,11 @@ import Debug.Trace
 
 --change between remoteData and localData
 --dataStore = remoteData
-dataStore = localData -- selects local database
+dataStore = remoteData -- selects local database
 
-remoteData = endpoint_uri
+endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
+namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
+remoteData = SPARQL endpoint_uri namespace_uri
 
 localData = [("event1000", "object", "sol"), 
 	("event1000", "subject", "mercury"), 
