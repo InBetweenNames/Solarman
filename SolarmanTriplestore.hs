@@ -4471,7 +4471,7 @@ nouncla
                                                         synthesized NOUNJOIN_VAL OF S2,
                                                         synthesized NOUNCLA_VAL  OF S3]]
     <|>
-    parser (nt relnouncla S1 *> nt relpron S2 *> nt linkingvb S3 *> nt nouncla S4)
+    parser (nt relnouncla S1 *> nt relpron S2 *> nt linkingvb S3 *> nt nouncla S4) --Does this make sense?  Allows us to ask
     [rule_s NOUNCLA_VAL  OF LHS ISEQUALTO apply_middle3 [synthesized NOUNCLA_VAL  OF S1,
                                                          synthesized RELPRON_VAL  OF S2,
                                                          synthesized NOUNCLA_VAL  OF S4]]
