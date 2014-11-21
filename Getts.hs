@@ -210,8 +210,8 @@ get_members = getts_members
 --Get all subjects of a given event type
 get_subjs_of_event_type :: (TripleStore m) => m -> String -> IO [String]
 get_subjs_of_event_type ev_data ev_type = do
-	events <- getts_1 ev_data ("?", "type", ev_type)
-	getts_inverse ev_data "subject" events
+	pairs <- make_image ev_data ev_type "subject"
+	return $ map fst pairs
 
 
 {-collect accepts a binary relation as input and computes the image of each
@@ -235,6 +235,7 @@ collect ((x,y):t) =
 collect2 = condense . sortFirst
 	
 --condense computes the image under a sorted relation
+--condense runs in O(n) time and is lazy, also is lazy in the list computed in each tuple
 condense :: (Eq a, Ord a) => [(a, a)] -> [(a, [a])]
 condense [] = []
 condense ((x,y):t) = (x, y:a):(condense r)
