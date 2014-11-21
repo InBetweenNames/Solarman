@@ -61,8 +61,8 @@ data SPARQLBackend = SPARQL String String deriving (Ord, Eq)
 	
 --the String in this instance is to be the endpoint that you wish to query
 instance TripleStore SPARQLBackend where
-	getts_1 =  getts_1''
-	--getts_1 = memoIO getts_1''
+	--getts_1 =  getts_1''
+	getts_1 = memoIO getts_1''
 		where
 		getts_1'' (SPARQL endpoint namespace_uri) ("?", b, c) = preprocess namespace_uri $ getts_1'(pack "?", pack (addUri namespace_uri b), pack (addUri namespace_uri c))
 			where
@@ -76,8 +76,8 @@ instance TripleStore SPARQLBackend where
 					  triple x (iriRef b) (iriRef c)
 					  distinct
 					  return SelectQuery { queryVars = [x] }
-	getts_2 =  getts_2''
-	--getts_2 = memoIO getts_2''
+	--getts_2 =  getts_2''
+	getts_2 = memoIO getts_2''
 		where
 		getts_2'' (SPARQL endpoint namespace_uri) (a, "?", c) = preprocess namespace_uri $ getts_2'(pack (addUri namespace_uri a), pack "?", pack (addUri namespace_uri c))
 			where
@@ -91,8 +91,8 @@ instance TripleStore SPARQLBackend where
 						  triple  (iriRef a) x (iriRef c)
 						  distinct
 						  return SelectQuery { queryVars = [x] }
-	getts_3 =  getts_3''
-	--getts_3 = memoIO getts_3''
+	--getts_3 =  getts_3''
+	getts_3 = memoIO getts_3''
 		where
 		getts_3'' (SPARQL endpoint namespace_uri) (a, b, "?") = preprocess namespace_uri $ getts_3'(pack (addUri namespace_uri a), pack (addUri namespace_uri b), pack "?")
 			where
@@ -107,45 +107,48 @@ instance TripleStore SPARQLBackend where
 						  distinct
 						  return SelectQuery { queryVars = [x] }
 	--Efficient implementation of getts_relation for SPARQL backend
-	
-	getts_relation (SPARQL endpoint namespace_uri) ev_type en_type = do
-			m <- selectQuery endpoint query
-			case m of
-				(Just res) -> return $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
-				Nothing -> return []
-			where
-				query :: Query SelectQuery
-				query = do
-					sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
-					ev <- var
-					subj <- var
-					triple ev (sol .:. (pack "type")) (sol .:. (pack ev_type))
-					triple ev (sol .:. (pack en_type)) subj
-					orderNext subj
-					distinct
-					return SelectQuery { queryVars = [subj,ev] }
+	getts_relation = memoIO''' getts_relation'''
+		where
+		getts_relation''' (SPARQL endpoint namespace_uri) ev_type en_type = do
+				m <- selectQuery endpoint query
+				case m of
+					(Just res) -> return $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
+					Nothing -> return []
+				where
+					query :: Query SelectQuery
+					query = do
+						sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
+						ev <- var
+						subj <- var
+						triple ev (sol .:. (pack "type")) (sol .:. (pack ev_type))
+						triple ev (sol .:. (pack en_type)) subj
+						orderNext subj
+						distinct
+						return SelectQuery { queryVars = [subj,ev] }
 	
 	--Efficient implementation of getts_inverse for SPARQL backend
-	getts_inverse (SPARQL endpoint namespace_uri) en_type evs = do
-		m <- selectQuery endpoint query
-		case m of
-			(Just res) -> return $ map (removeUri namespace_uri . deconstruct) $ concat res
-			Nothing -> return []
+	getts_inverse = memoIO'' getts_inverse''
 		where
-			query = do
-				sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
-				subj <- var
-				ev <- var
-				triple ev (sol .:. (pack en_type)) subj
-				filterExpr $ regex ev $ (pack $ Data.List.intercalate "|" (map (++ "$") evs))
-				--Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
-				distinct
-				return SelectQuery { queryVars = [subj] } 
+		getts_inverse'' (SPARQL endpoint namespace_uri) en_type evs = do
+			m <- selectQuery endpoint query
+			case m of
+				(Just res) -> return $ map (removeUri namespace_uri . deconstruct) $ concat res
+				Nothing -> return []
+			where
+				query = do
+					sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
+					subj <- var
+					ev <- var
+					triple ev (sol .:. (pack en_type)) subj
+					filterExpr $ regex ev $ (pack $ Data.List.intercalate "|" (map (++ "$") evs))
+					--Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
+					distinct
+					return SelectQuery { queryVars = [subj] } 
 				
 	--Efficient implementation of getts_members for SPARQL backend
 	
-	--getts_members = memoIO' getts_members'
-	getts_members = getts_members'
+	getts_members = memoIO' getts_members'
+	--getts_members = getts_members'
 		where
 		getts_members' (SPARQL endpoint namespace_uri) set = do
 			m <- selectQuery endpoint query
@@ -181,7 +184,7 @@ deconstruct value = do
         LNode (PlainL strLit) -> unpack strLit
 
 
-{-
+
 memotable :: IORef (M.Map (SPARQLBackend,(String,String,String)) [String])
 memotable = unsafePerformIO $ newIORef M.empty
 
@@ -201,7 +204,27 @@ memoIO' f a x = do
 	case M.lookup (a,x) m of
 		Nothing -> f a x >>= \q -> (writeIORef memotable' (M.insert (a,x) q m) >> return q)
 		Just r -> return r
--}
+		
+memotable'' :: IORef (M.Map (SPARQLBackend,String,[String]) [String])
+memotable'' = unsafePerformIO $ newIORef M.empty
+
+memoIO'' ::(SPARQLBackend -> String -> [String] -> IO [String]) -> SPARQLBackend -> String -> [String] -> IO [String]
+memoIO'' f a x y = do
+	m <- readIORef memotable''
+	case M.lookup (a,x,y) m of
+		Nothing -> f a x y >>= \q -> (writeIORef memotable'' (M.insert (a,x,y) q m) >> return q)
+		Just r -> return r
+		
+memotable''' :: IORef (M.Map (SPARQLBackend,String,String) [(String,String)])
+memotable''' = unsafePerformIO $ newIORef M.empty
+
+memoIO''' ::(SPARQLBackend -> String -> String -> IO [(String,String)]) -> SPARQLBackend -> String -> String -> IO [(String,String)]
+memoIO''' f a x y = do
+	m <- readIORef memotable'''
+	case M.lookup (a,x,y) m of
+		Nothing -> f a x y >>= \q -> (writeIORef memotable''' (M.insert (a,x,y) q m) >> return q)
+		Just r -> return r
+
 		
 --Get members of named set
 get_members :: (TripleStore m) => m -> String -> IO [String]
