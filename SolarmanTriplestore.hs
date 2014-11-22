@@ -4153,41 +4153,59 @@ subset s t = (s \\ t) == []
 makeset x = Set.toList $ Set.fromList x
 	
 --copied from gangster_v4: combinators
-termor tmph1 tmph2 setofevs =
-		liftM2 (||) (tmph1 setofevs) (tmph2 setofevs)
+termor tmph1 tmph2 ents =
+		liftM List.nub $ liftM2 (++) (tmph1 ents) (tmph2 ents) --TODO: MERGE IMAGES PROPER
 
-termand tmph1 tmph2 setofevs =
-		liftM2 (&&) (tmph1 setofevs) (tmph2 setofevs)
+termand tmph1 tmph2 ents = do
+		t1 <- tmph1 ents
+		t2 <- tmph2 ents
+		if t1 /= [] && t2 /= [] then return $ List.nub $ t1 ++ t2 else return []
+		--May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
+		--TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
 
+intersect_entevimages eei1  eei2 
+                = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]
+		
 that = nounand
 
-nounand = liftM2 intersect
+nounand = liftM2 intersect_entevimages
 
-nounor' s t = makeset(s ++ t)
+nounor' s t = List.nub(s ++ t)
 nounor = liftM2 nounor'
 	   
-a' nph vbph =
-	length (intersect  nph vbph) /= 0 
-a = liftM2 a'	
+{-a' nph vbph =
+	length (intersect  nph vbph) /= 0-}
+a = liftM2 intersect_entevimages	
 	
-every' nph vbph =
-	subset  nph vbph 
+every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_entevimages nph vbph
+				| otherwise = []
+
 every = liftM2 every'
 
+{- TODO: 
 no' nph vbph =
 	length (intersect nph vbph) == 0
 no = liftM2 no'
+-}
 	
+{- TODO:
 none' nph vbph =
 	no nph vbph
 none = liftM2 none'
+-}
   
-one' nph vbph =
-	length (intersect  nph vbph) == 1 
+one' nph vbph   | length (res) == 1 = res
+				| otherwise = []
+	where
+	res = intersect_entevimages  nph vbph
+	
 one = liftM2 one'
 
-two' nph vbph =
-	length (intersect  nph vbph) == 2 
+two' nph vbph   | length (res) == 2 = res
+				| otherwise = []
+	where
+	res = intersect_entevimages  nph vbph
+	
 two = liftM2 two'
   
 
@@ -4197,24 +4215,36 @@ two = liftM2 two'
 which nph vbph = do
 	nph_ <- nph
 	vbph_ <- vbph
-	let result = unwords $ intersect nph_ vbph_
+	let result = unwords $ map fst $ intersect_entevimages nph_ vbph_
 	return $ if result /= [] then result else "none."
 	
 how_many' nph vbph =
-	show $ length (intersect nph vbph)
+	show $ length (intersect_entevimages nph vbph)
 how_many = liftM2 how_many'
 
 who = which (person `nounor` science_team)
 
 --New
 what' nph = if result /= [] then result else "nothing."
-	where result = unwords nph
+	where result = unwords $ map fst nph
 what = liftM what'
 
-with :: (IO [String] -> IO Bool) -> (String, IO [String] -> IO Bool)
+with :: (IO Image -> IO Image) -> (String, IO Image -> IO Image)
 with tmph = ("with_implement", tmph)
 
-make_pnoun noun = liftM2 List.elem $ return noun
+make_pnoun noun = liftM $ make_pnoun' noun
+make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
+
+--New for new new semantics
+
+make_prop_termphrase prop nph = do
+	list <- nph
+	props <- mapM (\(_,y) -> getts_inverse dataStore prop y >>= \loc -> return (map fst loc)) list
+	return $ unwords $ List.nub $ concat props
+
+where' = make_prop_termphrase "location"
+when' = make_prop_termphrase "year"
+how' = make_prop_termphrase "with_implement"
 
 
 --end of copied from gangster_v4
@@ -4267,12 +4297,11 @@ refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 
 --Need two, because one needs to be inverted for a grammar rule to work.  
 --Could just flip arguments, but this is more readable
-make_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
+make_relation :: (TripleStore m) => m -> String -> (IO Image -> IO Image) -> IO Image
 make_relation ev_data rel tmph = do
 		images <- make_image ev_data rel "subject"
-		subPairs <- filterM (\(_, evs) ->
-			tmph $ getts_inverse ev_data "object" evs) images
-		return $ map fst subPairs
+		filterM (\(_, evs) ->
+			(tmph $ getts_inverse ev_data "object" evs) >>= (\l -> return $ l /= [])) images
 				
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -4296,13 +4325,13 @@ filter_ev ev_data ((names,pred):list) ev = do
 --The difference is that it concatenates the data the preposition predicate needs to evaluate across all events and
 --applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
 --given by a specific event
-filter_ev :: (TripleStore m) => m -> [([String], IO [String] -> IO Bool)] -> [Event] -> IO Bool
+filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
 	relevant_list <- mapM (\name -> getts_inverse ev_data name evs) names
 	--relevant_list <- mapM (\ev -> mapM (\name -> getts_3 ev_data (ev, name, "?")) names) evs
 	res <- pred $ return $ concat $ relevant_list
-	if res then filter_ev ev_data list evs else return False
+	if res /= [] then filter_ev ev_data list evs else return False
 
 {-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_filtered_relation ev_data rel tmph preps = do
@@ -4313,11 +4342,10 @@ make_filtered_relation ev_data rel tmph preps = do
 	return $ map fst subPairs-}
 	
 --Modified version of make_filtered_relation to accomodate new filter_ev
-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_filtered_relation :: (TripleStore m) => m -> String -> (IO Image -> IO Image) -> [([String], IO Image -> IO Image)] -> IO Image
 make_filtered_relation ev_data rel tmph preps = do
 	images <- make_image ev_data rel "subject"
-	subPairs <- filterM (\(_, evs) -> filter_ev ev_data ((["object"], tmph):preps) evs) images
-	return $ map fst subPairs
+	filterM (\(_, evs) -> filter_ev ev_data ((["object"], tmph):preps) evs) images
 	
 {-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_inverted_filtered_relation ev_data rel preps = do
@@ -4329,17 +4357,20 @@ make_inverted_filtered_relation ev_data rel preps = do
 		anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst -}
 
 --Modified version of make_inverted_filtered_relation to accomodate new filter_ev
-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO Image -> IO Image)] -> IO Image
 make_inverted_filtered_relation ev_data rel preps = do
 	images <- make_image ev_data rel "object"
-	objPairs <- filterM (\(_, evs) -> filter_ev ev_data preps evs) images
-	return $ map fst objPairs
+	filterM (\(_, evs) -> filter_ev ev_data preps evs) images
 
 --Copied from old solarman:
-yesno' x = if x then "yes." else "no"
+yesno' x = if x /= [] then "yes." else "no"
 yesno = liftM yesno'
 
-sand = liftM2 (&&)
+--TODO: is this proper? 
+sand s1 s2 = do
+	r1 <- s1
+	r2 <- s2
+	return $ if r1 /= [] && r2 /= [] then List.nub $ r1 ++ r2 else []
 
 {-
 ||-----------------------------------------------------------------------------
@@ -4373,6 +4404,7 @@ quest2          =  pre_processed Quest2
 quest3          =  pre_processed Quest3
 quest4a         =  pre_processed Quest4a
 quest4b         =  pre_processed Quest4b
+quest5			=  pre_processed Quest5
 
 --NEW FOR PREPOSITIONAL PHRASES
 prep			=  pre_processed Prepn
@@ -4632,6 +4664,11 @@ question
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
                                               synthesized SENT_VAL    OF  S2]]  
     <|>
+	parser (nt quest5 S1  *> nt quest1 S2  *>  nt sent S3 )
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
+											  synthesized QUEST1_VAL OF S2,
+                                              synthesized SENT_VAL    OF  S3]]  
+    <|>
     parser (nt quest2 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
                                               synthesized VERBPH_VAL    OF  S2]] 
@@ -4680,10 +4717,10 @@ applyBiOp [e1,op,e2]
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
 intrsct1         [x, y]    
- = \atts -> NOUNCLA_VAL (liftM2 intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> NOUNCLA_VAL (liftM2 intersect_entevimages (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 intrsct2         [x, y]         
- = \atts -> ADJ_VAL (liftM2 intersect (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> ADJ_VAL (liftM2 intersect_entevimages (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 applydet         [x, y]                 
  = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
@@ -4760,7 +4797,7 @@ drop3rdprep          [w, x, p]
 --END PREPOSITIONAL PHRASES
 		
 apply_termphrase [x, y]     
- = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y) )
+ = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y))
  
 sent_val_comp    [s1, f, s2]      
  = \atts -> SENT_VAL ((getAtts getSJVAL atts f) (getAtts getSV atts s1) (getAtts getSV atts s2))
@@ -4774,10 +4811,13 @@ ans2             [x, y]
 ans3             [x, y, z]     
  = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
 
+ans5             [x, y, z]     
+ = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getSV atts z))
+ 
 truefalse        [x]       
  = \atts -> QUEST_VAL $ do
 		bool <- (getAtts getSV atts x)
-		return $ if bool then "true." else "false."
+		return $ if bool /= [] then "true." else "false."
 		
 {-
 ||-----------------------------------------------------------------------------
@@ -4823,7 +4863,7 @@ dictionary = [
 	("an",                 Det,       [DET_VAL $ a]), 
 	("some",               Det,       [DET_VAL $ a]), 
 	("any",                Det,       [DET_VAL $ a]), 
-	("no",                 Det,       [DET_VAL $ no]), 
+	--("no",                 Det,       [DET_VAL $ no]), 
 	("every",              Det,       [DET_VAL $ every]), 
 	("all",                Det,       [DET_VAL $ every]),  
 	("two",                Det,       [DET_VAL $ two]),
@@ -4915,6 +4955,9 @@ dictionary = [
 	("did",                Quest1  ,  [QUEST1_VAL     $ yesno]),
 	("do",                 Quest1,    [QUEST1_VAL     $ yesno]),
 	("what",               Quest2,    [QUEST2_VAL     $ what]),
+	("where",              Quest5,    [QUEST2_VAL     $ where']),
+	("when",               Quest5,    [QUEST2_VAL     $ when']),
+	("how",                Quest5,    [QUEST2_VAL     $ how']),
 	("who",                Quest2,    [QUEST2_VAL     who]),
 	("which",              Quest3,    [QUEST3_VAL     which]),
 	("what",               Quest3,    [QUEST3_VAL     which]),
@@ -4936,8 +4979,8 @@ dictionary = [
 	("everyone",    Indefpron,meaning_of detph   "every person" Detph),
 	("everything",  Indefpron,meaning_of detph   "every thing" Detph),
 	("everybody",   Indefpron,meaning_of detph   "every person" Detph),
-	("nobody",      Indefpron,meaning_of detph   "no person" Detph),
-	("noone",       Indefpron,meaning_of detph   "no person" Detph),
+	--("nobody",      Indefpron,meaning_of detph   "no person" Detph),
+	--("noone",       Indefpron,meaning_of detph   "no person" Detph),
 	--Begin prepositional stuff--
 	("with",		Prepn, [PREPN_VAL ["with_implement"]]),
 	("in",			Prepn, [PREPN_VAL ["location","year"]]),

@@ -1,6 +1,7 @@
 module TypeAg2 where
 
 import System.IO.Unsafe
+import Getts
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -9,27 +10,27 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)} 
               | U_OP            {getU_OP    ::   (Int -> Int)} 
-              | SENT_VAL        {getSV      ::   IO Bool}
+              | SENT_VAL        {getSV      ::   IO ES}
               | ErrorVal        {getEVAL    ::   String}    
 	      | NOUNCLA_VAL     {getAVALS   ::   IO ES} 
 	      | VERBPH_VAL      {getAVALS   ::   IO ES}  
 	      | ADJ_VAL         {getAVALS   ::   IO ES} 
-	      | TERMPH_VAL      {getTVAL    ::   (IO ES -> IO Bool)}     
-	      | DET_VAL         {getDVAL    ::   (IO ES -> IO ES -> IO Bool)} 
+	      | TERMPH_VAL      {getTVAL    ::   (IO ES -> IO ES)}     
+	      | DET_VAL         {getDVAL    ::   (IO ES -> IO ES -> IO ES)} 
 	      | VERB_VAL        {getBR      ::   Relation}      
 	      | RELPRON_VAL     {getRELVAL  ::   (IO ES -> IO ES -> IO ES)}    
 	      | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
 	      | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
-	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO Bool) -> (IO ES -> IO Bool) -> (IO ES -> IO Bool)) }
-		  | PREP_VAL		{getPREPVAL ::  ([([String], IO ES -> IO Bool)])} -- used in "hall discovered phobos with a telescope" as "with".  
+	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO ES) -> (IO ES -> IO ES) -> (IO ES -> IO ES)) }
+		  | PREP_VAL		{getPREPVAL ::  ([([String], IO ES -> IO ES)])} -- used in "hall discovered phobos with a telescope" as "with".  
 		  | PREPN_VAL		{getPREPNVAL :: [String]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
-		  | PREPPH_VAL		{getPREPPHVAL :: ([String], IO ES -> IO Bool)}
+		  | PREPPH_VAL		{getPREPPHVAL :: ([String], IO ES -> IO ES)}
 	      | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
-	      | SENTJOIN_VAL    {getSJVAL   ::   (IO Bool -> IO Bool -> IO Bool)}
+	      | SENTJOIN_VAL    {getSJVAL   ::   (IO ES -> IO ES -> IO ES)}
 	      | DOT_VAL         {getDOTVAL  ::   IO String}
 	      | QM_VAL          {getQMVAL   ::   IO String}
 	      | QUEST_VAL       {getQUVAL   ::   IO String}
-	      | QUEST1_VAL      {getQU1VAL  ::   (IO Bool -> IO String)}
+	      | QUEST1_VAL      {getQU1VAL  ::   (IO ES -> IO String)}
 	      | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO String)}
 	      | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO String)}
 		  | YEAR_VAL		{getYEARVAL ::   Int}
@@ -37,7 +38,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 --            | RESULT [sys_message]
 data MemoL    = Start | Tree | Num | Emp | ALeaf String | Expr | Op  | ET
               | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
-              | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year
+              | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5
                 deriving (Eq,Ord,Show)
 
 data Id       = O0|S0 |S1|S2|S3|S4|S5|S6|S7|S8|S9|T0|T1 | T2 | T3 |T4 | N1| N2 | N3 | E0 |E1 |E2 | O1| LHS  deriving (Eq,Ord,Show, Enum)
@@ -54,8 +55,7 @@ attFunc
    ]
 -}
 type Entity         =  String  
-type Entityset      =  [Entity]   
-type ES             =  Entityset -- [Int]
+type ES             =  Image -- [Int]
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
 --type Relation		= (ES -> Bool) -> ES
 type Relation = String
@@ -77,9 +77,9 @@ showio (B_OP j)     = return $ "B_OP"
 showio (U_OP j)     = return $ "U_OP"
 showio (SENT_VAL j) = j >>= return . show 
 showio (ErrorVal j) = return j
-showio (NOUNCLA_VAL j) = j >>= return . (++) "NOUNCLA_VAL " . unwords
-showio (VERBPH_VAL j)  = j >>= return . (++) "VERBPH_VAL " . unwords
-showio (ADJ_VAL    j)  = j >>= return . (++) "ADJ_VAL " . unwords
+showio (NOUNCLA_VAL j) = j >>= return . (++) "NOUNCLA_VAL " . unwords . map fst
+showio (VERBPH_VAL j)  = j >>= return . (++) "VERBPH_VAL " . unwords . map fst
+showio (ADJ_VAL    j)  = j >>= return . (++) "ADJ_VAL " . unwords . map fst
 showio (TERMPH_VAL j)  = return "TERMPH_VAL "      
 showio (DET_VAL j)     = return "DET_VAL " 
 showio (VERB_VAL j)    = return $ "VERB_VAL " ++ j
