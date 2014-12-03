@@ -4298,10 +4298,7 @@ refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 --Need two, because one needs to be inverted for a grammar rule to work.  
 --Could just flip arguments, but this is more readable
 make_relation :: (TripleStore m) => m -> String -> (IO Image -> IO Image) -> IO Image
-make_relation ev_data rel tmph = do
-		images <- make_image ev_data rel "subject"
-		filterM (\(_, evs) ->
-			(tmph $ getts_inverse ev_data "object" evs) >>= (\l -> return $ l /= [])) images
+make_relation ev_data rel tmph = make_filtered_relation ev_data rel tmph []
 				
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -4325,6 +4322,7 @@ filter_ev ev_data ((names,pred):list) ev = do
 --The difference is that it concatenates the data the preposition predicate needs to evaluate across all events and
 --applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
 --given by a specific event
+--TODO: new filter_Ev
 filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
@@ -4538,8 +4536,8 @@ detph
 transvbph 
  = memoize Transvbph
    (parser (nt transvb S1 *> nt jointermph S2) --"discovered phobos (and blah and blah and blah)"
-    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb [synthesized VERB_VAL    OF S1,
-                                                      synthesized TERMPH_VAL  OF S2]]
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep [synthesized VERB_VAL    OF S1,
+														  synthesized TERMPH_VAL  OF S2]]
     {-<|>
     parser (nt linkingvb S1 *> nt transvb S2 *> nt prepa S3 *> nt jointermph S4) --"was discovered by hall" --OBSOLETE
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rd [synthesized LINKINGVB_VAL  OF  S1,
@@ -4731,20 +4729,15 @@ applydet         [x, y]
 --be a binary relation but instead a function that make_relation would give
 --I.e., the kind of function that make_trans_vb would have generated, since they were
 --nearly identical
-applytransvb     [x, y]     
- -- = \atts -> VERBPH_VAL ((make_trans_vb (getAtts getBR atts x)) (getAtts getTVAL atts y))
- = \atts -> VERBPH_VAL $
-		let reln = getAtts getBR atts x
-		    predicate = getAtts getTVAL atts y in
-		make_relation dataStore reln predicate
-		
+
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep	[x, y, z]
- = \atts -> VERBPH_VAL $
-		let reln = getAtts getBR atts x
-		    predicate = getAtts getTVAL atts y
-		    preps = getAtts getPREPVAL atts z in
-		make_filtered_relation dataStore reln predicate preps
+applytransvbprep (x:y:xs) atts = VERBPH_VAL $ make_filtered_relation dataStore reln predicate preps
+		where
+		reln = getAtts getBR atts x
+		predicate = getAtts getTVAL atts y
+		preps = case xs of
+				[] -> []
+				(z:zs) -> getAtts getPREPVAL atts z
 		
 applyprepph		[x, y]
  = \atts -> PREPPH_VAL $
