@@ -4245,6 +4245,7 @@ make_prop_termphrase prop nph = do
 where' = make_prop_termphrase "location"
 when' = make_prop_termphrase "year"
 how' = make_prop_termphrase "with_implement"
+whatobj = make_prop_termphrase "object"
 
 
 --end of copied from gangster_v4
@@ -4273,21 +4274,20 @@ exists = thing
 spin   = get_members dataStore ("spin")
 
 
---Need to ensure uniqueness in output?  I.e. discover_intrans has multiple "hall"s in list
 discover_intrans	= get_subjs_of_event_type dataStore ("discover_ev")
 orbit_intrans		= get_subjs_of_event_type dataStore ("orbit_ev")
 
-discover = make_relation dataStore "discover_ev" 
+discover = make_relation "discover_ev" 
 discovered = discover
 
-orbit = make_relation dataStore "orbit_ev" 
+orbit = make_relation "orbit_ev" 
 orbited = orbit
 
 --For prepositional phrases
-discover' = make_filtered_relation dataStore "discover_ev"
+discover' = make_relation "discover_ev"
 discovered' = discover'
 
-orbit' = make_filtered_relation dataStore "orbit_ev" 
+orbit' = make_relation "orbit_ev" 
 orbited' = orbit'
 
 hall = make_pnoun "hall"
@@ -4295,10 +4295,8 @@ phobos = make_pnoun "phobos"
 mars = make_pnoun "mars"
 refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 
---Need two, because one needs to be inverted for a grammar rule to work.  
---Could just flip arguments, but this is more readable
-make_relation :: (TripleStore m) => m -> String -> (IO Image -> IO Image) -> IO Image
-make_relation ev_data rel tmph = make_filtered_relation ev_data rel tmph []
+make_relation ev_type tmph = make_filtered_relation dataStore ev_type [(["object"],tmph)]
+
 				
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -4340,10 +4338,10 @@ make_filtered_relation ev_data rel tmph preps = do
 	return $ map fst subPairs-}
 	
 --Modified version of make_filtered_relation to accomodate new filter_ev
-make_filtered_relation :: (TripleStore m) => m -> String -> (IO Image -> IO Image) -> [([String], IO Image -> IO Image)] -> IO Image
-make_filtered_relation ev_data rel tmph preps = do
+make_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO Image -> IO Image)] -> IO Image
+make_filtered_relation ev_data rel preps = do
 	images <- make_image ev_data rel "subject"
-	filterM (\(_, evs) -> filter_ev ev_data ((["object"], tmph):preps) evs) images
+	filterM (\(_, evs) -> filter_ev ev_data preps evs) images
 	
 {-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_inverted_filtered_relation ev_data rel preps = do
@@ -4535,20 +4533,25 @@ detph
 ----------------------------------------------------------------------------------
 transvbph 
  = memoize Transvbph
-   (parser (nt transvb S1 *> nt jointermph S2) --"discovered phobos (and blah and blah and blah)"
+   (parser (nt transvb S1) --"discovered"
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb_no_tmph [synthesized VERB_VAL OF S1]]
+	<|>
+	parser (nt transvb S1 *> nt preps S2) --"discovered in..."
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb_no_tmph [synthesized VERB_VAL OF S1,
+															  synthesized PREP_VAL OF S2]]
+	<|>
+    parser (nt transvb S1 *> nt jointermph S2) --"discovered phobos (and blah and blah and blah)"
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep [synthesized VERB_VAL    OF S1,
 														  synthesized TERMPH_VAL  OF S2]]
-    {-<|>
-    parser (nt linkingvb S1 *> nt transvb S2 *> nt prepa S3 *> nt jointermph S4) --"was discovered by hall" --OBSOLETE
-    [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rd [synthesized LINKINGVB_VAL  OF  S1,
-                                                  synthesized VERB_VAL       OF  S2,
-                                                  synthesized PREPA_VAL      OF  S3,
-                                                  synthesized TERMPH_VAL     OF  S4]]-}
-	<|> -- NEW FOR PREPOSITIONAL PHRASES
-	parser (nt transvb S1 *> nt jointermph S2 *> nt preps S3)
+	<|>
+	parser (nt transvb S1 *> nt jointermph S2 *> nt preps S3) --"discovered phobos in..."
 	[rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep [synthesized VERB_VAL OF S1,
 														  synthesized TERMPH_VAL OF S2,
 														  synthesized PREP_VAL OF S3]]
+	<|>
+    parser (nt linkingvb S1 *> nt transvb S2) --"was discovered"
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
+													  synthesized VERB_VAL       OF  S2]]
 	<|>
     parser (nt linkingvb S1 *> nt transvb S2 *> nt preps S3) --"was discovered by hall in..."
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
@@ -4731,14 +4734,26 @@ applydet         [x, y]
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep (x:y:xs) atts = VERBPH_VAL $ make_filtered_relation dataStore reln predicate preps
-		where
-		reln = getAtts getBR atts x
-		predicate = getAtts getTVAL atts y
-		preps = case xs of
-				[] -> []
-				(z:zs) -> getAtts getPREPVAL atts z
-		
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_filtered_relation dataStore reln ((["object"],predicate):preps)
+	where 
+	reln = getAtts getBR atts x
+	predicate = getAtts getTVAL atts y
+	preps = getAtts getPREPVAL atts z
+	
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_filtered_relation dataStore reln [(["object"],predicate)]
+	where
+	reln = getAtts getBR atts x
+	predicate = getAtts getTVAL atts y
+
+applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_filtered_relation dataStore reln preps
+	where
+	reln = getAtts getBR atts x
+	preps = getAtts getPREPVAL atts y
+
+applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_filtered_relation dataStore reln []
+	where
+	reln = getAtts getBR atts x
+	
 applyprepph		[x, y]
  = \atts -> PREPPH_VAL $
 		let prep_names = getAtts getPREPNVAL atts x
@@ -4782,11 +4797,12 @@ apply_middle3    [x, y, z]
 		make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep          [w, x, p]     
- = \atts -> VERBPH_VAL $
-		let reln = getAtts getBR atts x in
-		let	preps = getAtts getPREPVAL atts p in
-		make_inverted_filtered_relation dataStore reln preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_inverted_filtered_relation dataStore reln preps
+		where
+		reln = getAtts getBR atts x
+		preps = case xs of 
+			[] -> []
+			(p:ps) -> getAtts getPREPVAL atts p
 --END PREPOSITIONAL PHRASES
 		
 apply_termphrase [x, y]     
@@ -4948,6 +4964,7 @@ dictionary = [
 	("did",                Quest1  ,  [QUEST1_VAL     $ yesno]),
 	("do",                 Quest1,    [QUEST1_VAL     $ yesno]),
 	("what",               Quest2,    [QUEST2_VAL     $ what]),
+	("what",               Quest5,    [QUEST2_VAL     $ whatobj]),
 	("where",              Quest5,    [QUEST2_VAL     $ where']),
 	("when",               Quest5,    [QUEST2_VAL     $ when']),
 	("how",                Quest5,    [QUEST2_VAL     $ how']),

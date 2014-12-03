@@ -237,8 +237,9 @@ get_subjs_of_event_type :: (TripleStore m) => m -> String -> IO Image
 get_subjs_of_event_type ev_data ev_type = make_image ev_data ev_type "subject"
 
 
-{-collect accepts a binary relation as input and computes the image of each
-element in the projection of the left column of the relation, under the relation.
+{-collect accepts a binary relation as input and computes the image img of each
+element x in the projection of the left column of the relation, under the relation,
+and returns all of these (x,img) pairs in a list
 
 Note: Since == is an equivalence relation, if multiple elements in the projection
 of the left column are in the same equivalence class, only the first member of that
