@@ -4401,6 +4401,7 @@ quest3          =  pre_processed Quest3
 quest4a         =  pre_processed Quest4a
 quest4b         =  pre_processed Quest4b
 quest5			=  pre_processed Quest5
+quest6			=  pre_processed Quest6
 
 --NEW FOR PREPOSITIONAL PHRASES
 prep			=  pre_processed Prepn
@@ -4557,6 +4558,17 @@ transvbph
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
 												  synthesized VERB_VAL       OF  S2,
 												  synthesized PREP_VAL       OF  S3]]
+	<|>
+	parser (nt linkingvb S1  *>  nt jointermph S2 *> nt transvb S3) --"was phobos discovered"
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_quest_transvb_passive [synthesized LINKINGVB_VAL OF  S1,
+																	  synthesized TERMPH_VAL    OF  S2,
+																	  synthesized VERB_VAL      OF  S3]]
+	<|>
+	parser (nt linkingvb S1  *>  nt jointermph S2 *> nt transvb S3 *> nt preps S4) --"was phobos discovered in..."
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_quest_transvb_passive [synthesized LINKINGVB_VAL OF  S1,
+																	  synthesized TERMPH_VAL    OF  S2,
+																	  synthesized VERB_VAL      OF  S3,
+																	  synthesized PREP_VAL      OF  S4]]
    )
    
 ----------------------------------------------------------------------------------
@@ -4592,17 +4604,6 @@ verbph
    <|>
     parser (nt linkingvb S1 *> nt det S2 *> nt nouncla S3)
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applyvbph [synthesized NOUNCLA_VAL OF S3]]
-	<|>
-	parser (nt linkingvb S1  *>  nt jointermph S2 *> nt transvb S3)
-    [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_quest_transvb_passive [ synthesized LINKINGVB_VAL OF  S1,
-																	  synthesized TERMPH_VAL    OF  S2,
-																	  synthesized VERB_VAL      OF  S3]]
-	<|>
-	parser (nt linkingvb S1  *>  nt jointermph S2 *> nt transvb S3 *> nt preps S4)
-    [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_quest_transvb_passive [ synthesized LINKINGVB_VAL OF  S1,
-																	  synthesized TERMPH_VAL    OF  S2,
-																	  synthesized VERB_VAL      OF  S3,
-																	  synthesized PREP_VAL      OF  S4]]
    )
 ------------------------------------------------------------------------------------
 
@@ -4676,12 +4677,21 @@ question
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
                                               synthesized SENT_VAL    OF  S2]]  
     <|>
-	parser (nt quest2 S1  *> nt quest1 S2  *>  nt sent S3 )
+	parser (nt quest6 S1  *> nt quest1 S2  *>  nt sent S3 )
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
+											  synthesized QUEST1_VAL OF S2,
+                                              synthesized SENT_VAL    OF  S3]]  
+    <|>
+	parser (nt quest5 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
 											  synthesized QUEST1_VAL OF S2,
                                               synthesized SENT_VAL    OF  S3]]  
     <|>
     parser (nt quest2 S1 *> nt joinvbph S2)
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
+                                              synthesized VERBPH_VAL    OF  S2]] 
+    <|>
+	parser (nt quest5 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
                                               synthesized VERBPH_VAL    OF  S2]] 
     <|>
@@ -4765,6 +4775,15 @@ applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_filtered_relation dataStore re
 	where
 	reln = getAtts getBR atts x
 	
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph $ make_inverted_filtered_relation dataStore reln preps
+	where
+	linkingvb = getAtts getLINKVAL atts x2
+	termph = getAtts getTVAL atts x3
+	reln = getAtts getBR atts x4
+	preps = case xs of
+		[] -> []
+		(x5:_) -> getAtts getPREPVAL atts x5
+	
 applyprepph		[x, y]
  = \atts -> PREPPH_VAL $
 		let prep_names = getAtts getPREPNVAL atts x
@@ -4839,15 +4858,7 @@ truefalse        [x]
 		bool <- (getAtts getSV atts x)
 		return $ if bool /= [] then "true." else "false."
 		
-apply_quest_transvb_passive (x2:x3:x4:xs) atts
-	= VERBPH_VAL $ make_filtered_relation dataStore reln ((["object"],termph):preps)
-	where
-	linkingvb = getAtts getLINKVAL atts x2
-	termph = getAtts getTVAL atts x3
-	reln = getAtts getBR atts x4
-	preps = case xs of
-		[] -> []
-		(x5:_) -> getAtts getPREPVAL atts x5
+
 
 		
 {-
@@ -4986,10 +4997,11 @@ dictionary = [
 	("did",                Quest1  ,  [QUEST1_VAL     $ yesno]),
 	("do",                 Quest1,    [QUEST1_VAL     $ yesno]),
 	("what",               Quest2,    [QUEST2_VAL     $ what]),
-	("where",              Quest2,    [QUEST2_VAL     $ where']),
-	("when",               Quest2,    [QUEST2_VAL     $ when']),
-	("how",                Quest2,    [QUEST2_VAL     $ how']),
-	("who",                Quest2,    [QUEST2_VAL     who]),
+	("who",                Quest2,    [QUEST2_VAL     $ who]),
+	("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
+	("where",              Quest5,    [QUEST2_VAL     $ where']),
+	("when",               Quest5,    [QUEST2_VAL     $ when']),
+	("how",                Quest5,    [QUEST2_VAL     $ how']),
 	("which",              Quest3,    [QUEST3_VAL     which]),
 	("what",               Quest3,    [QUEST3_VAL     which]),
 	("how",                Quest4a,   [QUEST3_VAL     $ how_many]),
