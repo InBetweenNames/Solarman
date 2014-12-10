@@ -4774,8 +4774,11 @@ applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_filtered_relation dataStore 
 applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_filtered_relation dataStore reln []
 	where
 	reln = getAtts getBR atts x
-	
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph $ make_inverted_filtered_relation dataStore reln preps
+
+--Actually wrong, should be make_inverted_filtered_relation, but would require a significant rework of the grammar to support the
+--differences between "was" and "did", for instance "what did hall discover" versus "what was phobos discovered", think of object vs subject.
+--This works because "what" always grabs the subject.  But it's not totally proper.  Can't spend more time on this for now though so TODO...
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ make_filtered_relation dataStore reln ((["object"],termph):preps)
 	where
 	linkingvb = getAtts getLINKVAL atts x2
 	termph = getAtts getTVAL atts x3
