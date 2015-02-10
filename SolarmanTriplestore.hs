@@ -11,7 +11,7 @@ import Debug.Trace
 
 --change between remoteData and localData
 --dataStore = remoteData
-dataStore = remoteData -- selects local database
+dataStore = remoteData -- selects database
 
 endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
 namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
