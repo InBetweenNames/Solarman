@@ -4464,6 +4464,7 @@ type Result   = [((Start1, End),[Tree MemoL])]
 ||-----------------------------------------------------------------------------
 -}
 
+-- public <snouncla> = <cnoun> | <adjs> <cnoun>;
 snouncla 
  = memoize Snouncla
  (parser
@@ -4477,6 +4478,7 @@ snouncla
  )
 
 -------------------------------------------------------------------------------
+-- public <relnouncla> = <snouncla> <relpron> <joinvbph> | <snouncla>;
 relnouncla   
  = memoize Relnouncla
    (parser 
@@ -4492,7 +4494,7 @@ relnouncla
 ----------------------------------------------------------------------------
 
 
-
+-- public <nouncla> = <relnouncla> <nounjoin> <nouncla> | <relnouncla> <relpron> <linkingvb> <nouncla> | <relnouncla>;
 nouncla 
  = memoize Nouncla 
    (parser (nt relnouncla S1 *> nt nounjoin S2 *> nt nouncla S3)
@@ -4510,6 +4512,7 @@ nouncla
    )
 
 ------------------------------------------------------------------------------
+-- public <adjs> = <adj> <adjs> | <adj>;
 adjs   
  = memoize Adjs      
    (parser (nt adj S1 *> nt adjs S2)
@@ -4520,7 +4523,7 @@ adjs
     [rule_s ADJ_VAL  OF LHS ISEQUALTO copy [synthesized ADJ_VAL  OF S3]]
    )
 ------------------------------------------------------------------------------
-
+-- public <detph> = <indefpron> | <det> <nouncla>;
 detph     
  = memoize Detph
    (parser (nt indefpron S3)
@@ -4532,6 +4535,16 @@ detph
    )                                              
 
 ----------------------------------------------------------------------------------
+
+{-
+ 	public <transvbph> = <transvb>
+                        | <transvb> <preps>
+                        | <transvb> <jointermph>
+                        | <transvb> <jointermph> <preps>
+                        | <linkingvb> <jointermph> <transvb>
+                        | <linkingvb> <jointermph> <transvb> <preps>;
+ -}
+
 transvbph 
  = memoize Transvbph
    (parser (nt transvb S1) --"discovered"
@@ -4574,6 +4587,7 @@ transvbph
 ----------------------------------------------------------------------------------
 --NEW FOR PREPOSITIONAL PHRASES
 
+-- public <preps> = <prepph> | <preph> <preps>;
 preps
  = memoize Preps
 	(parser (nt prepph S1)
@@ -4583,7 +4597,8 @@ preps
 	 [rule_s PREP_VAL OF LHS ISEQUALTO applypreps [synthesized PREPPH_VAL OF S1,
 												   synthesized PREP_VAL OF S2]]
 	)
-	
+
+-- public <prepph> = <prep> <jointermph>;	
 prepph
  = memoize Prepph
 	(parser (nt prep S1 *> nt jointermph S2)
@@ -4593,6 +4608,7 @@ prepph
 
 ----------------------------------------------------------------------------------
 
+-- public <verbph> = <transvbph> | <intransvb> | <linkingvb> <det> <nouncla>;
 verbph 
  = memoize Verbph
    (
@@ -4606,7 +4622,7 @@ verbph
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applyvbph [synthesized NOUNCLA_VAL OF S3]]
    )
 ------------------------------------------------------------------------------------
-
+-- public <termph> = <pnoun> | <detph> | <year>;
 termph    
  = memoize Termph  
    (
@@ -4622,6 +4638,7 @@ termph
              
 
 ------------------------------------------------------------------------------------
+-- public <jointermph> = <jointermph> <termphjoin> <jointermph> | <termph>;
 jointermph 
  = memoize Jointermph 
    (
@@ -4640,6 +4657,7 @@ jointermph
     [rule_s TERMPH_VAL  OF LHS ISEQUALTO copy [synthesized TERMPH_VAL  OF S4]]
    )
 ------------------------------------------------------------------------------------
+-- public <joinvbph> = <verbph> <verbphjoin> <joinvbph> | <verbph>;
 joinvbph  
  = memoize Joinvbph   
    (
@@ -4652,6 +4670,7 @@ joinvbph
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO copy [synthesized VERBPH_VAL  OF S4]]
    )
 ---------------------------------------------------------------------------
+-- public <sent> = <jointermph> <joinvbph>;
 sent  
  = memoize Sent
    (
@@ -4660,6 +4679,7 @@ sent
                                                         synthesized VERBPH_VAL  OF  S2]]
    )
 -- **************************************************************************** --
+-- public <two_sent> = <sent> <sentjoin> <sent>;
 two_sent 
  = memoize Two_sent
    (
@@ -4669,7 +4689,19 @@ two_sent
                                                      synthesized SENT_VAL      OF  S3]] 
    )
 ------------------------------------------------------------------------------------
+{-
+	public <question> = <quest1> <sent>
+                        | <quest6> <quest1> <sent>
+                        | <quest5> <quest1> <sent>
+                        | <quest2> <joinvbph>
+                        | <quest5> <joinvbph>
+                        | <quest3> <nouncla>
+                        | <quest3> <nouncla> <joinvbph>
+                        | <quest4> <nouncla> <joinvbph>
+                        | <two_sent>
+                        | <sent>;
 
+-}
 question   
  = memoize Question  
    (
@@ -4712,6 +4744,8 @@ question
     [rule_s QUEST_VAL  OF LHS ISEQUALTO truefalse [synthesized SENT_VAL OF  S1]]
 
    )
+
+-- public <quest4> = <quest4a> <quest4b>;
 quest4 = memoize Quest4 
    (
    parser (nt quest4a S1 *> nt quest4b S2) 
