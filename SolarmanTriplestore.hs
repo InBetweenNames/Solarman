@@ -4909,6 +4909,38 @@ truefalse        [x]
 -- FUNCTION USED TO DEFINE MEANINGS OF VERBS IN TERMS OF RELATIONS
 --make_trans_vb rel p = [x | (x, image_x) <- collect rel, p image_x] -- Similar to make_relation
 
+{- TERMINALS IN JSGF FORM
+
+<Prepn> = with | in | at | by;
+
+<Transvb> = discover | discovers | discovered | orbit | orbited | orbits;
+
+<Indefpron> = anyone | anything | anybody | someone | something | somebody | everyone | everything | everybody;
+
+<Quest5> = where | when | how;
+
+<Quest4b> = many;
+
+<Sentjoin> = and;
+
+<Linkingvb> = is | was | are | were;
+
+<Nounjoin> = and | or;
+
+<Verbphjoin> = and | or;
+
+<Quest3> = which | what;
+
+<Det> = the | a | one | an | some | any | every | all | two;
+
+<Termphjoin> = and | or;
+
+<Quest6> = what;
+
+<Intransvb> = exist | exists | spin | spins | orbit | orbits;
+
+-}
+
 dictionary = [
 	("thing",              Cnoun,     [NOUNCLA_VAL thing]),
 	("things",             Cnoun,     [NOUNCLA_VAL thing]),
@@ -5329,6 +5361,8 @@ dictionary = [
 {-Major hack: Since the basic unit that the parser understands is strings (not characters), we have to manually add all years that we can query into the dictionary...
 That is, we can't make the parser understand "1984" and "1245" by having it recognize four numbers, instead it must recognize the entire string of numbers at once
 as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of "1", "9", "8", and "4").  Therefore, all possible strings must be added to the dictionary so that the parser can match them.
+
+**this might need to be altered**
 -}
 
 list_of_years = map (\n -> (show n, Year, [YEAR_VAL n])) $ concat [[1000 + x, 2000 + x] | x <- [0..999]]
