@@ -4,6 +4,7 @@ import Text.PrettyPrint.HughesPJ as PPH hiding (empty)  -- ((PPH.<+>), vcat, tex
 import Data.List
 import TypeAg2
 import Control.Monad
+import Control.Applicative hiding ((<|>), (*>))
 
 
 
