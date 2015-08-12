@@ -6,9 +6,9 @@ import Network.CGI
 
 cgiMain :: CGI CGIResult
 cgiMain = do
-	(Just input) <- getInput "query"
-	out <- liftIO $ interpret' input
-	output out
+    (Just input) <- getInput "query"
+    out <- liftIO $ interpret' input
+    output out
 
 
 main :: IO ()
@@ -27,13 +27,13 @@ interpret "introduce yourself solar man"
 interpret "what can i say" 
       = "You can say. hello there. what is your name."
         ++ " you can ask me about the moons and the planets."
-	++ " such as, who discovered a moon."
-	++ " who discovered two moons."
-	++ " which moons were discovered by kuiper."
-	++ " who discovered phobos."
-	++ " which planet is orbited by miranda."
-	++ " how many moons orbit saturn."
-	++ " and other similar questions."
+    ++ " such as, who discovered a moon."
+    ++ " who discovered two moons."
+    ++ " which moons were discovered by kuiper."
+    ++ " who discovered phobos."
+    ++ " which planet is orbited by miranda."
+    ++ " how many moons orbit saturn."
+    ++ " and other similar questions."
         ++ " who are you. where do you live."
         ++ " tell me a joke. who made you." 
         ++ " who do you know. what is your favorite band."
@@ -116,11 +116,11 @@ interpret "who do you know" = "i only know three people. Judy, Monty, and Solarm
 interpret _ = "BLANKVALNOTUSED"
 
 interpret' input = do
-	let firstpass = interpret input
-	if firstpass == "BLANKVALNOTUSED" then do
-		output <- App.main input
-		let formatted = render $ vcat $ output
-		if null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
-	else return firstpass
+    let firstpass = interpret input
+    if firstpass == "BLANKVALNOTUSED" then do
+        output <- App.main input
+        let formatted = render $ vcat $ output
+        if null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
+    else return firstpass
 
 

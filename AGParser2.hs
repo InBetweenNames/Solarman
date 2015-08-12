@@ -1,4 +1,5 @@
 module AGParser2 where
+import Prelude hiding ((*>))
 import Text.PrettyPrint.HughesPJ as PPH hiding (empty)  -- ((PPH.<+>), vcat, text, render,($$),nest,Doc)
 import Data.List
 import TypeAg2
@@ -59,6 +60,13 @@ type Foo = (Context, Result)
 
 -- ============================
 newtype StateM t = State { unState :: State -> (t,State) }
+
+instance Functor StateM where
+    fmap  = liftM
+
+instance Applicative StateM where
+    pure  = return
+    (<*>) = ap  -- defined in Control.Monad
 
 instance Monad StateM where
   -- defines state propagation
@@ -126,40 +134,40 @@ addP  ((((s2,inA2),(e2,synA2)),t2):restQ) (((s1,inA1),(e1,synA1)),t1)
 -------- ************* ---------------
 addToBranch (q1,((SubNode (name2,q)):ts2)) 
             (p1,((SubNode (name1,p)):ts1)) 
-							= [Branch [(SubNode (name1,p)),(SubNode (name2,q))]]
+                            = [Branch [(SubNode (name1,p)),(SubNode (name2,q))]]
 
 addToBranch (q1,((Branch t2):ts2)) 
             (p1,((Branch t1):ts1))
-							= [Branch (t1++t2)]
+                            = [Branch (t1++t2)]
 
 addToBranch (q1,((Branch t2):ts)) 
             (p1,((SubNode (name1,p)):ts1))
-							= [Branch ((SubNode (name1,p)):t2)]
+                            = [Branch ((SubNode (name1,p)):t2)]
 
 addToBranch (q1,((SubNode (name2,q)):ts2)) 
             (p1,((Branch t1):ts))
-							= [Branch (t1++[(SubNode (name2,q))])]
-							
+                            = [Branch (t1++[(SubNode (name2,q))])]
+                            
 
 addToBranch (q1,((SubNode (name2,q)):ts2)) 
             (p1,[Leaf (x,i)])
-							= [Branch [(SubNode ((x,i) ,p1)),(SubNode (name2,q))]]
+                            = [Branch [(SubNode ((x,i) ,p1)),(SubNode (name2,q))]]
 addToBranch (q1,[Leaf (x,i)]) 
             (p1,((SubNode (name1,p)):ts1)) 
-			 				= [Branch [(SubNode (name1,p)),(SubNode ((x,i),q1))]]
+                            = [Branch [(SubNode (name1,p)),(SubNode ((x,i),q1))]]
 addToBranch (q1,((Branch t2):ts)) 
             (p1,[Leaf (x,i)])
-							= [Branch ((SubNode ((x,i),p1)):t2)]
+                            = [Branch ((SubNode ((x,i),p1)):t2)]
 addToBranch (q1,[Leaf (x,i)]) 
             (p1,((Branch t1):ts))
-							= [Branch (t1++[(SubNode ((x,i),q1))])]
+                            = [Branch (t1++[(SubNode ((x,i),q1))])]
 addToBranch (q1,[Leaf (x2,i2)]) 
             (p1,[Leaf (x1,i1)])                         = [Branch [(SubNode ((x1,i1),p1)),(SubNode ((x2,i2),q1))]]
 
 -------- ************* ---------------
 
 
-empty_cuts = ([],[])				   
+empty_cuts = ([],[])                   
 empty :: [(Instance, Atts)] -> M Foo
 empty atts (x,inp) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
@@ -169,47 +177,44 @@ term c id atts iatts ((r,a),dInp) l
  |dInp!!(r - 1) == c         = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf c, id)])])
  |otherwise                  = return (empty_cuts,[])  
 
-		
-memoize name f id downAtts ((inp,dAtts),dInput) context 
- = do   s <- get        
         
-        case (lookupT name inp (snd context) s) of   
-	 Just lRes         -> do let lookUpRes   = addNode name (S, id) (inp,downAtts) (snd1 lRes) 
-				 return (fst1 lRes,lookUpRes)
-	 Nothing
-	  | funccount (snd context) inp name > (length dInput) - inp + 1
-			   -> return (([name],[]),[])
+memoize name f id downAtts ((inp,dAtts),dInput) context 
+ = do s <- get        
+      case (lookupT name inp (snd context) s) of   
+       Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd1 lRes) 
+                       return (fst1 lRes,lookUpRes)
+       Nothing
+           | funccount (snd context) inp name > (length dInput) - inp + 1
+               -> return (([name],[]),[])
+           | otherwise -> do let iC = ([],(incContext (snd context) name inp))
+                             (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC 
+                   -- let ((l,newRes),s1) = unState (f id downAtts (inp,dAtts) iC) s
+                             let l1          = makeContext (fst l) (findContext (snd context) inp)
+                             s1             <- get
+                             let udtTab      = udt (l1,newRes) s1 name (inp,downAtts)  
+                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes
+                             put udtTab
+                             return ( l1 ,newFoundRes)
 
-	  | otherwise      -> do let iC          = ([],(incContext (snd context) name inp))
-	                         (l,newRes)     <- f id downAtts ((inp,dAtts),dInput) iC 
-	                         -- let ((l,newRes),s1) = unState (f id downAtts (inp,dAtts) iC) s
-	                          
-				 let l1          = makeContext (fst l) (findContext (snd context) inp)
-				 s1             <- get
-				 let udtTab      = udt (l1,newRes) s1 name (inp,downAtts)  
-				 let newFoundRes = addNode name (S, id) (inp,downAtts) newRes
-				 put udtTab
-				 return ( l1 ,newFoundRes)
-    
-	    
+        
 
 
 findContext []     inp                    = []
 findContext ((st,rest):sr) inp| st == inp = [(st,rest)]
-		              | otherwise = findContext sr inp
-	                                             
-	    
-	  
+                      | otherwise = findContext sr inp
+                                                 
+        
+      
 
 funccount []         inp name         = 0
 funccount ((key,funcp):rest) inp name | key == inp = findf funcp 
-			              | otherwise  = funccount rest inp name
+                          | otherwise  = funccount rest inp name
 
-			     where
-			     findf  []           = 0
-			     findf  ((tk,fc):rx) | tk == name = fc 
-						 | otherwise  = findf rx	    
-	    
+                 where
+                 findf  []           = 0
+                 findf  ((tk,fc):rx) | tk == name = fc 
+                         | otherwise  = findf rx        
+        
             
 fst1 [(a,b)] = a
 snd1 [(a,b)] = b   
@@ -229,8 +234,8 @@ makeContext__ r ((n,c):ncs) | r == n    = (n,c): makeContext__ r ncs
 
 incContext [] name inp  = [(inp,[(name,1)])]
 incContext ((st,((n,c):nc)):sn) name inp  
-				  | st == inp = ((st, (addNT ((n,c):nc)) name inp ) :sn) 
-				  | otherwise = ((st,((n,c):nc)): incContext sn name inp )
+                  | st == inp = ((st, (addNT ((n,c):nc)) name inp ) :sn) 
+                  | otherwise = ((st,((n,c):nc)): incContext sn name inp )
  
 
 addNT []  name inp                     = [(name,1)]
@@ -269,9 +274,9 @@ lookupT name inp context mTable
 
 lookupT1 name inp context mTable | res_in_table == [] = [] 
                                  | otherwise          = checkUsability inp context (lookupRes (res_in_table !! 0) inp)
-               		    
-				   where 
-				   res_in_table = [pairs|(n,pairs) <- mTable,n == name]
+                        
+                   where 
+                   res_in_table = [pairs|(n,pairs) <- mTable,n == name]
 
 
 lookupRes [] inp                       = []
@@ -301,11 +306,11 @@ checkUsability_ ((n,cs):ccs) ((n1,cs1):scs) [(sc,res)]
 condCheck ((n,cs):ccs) [(n1,cs1)]     = [condCheck_ ((n,cs):ccs) (n1,cs1)]
 condCheck ((n,cs):ccs) ((n1,cs1):scs) = condCheck_ ((n,cs):ccs) (n1,cs1) : condCheck ((n,cs):ccs) scs
 
-condCheck_ [] (n1,cs1)					= False
+condCheck_ [] (n1,cs1)                  = False
 condCheck_ ((n,cs):ccs) (n1,cs1) 
                  | n1 == n && cs >= cs1 = True
-				 | n1 == n && cs < cs1  = False
-				 | otherwise            = condCheck_ ccs (n1,cs1)
+                 | n1 == n && cs < cs1  = False
+                 | otherwise            = condCheck_ ccs (n1,cs1)
                           
 
 
@@ -340,18 +345,18 @@ nt fx idx id inhAtts semRules altFromSibs
    in fx idx ownInAtts 
 
 parser :: SeqType -> [SemRule] -> Id -> InsAttVals -> M Foo
-parser synRule semRules id inhAtts i c  
- =      do 
-           s <- get           
-           let ((e,altFromSibs),d)     = 
-	        let sRule                        = groupRule'' (S, LHS) semRules
-		    ((l,newRes),st)              = unState ((synRule id inhAtts semRules altFromSibs) i c) s                                 
-                    groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud]  
-	        in  ((l, mapSynthesize  sRule newRes inhAtts id),st)
-           put d  
-           return (e,altFromSibs)	    
-						  
-
+parser synRule semRules id inhAtts i c
+ =      do
+           s <- get
+           let ((e,altFromSibs),d)     =
+                let sRule                        = groupRule'' (S, LHS) semRules
+                    ((l,newRes),st)              = unState ((synRule id inhAtts semRules altFromSibs) i c) s
+                    groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud]
+                in  ((l, mapSynthesize  sRule newRes inhAtts id),st)
+           put d
+           return (e,altFromSibs)
+      
+                          
                                        
                      
 mapSynthesize []   res  downAtts id   = res
@@ -491,24 +496,24 @@ toTree    [b]        = \(atts,i) -> Res (N ((map (apply atts i) [b])!!0))
 --------------- EXAMPLE EX-SPEC FOR TREE-REPLACEMENT ----------------
 
 start  = memoize Start 
-	  (parser 
-	   (nt tree T0)
-	   [
-	    rule_i RepVal OF T0  ISEQUALTO convertRep    [synthesized  MaxVal OF T0]
-	   ]
-	  )
-	  
+      (parser 
+       (nt tree T0)
+       [
+        rule_i RepVal OF T0  ISEQUALTO convertRep    [synthesized  MaxVal OF T0]
+       ]
+      )
+      
 tree   = memoize Tree 
         (   parser 
            (nt tree T1 *> nt tree T2 *> nt num T3)
-	   [ rule_s   MaxVal OF LHS  ISEQUALTO findMax [  synthesized  MaxVal OF T1, 
-		                                         synthesized  MaxVal OF T2,
-		                                         synthesized  MaxVal OF T3
-		                                       ],       
-	    rule_i   RepVal OF T1   ISEQUALTO convertRep    [inherited RepVal OF LHS],
-	    rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS],
-	    rule_i   RepVal OF T3   ISEQUALTO convertRep    [inherited RepVal OF LHS]
-	   ]
+       [ rule_s   MaxVal OF LHS  ISEQUALTO findMax [  synthesized  MaxVal OF T1, 
+                                                 synthesized  MaxVal OF T2,
+                                                 synthesized  MaxVal OF T3
+                                               ],       
+        rule_i   RepVal OF T1   ISEQUALTO convertRep    [inherited RepVal OF LHS],
+        rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS],
+        rule_i   RepVal OF T3   ISEQUALTO convertRep    [inherited RepVal OF LHS]
+       ]
  <|> 
             parser 
            (nt num N1)
@@ -523,10 +528,10 @@ tree   = memoize Tree
 num  = memoize Num
        (
         terminal (term "1") [MaxVal 1] <|> 
-	terminal (term "2") [MaxVal 2] <|>
-	terminal (term "3") [MaxVal 3] <|>  
-	terminal (term "4") [MaxVal 4] <|>  
-	terminal (term "5") [MaxVal 5] 	
+    terminal (term "2") [MaxVal 2] <|>
+    terminal (term "3") [MaxVal 3] <|>  
+    terminal (term "4") [MaxVal 4] <|>  
+    terminal (term "5") [MaxVal 5]  
        )
 ------------------------------------------------ Arithmetic Expression ------------------------------------------------
 
@@ -555,10 +560,10 @@ expr = memoize Expr
 
 op   = memoize Op
        (
-	terminal (term "+") [B_OP (+)] <|> 
-	terminal (term "-") [B_OP (-)] <|>  
-	terminal (term "*") [B_OP (*)] <|>   
-	terminal (term "/") [B_OP (div)] 	
+    terminal (term "+") [B_OP (+)] <|> 
+    terminal (term "-") [B_OP (-)] <|>  
+    terminal (term "*") [B_OP (*)] <|>   
+    terminal (term "/") [B_OP (div)]    
        )
 
 ------------------------------------------------ Arithmetic Expression ------------------------------------------------
@@ -566,9 +571,9 @@ op   = memoize Op
 ----------- PrettyPrint ------------------------
 po :: (PP' a) => (String -> IO ()) -> a -> IO ()
 po act x = do
-	stuff <- pp' x
-	act $ render80 stuff
-	
+    stuff <- pp' x
+    act $ render80 stuff
+    
 render80 = renderStyle (style{lineLength = 80})
 
 
@@ -669,17 +674,17 @@ formatAtts key t
  
 formatAttsFinalAlt :: MemoL -> Int -> State -> IO [Doc]
 formatAttsFinalAlt  key e t  = 
-	--return [pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
-	sequence [(sequence [liftM vcat $ sequence [(liftM vcat $ sequence [liftM vcat $ sequence [liftM vcat $ sequence [liftM text (showio ty1v1) | ty1v1<-val1]
-   							|(id1,val1)<-synAtts]] )
-   							|(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
-    	| ((i,inAt1),((cs,ct),rs)) <- sr ]) >>= pp' | (s,sr) <- t, s == key ]
+    --return [pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
+    sequence [(sequence [liftM vcat $ sequence [(liftM vcat $ sequence [liftM vcat $ sequence [liftM vcat $ sequence [liftM text (showio ty1v1) | ty1v1<-val1]
+                            |(id1,val1)<-synAtts]] )
+                            |(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
+        | ((i,inAt1),((cs,ct),rs)) <- sr ]) >>= pp' | (s,sr) <- t, s == key ]
 
 {-formatAttsFinal  key t  = 
    [(pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]] )|(((st,inAtt2),(end,synAtts)), ts)<-rs] 
                                    
                 | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]-}
-                	
+                    
 -- *************** for printing the fist element of the return pair ***************
 {-TODO:
 formatForFst ::Result -> Doc

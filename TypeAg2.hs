@@ -12,28 +12,28 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | U_OP            {getU_OP    ::   (Int -> Int)} 
               | SENT_VAL        {getSV      ::   IO ES}
               | ErrorVal        {getEVAL    ::   String}    
-	      | NOUNCLA_VAL     {getAVALS   ::   IO ES} 
-	      | VERBPH_VAL      {getAVALS   ::   IO ES}  
-	      | ADJ_VAL         {getAVALS   ::   IO ES} 
-	      | TERMPH_VAL      {getTVAL    ::   (IO ES -> IO ES)}     
-	      | DET_VAL         {getDVAL    ::   (IO ES -> IO ES -> IO ES)} 
-	      | VERB_VAL        {getBR      ::   Relation}      
-	      | RELPRON_VAL     {getRELVAL  ::   (IO ES -> IO ES -> IO ES)}    
-	      | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
-	      | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
-	      | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO ES) -> (IO ES -> IO ES) -> (IO ES -> IO ES)) }
-		  | PREP_VAL		{getPREPVAL ::  ([([String], IO ES -> IO ES)])} -- used in "hall discovered phobos with a telescope" as "with".  
-		  | PREPN_VAL		{getPREPNVAL :: [String]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
-		  | PREPPH_VAL		{getPREPPHVAL :: ([String], IO ES -> IO ES)}
-	      | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
-	      | SENTJOIN_VAL    {getSJVAL   ::   (IO ES -> IO ES -> IO ES)}
-	      | DOT_VAL         {getDOTVAL  ::   IO String}
-	      | QM_VAL          {getQMVAL   ::   IO String}
-	      | QUEST_VAL       {getQUVAL   ::   IO String}
-	      | QUEST1_VAL      {getQU1VAL  ::   (IO ES -> IO String)}
-	      | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO String)}
-	      | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO String)}
-		  | YEAR_VAL		{getYEARVAL ::   Int}
+          | NOUNCLA_VAL     {getAVALS   ::   IO ES} 
+          | VERBPH_VAL      {getAVALS   ::   IO ES}  
+          | ADJ_VAL         {getAVALS   ::   IO ES} 
+          | TERMPH_VAL      {getTVAL    ::   (IO ES -> IO ES)}     
+          | DET_VAL         {getDVAL    ::   (IO ES -> IO ES -> IO ES)} 
+          | VERB_VAL        {getBR      ::   Relation}      
+          | RELPRON_VAL     {getRELVAL  ::   (IO ES -> IO ES -> IO ES)}    
+          | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
+          | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
+          | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO ES) -> (IO ES -> IO ES) -> (IO ES -> IO ES)) }
+          | PREP_VAL        {getPREPVAL ::  ([([String], IO ES -> IO ES)])} -- used in "hall discovered phobos with a telescope" as "with".  
+          | PREPN_VAL       {getPREPNVAL :: [String]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
+          | PREPPH_VAL      {getPREPPHVAL :: ([String], IO ES -> IO ES)}
+          | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
+          | SENTJOIN_VAL    {getSJVAL   ::   (IO ES -> IO ES -> IO ES)}
+          | DOT_VAL         {getDOTVAL  ::   IO String}
+          | QM_VAL          {getQMVAL   ::   IO String}
+          | QUEST_VAL       {getQUVAL   ::   IO String}
+          | QUEST1_VAL      {getQU1VAL  ::   (IO ES -> IO String)}
+          | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO String)}
+          | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO String)}
+          | YEAR_VAL        {getYEARVAL ::   Int}
 
 --            | RESULT [sys_message]
 data MemoL    = Start | Tree | Num | Emp | ALeaf String | Expr | Op  | ET
@@ -57,7 +57,7 @@ attFunc
 type Entity         =  String  
 type ES             =  Image -- [Int]
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
---type Relation		= (ES -> Bool) -> ES
+--type Relation     = (ES -> Bool) -> ES
 type Relation = String
 
 data DisplayTree = B [DisplayTree]
@@ -98,37 +98,37 @@ showio (QUEST2_VAL j)  = return "QUEST2_VAL"
 showio (QUEST3_VAL j)  = return "SENTJOIN_VAL"
 
 instance Eq AttValue where
-	(VAL  j)           == (VAL  j')     = True
-	(MaxVal j)         == (MaxVal j')   = True
-	(SubVal j)         == (SubVal j')   = True
-	(RepVal j)         == (RepVal j')   = True
-	(Res j)            == (Res j')      = True
-	(B_OP j)           == (B_OP j')     = True
-	(U_OP j)           == (U_OP j')     = True
-	(SENT_VAL j)       == (SENT_VAL j') = True
-	(NOUNCLA_VAL j)    == (NOUNCLA_VAL j') = True
-	(VERBPH_VAL j)     == (VERBPH_VAL j') = True
-	(ADJ_VAL j)        == (ADJ_VAL j') = True
-	(TERMPH_VAL j)     == (TERMPH_VAL j') = True
-	(DET_VAL j)        == (DET_VAL j') = True
-	(VERB_VAL j)       == (VERB_VAL j') = True
-	(RELPRON_VAL j)    == (RELPRON_VAL j') = True
-	(NOUNJOIN_VAL j)   == (NOUNJOIN_VAL j') = True
-	(VBPHJOIN_VAL j)   == (VBPHJOIN_VAL j') = True
-	(TERMPHJOIN_VAL j) == (TERMPHJOIN_VAL j') = True
-	(LINKINGVB_VAL j)  == (LINKINGVB_VAL j') = True
-	(SENTJOIN_VAL j)   == (SENTJOIN_VAL j') = True
-	(DOT_VAL j)        == (DOT_VAL j') = True
-	(QM_VAL j)         == (QM_VAL j') = True
-	(QUEST_VAL j)      == (QUEST_VAL j') = True
-	(QUEST1_VAL j)     == (QUEST1_VAL j') = True
-	(QUEST2_VAL j)     == (QUEST2_VAL j') = True
-	(QUEST3_VAL j)     == (QUEST3_VAL j') = True
-	(PREP_VAL s1)	   == (PREP_VAL s) = True
-	(PREPN_VAL s1)	   == (PREPN_VAL s) = True
-	(PREPPH_VAL s1)    == (PREPPH_VAL s) = True
-	(YEAR_VAL s1)	   == (YEAR_VAL s) = True
-	_                  == _              = False
+    (VAL  j)           == (VAL  j')     = True
+    (MaxVal j)         == (MaxVal j')   = True
+    (SubVal j)         == (SubVal j')   = True
+    (RepVal j)         == (RepVal j')   = True
+    (Res j)            == (Res j')      = True
+    (B_OP j)           == (B_OP j')     = True
+    (U_OP j)           == (U_OP j')     = True
+    (SENT_VAL j)       == (SENT_VAL j') = True
+    (NOUNCLA_VAL j)    == (NOUNCLA_VAL j') = True
+    (VERBPH_VAL j)     == (VERBPH_VAL j') = True
+    (ADJ_VAL j)        == (ADJ_VAL j') = True
+    (TERMPH_VAL j)     == (TERMPH_VAL j') = True
+    (DET_VAL j)        == (DET_VAL j') = True
+    (VERB_VAL j)       == (VERB_VAL j') = True
+    (RELPRON_VAL j)    == (RELPRON_VAL j') = True
+    (NOUNJOIN_VAL j)   == (NOUNJOIN_VAL j') = True
+    (VBPHJOIN_VAL j)   == (VBPHJOIN_VAL j') = True
+    (TERMPHJOIN_VAL j) == (TERMPHJOIN_VAL j') = True
+    (LINKINGVB_VAL j)  == (LINKINGVB_VAL j') = True
+    (SENTJOIN_VAL j)   == (SENTJOIN_VAL j') = True
+    (DOT_VAL j)        == (DOT_VAL j') = True
+    (QM_VAL j)         == (QM_VAL j') = True
+    (QUEST_VAL j)      == (QUEST_VAL j') = True
+    (QUEST1_VAL j)     == (QUEST1_VAL j') = True
+    (QUEST2_VAL j)     == (QUEST2_VAL j') = True
+    (QUEST3_VAL j)     == (QUEST3_VAL j') = True
+    (PREP_VAL s1)      == (PREP_VAL s) = True
+    (PREPN_VAL s1)     == (PREPN_VAL s) = True
+    (PREPPH_VAL s1)    == (PREPPH_VAL s) = True
+    (YEAR_VAL s1)      == (YEAR_VAL s) = True
+    _                  == _              = False
 
 
 
