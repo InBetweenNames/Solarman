@@ -4321,13 +4321,22 @@ filter_ev ev_data ((names,pred):list) ev = do
 --applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
 --given by a specific event
 --TODO: new filter_Ev
+{-filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
+filter_ev _ [] _ = return True
+filter_ev ev_data ((names,pred):list) evs = do
+	relevant_list <- mapM (\name -> getts_inverse ev_data name evs) names
+	res <- pred $ return $ concat $ relevant_list
+	if res /= [] then filter_ev ev_data list evs else return False-}
+	
+--new filter_ev: Handles prepositional phrases (IN TESTING)
 filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
 	relevant_list <- mapM (\name -> getts_inverse ev_data name evs) names
-	--relevant_list <- mapM (\ev -> mapM (\name -> getts_3 ev_data (ev, name, "?")) names) evs
 	res <- pred $ return $ concat $ relevant_list
-	if res /= [] then filter_ev ev_data list evs else return False
+	--NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
+	let relevant_evs = List.nub $ concatMap snd res 
+	if res /= [] then filter_ev ev_data list relevant_evs else return False
 
 {-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_filtered_relation ev_data rel tmph preps = do
