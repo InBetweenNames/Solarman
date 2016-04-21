@@ -118,7 +118,7 @@ interpret _ = "BLANKVALNOTUSED"
 interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
-        output <- App.main input
+        output <- App.parse input
         let formatted = render $ vcat $ output
         if null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass

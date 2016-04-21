@@ -5383,7 +5383,7 @@ test p input = unState (p ((1,[]),input) ([],[])) []
 
 
 
-main  i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
+parse i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
     
 findStart st ((s,ss):rest) | s == st   = [(s,ss)]
                            | otherwise = findStart st rest
