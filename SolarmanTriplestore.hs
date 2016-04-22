@@ -4223,7 +4223,7 @@ how_many' nph vbph =
     show $ length (intersect_entevimages nph vbph)
 how_many = liftM2 how_many'
 
-who = which (person `nounor` science_team)
+who = which ((get_members dataStore "person") `nounor` (get_members dataStore "science_team"))
 
 --New
 what' nph = if result /= [] then result else "nothing."
@@ -4253,6 +4253,7 @@ whatobj = make_prop_termphrase "object"
 
 --end of copied from gangster_v4
 
+{-
 sun     = get_members dataStore ("sun")
 planet  = get_members dataStore ("planet")
 moon    = get_members dataStore ("moon")
@@ -4275,10 +4276,13 @@ ringed  = get_members dataStore ("ringed")
 vacuumous = get_members dataStore ("vacuumous")
 exists = thing
 spin   = get_members dataStore ("spin")
+-}
 
 
+{-
 discover_intrans    = get_subjs_of_event_type dataStore ("discover_ev")
 orbit_intrans       = get_subjs_of_event_type dataStore ("orbit_ev")
+-}
 
 discover = make_relation "discover_ev" 
 discovered = discover
@@ -4293,10 +4297,11 @@ discovered' = discover'
 orbit' = make_relation "orbit_ev" 
 orbited' = orbit'
 
-hall = make_pnoun "hall"
+{-hall = make_pnoun "hall"
 phobos = make_pnoun "phobos"
 mars = make_pnoun "mars"
 refractor_telescope_1 = make_pnoun "refractor_telescope_1"
+-}
 
 make_relation ev_type tmph = make_filtered_relation dataStore ev_type [(["object"],tmph)]
 
@@ -4954,29 +4959,29 @@ truefalse        [x]
 -}
 
 dictionary = [
-    ("thing",              Cnoun,     [NOUNCLA_VAL thing]),
-    ("things",             Cnoun,     [NOUNCLA_VAL thing]),
-    ("planets",            Cnoun,     [NOUNCLA_VAL planet]),
-    ("planet",             Cnoun,     [NOUNCLA_VAL planet]),
-    ("person",             Cnoun,     [NOUNCLA_VAL person]),   
-    ("sun",                Cnoun,     [NOUNCLA_VAL sun]), 
-    ("moon",               Cnoun,     [NOUNCLA_VAL moon]), 
-    ("moons",              Cnoun,     [NOUNCLA_VAL moon]),
-    ("satellite",          Cnoun,     [NOUNCLA_VAL moon]),
-    ("satellites",         Cnoun,     [NOUNCLA_VAL moon]),
-    ("atmospheric",        Adj,       [ADJ_VAL     atmospheric]),
-    ("blue",               Adj,       [ADJ_VAL     blue]),
-    ("solid",              Adj,       [ADJ_VAL     solid]),     
-    ("brown",              Adj,       [ADJ_VAL     brown]),   
-    ("gaseous",            Adj,       [ADJ_VAL     gaseous]),  
-    ("green",              Adj,       [ADJ_VAL     green]),  
-    ("red",                Adj,       [ADJ_VAL     red]),  
-    ("ringed",             Adj,       [ADJ_VAL     ringed]),  
-    ("vacuumous",          Adj,       [ADJ_VAL     vacuumous]),
-    ("exist",              Intransvb, [VERBPH_VAL  thing]),
-    ("exists",             Intransvb, [VERBPH_VAL  thing]),
-    ("spin",               Intransvb, [VERBPH_VAL  spin]),
-    ("spins",              Intransvb, [VERBPH_VAL  spin]),
+    ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
+    ("things",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
+    ("planets",            Cnoun,     [NOUNCLA_VAL $ get_members dataStore "planet"]),
+    ("planet",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "planet"]),
+    ("person",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "person"]),   
+    ("sun",                Cnoun,     [NOUNCLA_VAL $ get_members dataStore "sun"]), 
+    ("moon",               Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]), 
+    ("moons",              Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
+    ("satellite",          Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
+    ("satellites",         Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
+    ("atmospheric",        Adj,       [ADJ_VAL $ get_members dataStore "atmospheric"]),
+    ("blue",               Adj,       [ADJ_VAL $ get_members dataStore "blue"]),
+    ("solid",              Adj,       [ADJ_VAL $ get_members dataStore "solid"]),     
+    ("brown",              Adj,       [ADJ_VAL $ get_members dataStore "brown"]),   
+    ("gaseous",            Adj,       [ADJ_VAL $ get_members dataStore "gaseous"]),  
+    ("green",              Adj,       [ADJ_VAL $ get_members dataStore "green"]),  
+    ("red",                Adj,       [ADJ_VAL $ get_members dataStore "red"]),  
+    ("ringed",             Adj,       [ADJ_VAL $ get_members dataStore "ringed"]),  
+    ("vacuumous",          Adj,       [ADJ_VAL $ get_members dataStore "vacuumous"]),
+    ("exist",              Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
+    ("exists",             Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
+    ("spin",               Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
+    ("spins",              Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
     ("the",                Det,       [DET_VAL $ a]),
     ("a",                  Det,       [DET_VAL $ a]),
     ("one",                Det,       [DET_VAL $ one]), 
@@ -5085,12 +5090,12 @@ dictionary = [
     ("how",                Quest4a,   [QUEST3_VAL     $ how_many]),
     ("many",               Quest4b,   [QUEST3_VAL     $ how_many]),
     ("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
-    ("discoverer",  Cnoun,            [NOUNCLA_VAL discover_intrans]),
-    ("discoverers", Cnoun,            [NOUNCLA_VAL discover_intrans]), 
+    ("discoverer",  Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]),
+    ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]), 
     ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
     ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
-    ("orbit",       Intransvb,        [VERBPH_VAL $ orbit_intrans]), 
-    ("orbits",      Intransvb,        [VERBPH_VAL $ orbit_intrans]),
+    ("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]), 
+    ("orbits",      Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
     ("anyone",      Indefpron,meaning_of detph   "a person" Detph),
     ("anything",    Indefpron,meaning_of detph   "a thing" Detph),
     ("anybody",     Indefpron,meaning_of detph   "a person" Detph),
@@ -5108,8 +5113,8 @@ dictionary = [
     ("at",          Prepn, [PREPN_VAL ["location"]]),
     ("by",          Prepn, [PREPN_VAL ["subject"]]),
     --Begin telescope stuff--
-    ("telescope",   Cnoun, [NOUNCLA_VAL telescope]),
-    ("telescopes",  Cnoun, [NOUNCLA_VAL telescope]),
+    ("telescope",   Cnoun, [NOUNCLA_VAL $ get_members dataStore "telescope"]),
+    ("telescopes",  Cnoun, [NOUNCLA_VAL $ get_members dataStore "telescope"]),
     ("cassegrain_telescope",            Pnoun,[TERMPH_VAL $ make_pnoun "cassegrain_telescope"]),
     ("hooker_telescope",                Pnoun,[TERMPH_VAL $ make_pnoun "hooker_telescope"]),
     ("schmidt_telescope",               Pnoun,[TERMPH_VAL $ make_pnoun "schmidt_telescope"]),
@@ -5135,8 +5140,8 @@ dictionary = [
     ("ground_based_telescope_3",        Pnoun,[TERMPH_VAL $ make_pnoun "ground_based_telescope_3"]),
     ("galilean_telescope_1",            Pnoun,[TERMPH_VAL $ make_pnoun "galilean_telescope_1"]),
     --Begin science team stuff
-    ("team",                            Cnoun, [NOUNCLA_VAL science_team]),
-    ("teams",                           Cnoun, [NOUNCLA_VAL science_team]),
+    ("team",                            Cnoun, [NOUNCLA_VAL $ get_members dataStore "science_team"]),
+    ("teams",                           Cnoun, [NOUNCLA_VAL $ get_members dataStore "science_team"]),
     ("voyager_science_team",            Pnoun,[TERMPH_VAL $ make_pnoun "voyager_science_team"]),
     ("cassini_imaging_science_team",    Pnoun,[TERMPH_VAL $ make_pnoun "cassini_imaging_science_team"]),
     ("science_team_1",                  Pnoun,[TERMPH_VAL $ make_pnoun "science_team_1"]),
@@ -5211,14 +5216,14 @@ dictionary = [
     ("soummer", Pnoun, [TERMPH_VAL $ make_pnoun "soummer"]),
     ("throop", Pnoun, [TERMPH_VAL $ make_pnoun "throop"]),
     --Begin new spacecraft stuff--
-    ("spacecraft",  Cnoun, [NOUNCLA_VAL spacecraft]),
-    ("spacecrafts", Cnoun, [NOUNCLA_VAL spacecraft]),
+    ("spacecraft",  Cnoun, [NOUNCLA_VAL $ get_members dataStore "spacecraft"]),
+    ("spacecrafts", Cnoun, [NOUNCLA_VAL $ get_members dataStore "spacecraft"]),
     ("voyager_1",   Pnoun, [TERMPH_VAL $ make_pnoun "voyager_1"]),
     ("voyager_2",   Pnoun, [TERMPH_VAL $ make_pnoun "voyager_2"]),
     ("cassini", Pnoun, [TERMPH_VAL $ make_pnoun "voyager_2"]),
     --Begin new places stuff--
-    ("place",   Cnoun, [NOUNCLA_VAL place]),
-    ("places",  Cnoun, [NOUNCLA_VAL place]),
+    ("place",   Cnoun, [NOUNCLA_VAL $ get_members dataStore "place"]),
+    ("places",  Cnoun, [NOUNCLA_VAL $ get_members dataStore "place"]),
     ("mt_hopkins", Pnoun, [TERMPH_VAL $ make_pnoun "mt_hopkins"]),
     ("fort_davis", Pnoun, [TERMPH_VAL $ make_pnoun "fort_davis"]),
     ("cerro_tololo", Pnoun, [TERMPH_VAL $ make_pnoun "cerro_tololo"]),
