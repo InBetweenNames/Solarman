@@ -4387,6 +4387,10 @@ make_inverted_filtered_relation ev_data rel preps = do
 yesno' x = if x /= [] then "yes." else "no"
 yesno = liftM yesno'
 
+does = yesno
+did = yesno
+do' = yesno
+
 --TODO: is this proper? 
 sand s1 s2 = do
     r1 <- s1
