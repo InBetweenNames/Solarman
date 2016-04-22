@@ -4954,7 +4954,7 @@ truefalse        [x]
 
 <Quest6> = what;
 
-<Intransvb> = exist | exists | spin | spins | orbit | orbits;
+<Intransvb> = exist | exists | spin | spins;
 
 -}
 

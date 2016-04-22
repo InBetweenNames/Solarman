@@ -25,7 +25,7 @@ class TripleStore m where
     getts_3 :: m -> (Event, String, String) -> IO [String]
     --getts_image computes the relation [(x,e)] such that e is an event of type ev_type
     --and x is a subject of that event.  This is a default implementation that can be overridden
-    --in instances.  Output is expected to be sorted.
+    --in instances.  Output is expected to be sorted. TODO: Update this 
     getts_image :: m -> String -> String -> IO Image
     getts_image ev_data ev_type entity_type = do
         evs <- getts_1 ev_data ("?", "type", ev_type)

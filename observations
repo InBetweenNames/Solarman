@@ -1,0 +1,5 @@
+
+make_relation is the same as make_filtered_relation with a preposition that is applied to the "object" attribute
+"by" can be treated as a preposition
+"Intransvb" not necessary for transitive events as get_subjs_of_event_type is identical to make_filtered_relation with no prepositions passed in
+

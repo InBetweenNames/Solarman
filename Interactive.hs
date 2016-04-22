@@ -1,8 +1,9 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-
 import SolarmanTriplestore as App
 import Getts as Getts
 
+discoverer = get_subjs_of_event_type dataStore "discover_ev"
+discoverers = get_subjs_of_event_type dataStore "discover_ev"
 thing = get_members dataStore "thing"
 things = get_members dataStore "things"
 planets = get_members dataStore "planets"
@@ -77,8 +78,6 @@ triton = make_pnoun "triton"
 umbriel = make_pnoun "umbriel"
 uranus = make_pnoun "uranus"
 human = get_members dataStore "human"
-discoverer = get_members dataStore "discoverer"
-discoverers = get_members dataStore "discoverers"
 humans = get_members dataStore "humans"
 people = get_members dataStore "people"
 telescope = get_members dataStore "telescope"
