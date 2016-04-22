@@ -9,17 +9,24 @@ import Data.Char
 {-Objective: generate the file Interactive.hs with variables corresponding to things in the database,
  - e.g. variable hall = make_proper "hall "-}
 
-filterDict t = filter (\(_,y,_) -> y == t) App.dictionary
+filterDict t = map (\(x,y,z) -> (x,y)) $ filter (\(_,y,_) -> y == t) App.dictionary
 
 makeFriendlyName = map toLower . replace "-" "_"
 
 v_make_pnoun name = makeFriendlyName name ++ " = make_pnoun \"" ++ name ++ "\""
 v_make_cnoun name = makeFriendlyName name ++ " = get_members dataStore \"" ++ name ++ "\""
+v_make_adj = v_make_cnoun
 
-v_discoverer_intrans = "discoverer = get_subjs_of_event_type dataStore \"discover_ev\""
-v_discoverers_intrans = "discoverers = get_subjs_of_event_type dataStore \"discover_ev\""
+v_discoverer_cnoun = "discoverer = get_subjs_of_event_type dataStore \"discover_ev\""
+v_discoverers_cnoun = "discoverers = get_subjs_of_event_type dataStore \"discover_ev\""
 
-typeActionMap = Map.fromList [(TypeAg.Pnoun, v_make_pnoun),(TypeAg.Cnoun, v_make_cnoun)]
+v_make_intrans = v_make_cnoun
+
+typeActionMap = Map.fromList 
+    [(TypeAg.Pnoun, v_make_pnoun),
+    (TypeAg.Cnoun, v_make_cnoun),
+    (TypeAg.Intransvb, v_make_intrans),
+    (TypeAg.Adj, v_make_adj)]
 
 removeUnwanted = filter (\(x,y,z) -> x /= "discoverer" && x /= "discoverers") 
 
@@ -29,7 +36,7 @@ genVariables = foldr var [] (removeUnwanted App.dictionary)
     var (name,memoL,_) list = list
 
 
-printVars handle = mapM_ (hPutStrLn handle) (v_discoverer_intrans:v_discoverers_intrans:(nub genVariables))
+printVars handle = mapM_ (hPutStrLn handle) (v_discoverer_cnoun:v_discoverers_cnoun:(nub genVariables))
 
 
 main = do
