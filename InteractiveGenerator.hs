@@ -27,7 +27,9 @@ cnounMap = Map.fromList
     ("spins", "spin"),
     ("people", "person"),
     ("human", "person"),
-    ("humans", "person")]
+    ("humans", "person"),
+    ("team", "science_team"),
+    ("teams", "science_team")]
 
 
 v_make_pnoun name = makeFriendlyName name ++ " = make_pnoun \"" ++ name ++ "\""
