@@ -3,12 +3,18 @@
 import SolarmanTriplestore as App
 import Getts as Getts
 
-discover = make_relation "discover_ev"
-discovered = make_relation "discover_ev"
-discovers = make_relation "discover_ev"
-orbit = make_relation "orbit_ev"
-orbits = make_relation "orbit_ev"
-orbited = make_relation "orbit_ev"
+discover tmph = make_filtered_relation dataStore "discover_ev" [(["object"],tmph)]
+discovered tmph = make_filtered_relation dataStore "discover_ev" [(["object"],tmph)]
+discovers tmph = make_filtered_relation dataStore "discover_ev" [(["object"],tmph)]
+discover' tmph preps = make_filtered_relation dataStore "discover_ev" $ (["object"], tmph):preps
+discovered' tmph preps = make_filtered_relation dataStore "discover_ev" $ (["object"], tmph):preps
+discovers' tmph preps = make_filtered_relation dataStore "discover_ev" $ (["object"], tmph):preps
+orbit tmph = make_filtered_relation dataStore "orbit_ev" [(["object"],tmph)]
+orbits tmph = make_filtered_relation dataStore "orbit_ev" [(["object"],tmph)]
+orbited tmph = make_filtered_relation dataStore "orbit_ev" [(["object"],tmph)]
+orbit' tmph preps = make_filtered_relation dataStore "orbit_ev" $ (["object"], tmph):preps
+orbits' tmph preps = make_filtered_relation dataStore "orbit_ev" $ (["object"], tmph):preps
+orbited' tmph preps = make_filtered_relation dataStore "orbit_ev" $ (["object"], tmph):preps
 discoverer = get_subjs_of_event_type dataStore "discover_ev"
 discoverers = get_subjs_of_event_type dataStore "discover_ev"
 thing = get_members dataStore "thing"

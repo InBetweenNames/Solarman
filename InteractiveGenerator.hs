@@ -33,8 +33,8 @@ v_discoverers_cnoun = "discoverers = get_subjs_of_event_type dataStore \"discove
 
 v_make_intrans = v_make_cnoun
 
-v_make_transvb name ev = makeFriendlyName name ++ " = make_relation \"" ++ ev ++ "\"" 
-v_make_transvb_filt name ev = makeFriendlyName name ++ "' = make_filtered_relation \"" ++ ev ++" \""
+v_make_transvb name ev = makeFriendlyName name ++ " tmph = make_filtered_relation dataStore \"" ++ ev ++ "\" [([\"object\"],tmph)]" 
+v_make_transvb_filt name ev = makeFriendlyName name ++ "' tmph preps = make_filtered_relation dataStore \"" ++ ev ++"\" $ ([\"object\"], tmph):preps"
 --v_make_transvb_inverted name ev = makeFriendlyName name ++ "_by = make_inverted_filtered_"
 
 typeActionMap = Map.fromList 
@@ -64,9 +64,15 @@ main = do
     hPutStrLn file $ v_make_transvb "discover" "discover_ev"
     hPutStrLn file $ v_make_transvb "discovered" "discover_ev"
     hPutStrLn file $ v_make_transvb "discovers" "discover_ev"
+    hPutStrLn file $ v_make_transvb_filt "discover" "discover_ev"
+    hPutStrLn file $ v_make_transvb_filt "discovered" "discover_ev"
+    hPutStrLn file $ v_make_transvb_filt "discovers" "discover_ev"
     hPutStrLn file $ v_make_transvb "orbit" "orbit_ev"
     hPutStrLn file $ v_make_transvb "orbits" "orbit_ev"
     hPutStrLn file $ v_make_transvb "orbited" "orbit_ev"
+    hPutStrLn file $ v_make_transvb_filt "orbit" "orbit_ev"
+    hPutStrLn file $ v_make_transvb_filt "orbits" "orbit_ev"
+    hPutStrLn file $ v_make_transvb_filt "orbited" "orbit_ev"
     hPutStrLn file v_discoverer_cnoun
     hPutStrLn file v_discoverers_cnoun
     printVars file

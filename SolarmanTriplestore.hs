@@ -4232,8 +4232,14 @@ what' nph = if result /= [] then result else "nothing."
     where result = unwords $ map fst nph
 what = liftM what'
 
-with :: (IO Image -> IO Image) -> (String, IO Image -> IO Image)
-with tmph = ("with_implement", tmph)
+with :: (IO Image -> IO Image) -> ([String], IO Image -> IO Image)
+with tmph = (["with_implement"], tmph)
+
+by tmph = (["subject"], tmph)
+
+at tmph = (["location"], tmph)
+
+in' tmph = (["location", "year"], make_pnoun $ show tmph)
 
 make_pnoun noun = liftM $ make_pnoun' noun
 make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
