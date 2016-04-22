@@ -2,10 +2,13 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module Interactive (module SolarmanTriplestore, module Interactive) where
 
-import Prelude(($))
-
 import SolarmanTriplestore
 import Getts
+
+a $ b = a b
+infixr 0 $
+a . b = \x -> a (b (x))
+infixr 9 .
 
 discover tmph = make_filtered_relation dataStore "discover_ev" [(["object"],tmph)]
 discover' tmph preps = make_filtered_relation dataStore "discover_ev" $ (["object"], tmph):preps
