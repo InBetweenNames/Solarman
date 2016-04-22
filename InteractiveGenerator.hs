@@ -22,7 +22,11 @@ cnounMap = Map.fromList
     ("satellites", "moon"),
     ("exist", "thing"),
     ("exists", "thing"),
-    ("spins", "spin")]
+    ("spins", "spin"),
+    ("people", "person"),
+    ("human", "person"),
+    ("humans", "person")]
+
 
 v_make_pnoun name = makeFriendlyName name ++ " = make_pnoun \"" ++ name ++ "\""
 v_make_cnoun name = makeFriendlyName name ++ " = get_members dataStore \"" ++ fromMaybe name (Map.lookup name cnounMap) ++ "\""
@@ -74,6 +78,15 @@ main = do
     verbForm file ["orbit", "orbits", "orbited"] "orbit_ev"
     hPutStrLn file v_discoverer_cnoun
     hPutStrLn file v_discoverers_cnoun
+    hPutStrLn file "anyone = a person"
+    hPutStrLn file "anything = a thing"
+    hPutStrLn file "anybody = a person"
+    hPutStrLn file "someone = a person"
+    hPutStrLn file "something = a thing"
+    hPutStrLn file "somebody = a person"
+    hPutStrLn file "everyone = every person"
+    hPutStrLn file "everything = every thing"
+    hPutStrLn file "everybody = every person"
     printVars file
     hClose file
 
