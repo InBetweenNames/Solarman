@@ -4177,8 +4177,10 @@ nounor = liftM2 nounor'
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
 a = liftM2 intersect_entevimages    
-
+any' = a
 the = a
+some = a
+an = a
 
 every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_entevimages nph vbph
                 | otherwise = []
@@ -4390,6 +4392,10 @@ yesno = liftM yesno'
 does = yesno
 did = yesno
 do' = yesno
+was = yesno
+is = yesno
+were = yesno
+are = yesno
 
 --TODO: is this proper? 
 sand s1 s2 = do
@@ -5091,6 +5097,10 @@ dictionary = [
     ("does",               Quest1,    [QUEST1_VAL     $ yesno]),
     ("did",                Quest1  ,  [QUEST1_VAL     $ yesno]),
     ("do",                 Quest1,    [QUEST1_VAL     $ yesno]),
+    ("is",                 Quest1,    [QUEST1_VAL     $ yesno]),
+    ("was",                Quest1,    [QUEST1_VAL     $ yesno]),
+    ("are",                Quest1,    [QUEST1_VAL     $ yesno]),  
+    ("were",               Quest1,    [QUEST1_VAL     $ yesno]),  
     ("what",               Quest2,    [QUEST2_VAL     $ what]),
     ("who",                Quest2,    [QUEST2_VAL     $ who]),
     ("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
