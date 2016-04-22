@@ -1,4 +1,5 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE Trustworthy #-}
 module SolarmanTriplestore where
 
 import Prelude hiding ((*>))

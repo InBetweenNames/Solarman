@@ -1,4 +1,5 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE Safe #-}
 
 import SolarmanTriplestore as App
 import Getts as Getts

@@ -1,3 +1,5 @@
+{-# LANGUAGE Trustworthy #-}
+
 import qualified SolarmanTriplestore as App
 import qualified TypeAg2 as TypeAg
 import qualified Data.Map.Strict as Map
@@ -70,6 +72,7 @@ verbForm file transVbList ev = flip mapM_ transVbList $ \transVb -> do
 main = do
     file <- openFile "Interactive.hs" WriteMode
     hPutStrLn file "{-# LANGUAGE NoMonomorphismRestriction #-}"
+    hPutStrLn file "{-# LANGUAGE Trustworthy #-}"
     hPutStrLn file ""
     hPutStrLn file "import SolarmanTriplestore as App"
     hPutStrLn file "import Getts as Getts"

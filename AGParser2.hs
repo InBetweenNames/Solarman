@@ -1,3 +1,4 @@
+{-# LANGUAGE Trustworthy #-}
 module AGParser2 where
 import Prelude hiding ((*>))
 import Text.PrettyPrint.HughesPJ as PPH hiding (empty)  -- ((PPH.<+>), vcat, text, render,($$),nest,Doc)

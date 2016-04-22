@@ -1,6 +1,6 @@
+{-# LANGUAGE Trustworthy #-}
 module TypeAg2 where
 
-import System.IO.Unsafe
 import Getts
 
 data AttValue = VAL             {getAVAL    ::   Int} 
