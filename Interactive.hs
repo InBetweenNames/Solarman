@@ -1,8 +1,11 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+module Interactive (module SolarmanTriplestore, module Interactive) where
 
-import SolarmanTriplestore as App
-import Getts as Getts
+import Prelude(($))
+
+import SolarmanTriplestore
+import Getts
 
 discover tmph = make_filtered_relation dataStore "discover_ev" [(["object"],tmph)]
 discover' tmph preps = make_filtered_relation dataStore "discover_ev" $ (["object"], tmph):preps

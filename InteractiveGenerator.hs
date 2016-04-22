@@ -72,10 +72,13 @@ verbForm file transVbList ev = flip mapM_ transVbList $ \transVb -> do
 main = do
     file <- openFile "Interactive.hs" WriteMode
     hPutStrLn file "{-# LANGUAGE NoMonomorphismRestriction #-}"
-    hPutStrLn file "{-# LANGUAGE Trustworthy #-}"
+    hPutStrLn file "{-# LANGUAGE NoImplicitPrelude #-}"
+    hPutStrLn file "module Interactive (module SolarmanTriplestore, module Interactive) where"
     hPutStrLn file ""
-    hPutStrLn file "import SolarmanTriplestore as App"
-    hPutStrLn file "import Getts as Getts"
+    hPutStrLn file "import Prelude(($))"
+    hPutStrLn file ""
+    hPutStrLn file "import SolarmanTriplestore"
+    hPutStrLn file "import Getts"
     hPutStrLn file ""
     verbForm file ["discover", "discovers", "discovered"] "discover_ev"
     verbForm file ["orbit", "orbits", "orbited"] "orbit_ev"
