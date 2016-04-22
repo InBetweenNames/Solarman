@@ -4177,7 +4177,9 @@ nounor = liftM2 nounor'
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
 a = liftM2 intersect_entevimages    
-    
+
+the = a
+
 every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_entevimages nph vbph
                 | otherwise = []
 
@@ -4982,7 +4984,7 @@ dictionary = [
     ("exists",             Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
     ("spin",               Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
     ("spins",              Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
-    ("the",                Det,       [DET_VAL $ a]),
+    ("the",                Det,       [DET_VAL $ the]),
     ("a",                  Det,       [DET_VAL $ a]),
     ("one",                Det,       [DET_VAL $ one]), 
     ("an",                 Det,       [DET_VAL $ a]), 
@@ -4997,7 +4999,7 @@ dictionary = [
     ("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
     ("cassini",            Pnoun,     [TERMPH_VAL $ make_pnoun "cassini"]),
     ("dollfus",            Pnoun,     [TERMPH_VAL $ make_pnoun "dollfus"]),
-    ("Fouuntain",          Pnoun,     [TERMPH_VAL $ make_pnoun "Fouuntain"]),
+    --("fouuntain",          Pnoun,     [TERMPH_VAL $ make_pnoun "Fouuntain"]),
     ("galileo",            Pnoun,     [TERMPH_VAL $ make_pnoun "galileo"]),
     ("hall",               Pnoun,     [TERMPH_VAL $ make_pnoun "hall"]),
     ("herschel",           Pnoun,     [TERMPH_VAL $ make_pnoun "herschel"]),
