@@ -4284,18 +4284,18 @@ discover_intrans    = get_subjs_of_event_type dataStore ("discover_ev")
 orbit_intrans       = get_subjs_of_event_type dataStore ("orbit_ev")
 -}
 
-discover = make_relation "discover_ev" 
+{-discover = make_relation "discover_ev" 
 discovered = discover
 
 orbit = make_relation "orbit_ev" 
-orbited = orbit
+orbited = orbit-}
 
 --For prepositional phrases
-discover' = make_relation "discover_ev"
+{-discover' = make_relation "discover_ev"
 discovered' = discover'
 
 orbit' = make_relation "orbit_ev" 
-orbited' = orbit'
+orbited' = orbit'-}
 
 {-hall = make_pnoun "hall"
 phobos = make_pnoun "phobos"
@@ -5094,8 +5094,8 @@ dictionary = [
     ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]), 
     ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
     ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
-    ("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]), 
-    ("orbits",      Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
+    --("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]), 
+    --("orbits",      Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
     ("anyone",      Indefpron,meaning_of detph   "a person" Detph),
     ("anything",    Indefpron,meaning_of detph   "a thing" Detph),
     ("anybody",     Indefpron,meaning_of detph   "a person" Detph),
