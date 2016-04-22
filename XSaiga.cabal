@@ -39,10 +39,10 @@ description:
 
 Library
   build-depends: base >=4.6, pretty, hsparql >=0.2, rdf4h, text, containers
-  exposed-modules: Getts, AGParser2, TypeAg2
+  exposed-modules: Getts, AGParser2, TypeAg2, SolarmanTriplestore
 
 Executable Solarman
   main-is: Main.hs             
-  other-modules:  SolarmanTriplestore   
+  --other-modules:  SolarmanTriplestore   
   build-depends:  base >=4.6, containers >=0.5, pretty >=1.1, cgi >=3001.1, rdf4h >=1.2, hsparql >=0.2, text >=0.11
-  extensions: FlexibleInstances,NoMonomorphismRestriction
+  extensions: DoAndIfThenElse,FlexibleInstances,NoMonomorphismRestriction
