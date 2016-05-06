@@ -13,7 +13,7 @@ import Debug.Trace
 import qualified LocalData as Local
 
 --change between remoteData and localData
---dataStore = remoteData
+--dataStore = Local.localData
 dataStore = remoteData -- selects database
 
 endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
