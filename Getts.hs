@@ -41,7 +41,7 @@ class TripleStore m where
         return $ condense $ sortFirst pairs
     
     --getts_members returns
-    getts_members :: (TripleStore m) => m -> String -> IO Image
+    getts_members :: m -> String -> IO Image
     getts_members ev_data set = do
         evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
         evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
