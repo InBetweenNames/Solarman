@@ -75,7 +75,7 @@ main = do
     file <- openFile "Interactive.hs" WriteMode
     hPutStrLn file "{-# LANGUAGE NoMonomorphismRestriction #-}"
     hPutStrLn file "{-# LANGUAGE NoImplicitPrelude #-}"
-    hPutStrLn file "module Interactive (module SolarmanTriplestore, module Interactive) where"
+    hPutStrLn file "module Interactive where"
     hPutStrLn file ""
     hPutStrLn file "import SolarmanTriplestore"
     hPutStrLn file "import Getts"
