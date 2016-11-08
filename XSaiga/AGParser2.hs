@@ -1,9 +1,9 @@
 {-# LANGUAGE Trustworthy #-}
-module AGParser2 where
+module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
 import Text.PrettyPrint.HughesPJ as PPH hiding (empty)  -- ((PPH.<+>), vcat, text, render,($$),nest,Doc)
 import Data.List
-import TypeAg2
+import XSaiga.TypeAg2
 import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
 

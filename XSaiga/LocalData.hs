@@ -1,6 +1,6 @@
 {-# LANGUAGE Safe #-}
 
-module LocalData where
+module XSaiga.LocalData where
 
 localData = [("event1000", "object", "sol"), 
     ("event1000", "subject", "mercury"), 

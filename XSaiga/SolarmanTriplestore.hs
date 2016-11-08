@@ -1,16 +1,16 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE Trustworthy #-}
-module SolarmanTriplestore where
+module XSaiga.SolarmanTriplestore where
 
 import Prelude hiding ((*>))
-import Getts
+import XSaiga.Getts
 import Data.List as List
 import qualified Data.Set as Set
-import AGParser2
-import TypeAg2
+import XSaiga.AGParser2
+import XSaiga.TypeAg2
 import Control.Monad
 import Debug.Trace
-import qualified LocalData as Local
+import qualified XSaiga.LocalData as Local
 
 --change between remoteData and localData
 --dataStore = Local.localData

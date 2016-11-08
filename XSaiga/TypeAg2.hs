@@ -1,7 +1,7 @@
 {-# LANGUAGE Trustworthy #-}
-module TypeAg2 where
+module XSaiga.TypeAg2 where
 
-import Getts
+import XSaiga.Getts
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 

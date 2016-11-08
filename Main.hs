@@ -1,7 +1,8 @@
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE DoAndIfThenElse #-}
 
 module Main where
-import qualified SolarmanTriplestore as App
+import qualified XSaiga.SolarmanTriplestore as App
 import Text.PrettyPrint.HughesPJ
 import Network.CGI
 

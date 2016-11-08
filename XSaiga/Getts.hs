@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module Getts where
+module XSaiga.Getts where
 import Data.List
 import Control.Monad
 import Debug.Trace

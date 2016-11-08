@@ -1,9 +1,9 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoImplicitPrelude #-}
-module Interactive where
+module XSaiga.Interactive where
 
-import SolarmanTriplestore
-import Getts
+import XSaiga.SolarmanTriplestore
+import XSaiga.Getts
 
 a $ b = a b
 infixr 0 $

@@ -1,7 +1,7 @@
 {-# LANGUAGE Trustworthy #-}
 
-import qualified SolarmanTriplestore as App
-import qualified TypeAg2 as TypeAg
+import qualified XSaiga.SolarmanTriplestore as App
+import qualified XSaiga.TypeAg2 as TypeAg
 import qualified Data.Map.Strict as Map
 import System.IO
 import Data.String.Utils
@@ -75,10 +75,10 @@ main = do
     file <- openFile "Interactive.hs" WriteMode
     hPutStrLn file "{-# LANGUAGE NoMonomorphismRestriction #-}"
     hPutStrLn file "{-# LANGUAGE NoImplicitPrelude #-}"
-    hPutStrLn file "module Interactive where"
+    hPutStrLn file "module XSaiga.Interactive where"
     hPutStrLn file ""
-    hPutStrLn file "import SolarmanTriplestore"
-    hPutStrLn file "import Getts"
+    hPutStrLn file "import XSaiga.SolarmanTriplestore"
+    hPutStrLn file "import XSaiga.Getts"
     hPutStrLn file ""
     hPutStrLn file "a $ b = a b"
     hPutStrLn file "infixr 0 $"
