@@ -1,6 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoImplicitPrelude #-}
-module Interactive (module SolarmanTriplestore, module Interactive) where
+module Interactive where
 
 import SolarmanTriplestore
 import Getts

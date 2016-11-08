@@ -1,4 +1,3 @@
-#!/opt/csw/bin/runhaskell
 {-# LANGUAGE Trustworthy #-}
 
 module Main where

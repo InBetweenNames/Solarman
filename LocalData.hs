@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 module LocalData where
 
 localData = [("event1000", "object", "sol"), 

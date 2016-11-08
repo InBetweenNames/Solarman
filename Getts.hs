@@ -1,6 +1,6 @@
+{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE Trustworthy #-}
 
 module Getts where
 import Data.List
@@ -257,6 +257,8 @@ collect = condense . sortFirst
     
 --condense computes the image under a sorted relation
 --condense runs in O(n) time and is lazy, also is lazy in the list computed in each tuple
+--TODO: Use Map.toList/fromList to simplify?  Benchmark.
+--In particular: Should unstableSortBy be used?
 condense :: (Eq a, Ord a) => [(a, a)] -> [(a, [a])]
 condense [] = []
 condense ((x,y):t) = (x, y:a):(condense r)
