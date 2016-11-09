@@ -3,7 +3,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 module XSaiga.Getts where
-import Data.List
+import Data.List as List
 import Control.Monad
 import Debug.Trace
 
@@ -12,6 +12,9 @@ import Data.RDF hiding (triple, Triple)
 import Database.HSparql.Connection
 import Database.HSparql.QueryGenerator
 import Data.Text hiding (head, concat, map, zip, drop, length)
+
+--For caching name lookup
+import qualified Network.Socket as Net
 
 import qualified Data.Map as M
 import Data.IORef
@@ -61,7 +64,23 @@ instance TripleStore [Triple] where
     getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
 
 data SPARQLBackend = SPARQL String String deriving (Ord, Eq)
-    
+
+endpointTable :: IORef (M.Map String String)
+endpointTable = unsafePerformIO $ newIORef M.empty
+
+lookupEndpoint :: String -> IO String
+lookupEndpoint url = do
+  m <- readIORef endpointTable
+  case M.lookup (url) m of
+    Nothing -> Net.getAddrInfo Nothing (Just $ getServer url) (Just "http") >>=
+      \x -> (writeIORef endpointTable (M.insert url (newURL (showAddress x) (getURLPath url)) m) >> return (newURL (showAddress x) (getURLPath url)))
+    Just res -> return res
+  where
+  getServer = List.takeWhile (\x -> '/' /= x) . drop 7
+  showAddress = show . Net.addrAddress . head
+  getURLPath xs = drop (7 + (length $ getServer xs)) xs
+  newURL server path = "http://" ++ server ++ path
+
 --the String in this instance is to be the endpoint that you wish to query
 instance TripleStore SPARQLBackend where
     --getts_1 =  getts_1''
@@ -71,7 +90,8 @@ instance TripleStore SPARQLBackend where
             where
             getts_1' :: (t, Text, Text) -> IO [[BindingValue]]
             getts_1' (a, b, c) = do
-                 (Just s) <- selectQuery endpoint getts_1_query
+                 resolvedEndpoint <- lookupEndpoint endpoint
+                 (Just s) <- selectQuery resolvedEndpoint getts_1_query
                  return s
                  where
                    getts_1_query = do 
@@ -86,7 +106,8 @@ instance TripleStore SPARQLBackend where
             where
                 getts_2' :: (Text, Text, Text) -> IO [[BindingValue]]
                 getts_2' (a, b, c) = do
-                     (Just s) <- selectQuery endpoint getts_2_query  
+                     resolvedEndpoint <- lookupEndpoint endpoint
+                     (Just s) <- selectQuery resolvedEndpoint getts_2_query  
                      return s
                      where
                        getts_2_query = do 
@@ -101,7 +122,8 @@ instance TripleStore SPARQLBackend where
             where
                 getts_3' :: (Text, Text, Text) -> IO [[BindingValue]]
                 getts_3' (a, b, c) = do
-                     (Just s) <- selectQuery endpoint getts_3_query  
+                     resolvedEndpoint <- lookupEndpoint endpoint
+                     (Just s) <- selectQuery resolvedEndpoint getts_3_query  
                      return s
                      where
                        getts_3_query = do 
@@ -113,7 +135,8 @@ instance TripleStore SPARQLBackend where
     getts_image = memoIO''' getts_image'''
         where
         getts_image''' (SPARQL endpoint namespace_uri) ev_type en_type = do
-                m <- selectQuery endpoint query
+                resolvedEndpoint <- lookupEndpoint endpoint
+                m <- selectQuery resolvedEndpoint query
                 case m of
                     (Just res) -> return $ condense $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
                     Nothing -> return []
@@ -133,7 +156,8 @@ instance TripleStore SPARQLBackend where
     getts_inverse = memoIO'' getts_inverse''
         where
         getts_inverse'' (SPARQL endpoint namespace_uri) en_type evs = do
-            m <- selectQuery endpoint query
+            resolvedEndpoint <- lookupEndpoint endpoint
+            m <- selectQuery resolvedEndpoint query
             case m of
                 (Just res) -> return $ condense $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
                 Nothing -> return []
@@ -143,7 +167,7 @@ instance TripleStore SPARQLBackend where
                     subj <- var
                     ev <- var
                     triple ev (sol .:. (pack en_type)) subj
-                    filterExpr $ regex ev $ (pack $ Data.List.intercalate "|" (map (++ "$") evs))
+                    filterExpr $ regex ev $ (pack $ List.intercalate "|" (map (++ "$") evs))
                     --Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
                     distinct
                     return SelectQuery { queryVars = [subj,ev] } 
@@ -154,7 +178,8 @@ instance TripleStore SPARQLBackend where
     --getts_members = getts_members'
         where
         getts_members' (SPARQL endpoint namespace_uri) set = do
-            m <- selectQuery endpoint query
+            resolvedEndpoint <- lookupEndpoint endpoint
+            m <- selectQuery resolvedEndpoint query
             case m of
                 (Just res) -> return $ condense $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
                 Nothing -> return []
