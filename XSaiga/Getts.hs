@@ -44,7 +44,7 @@ class TripleStore m where
         pairs <- liftM concat $ mapM (\ev -> do
             ents <- getts_3 ev_data (ev, entity_type,"?")
             return $ zip ents (repeat ev)) evs
-        return $ condense $ sortFirst pairs
+        return $ collect pairs
     
     --getts_members returns
     getts_members :: m -> String -> IO Image
