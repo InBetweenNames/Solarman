@@ -173,6 +173,7 @@ instance TripleStore SPARQLBackend where
                     triple ev (sol .:. (pack en_type)) subj
                     filterExpr $ regex ev $ (pack $ List.intercalate "|" (map (++ "$") evs))
                     --Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
+                    orderNext subj
                     distinct
                     return SelectQuery { queryVars = [subj,ev] } 
                 
