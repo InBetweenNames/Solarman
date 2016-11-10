@@ -7,6 +7,9 @@ import Data.List as List
 import Control.Monad
 import Debug.Trace
 
+--For slow collect
+import qualified Data.Map.Strict as Map
+
 --For endpoint query
 import Data.RDF hiding (triple, Triple)
 import Database.HSparql.Connection
@@ -278,21 +281,25 @@ will be chosen to represent the entire equivalence class in the output.
 -}
     
 --Faster collect: runs in n lg n time
-collect = condense . sortFirst
-    
+--collect = condense . sortFirst
+collect = Map.toList . Map.fromListWith (++) . map (\(x, y) -> (x, [y]))
+
 --condense computes the image under a sorted relation
 --condense runs in O(n) time and is lazy, also is lazy in the list computed in each tuple
 --TODO: Use Map.toList/fromList to simplify?  Benchmark.
 --In particular: Should unstableSortBy be used?
-condense :: (Eq a, Ord a) => [(a, a)] -> [(a, [a])]
-condense [] = []
-condense ((x,y):t) = (x, y:a):(condense r)
-    where 
-    (a, r) = findall x t
-    findall x [] = ([], [])
-    findall x list@((t,y):ts) | x /= t = ([], list)
-    findall x ((t,y):ts) | x == t = let (a2, t2) = (findall x ts) in (y:a2, t2)
+--condense :: (Eq a, Ord a) => [(a, a)] -> [(a, [a])]
+--condense [] = []
+--condense ((x,y):t) = (x, y:a):(condense r)
+--    where 
+--    (a, r) = findall x t
+--    findall x [] = ([], [])
+--    findall x list@((t,y):ts) | x /= t = ([], list)
+--    findall x ((t,y):ts) | x == t = let (a2, t2) = (findall x ts) in (y:a2, t2)
 
+condense = map (\list -> (fst $ head list, map snd list)) . List.groupBy cmp
+  where
+  cmp x y = (fst x) == (fst y)
 
 --make_image accepts an event type as input, determines all subjects for
 --all events of that type, and computes the image under the relation
