@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                XSaiga
-version:             1.4.0.0
+version:             1.4.0.1
 synopsis:            An implementation of a polynomial-time top-down parser suitable for NLP
 -- description:
 homepage:            http://hafiz.myweb.cs.uwindsor.ca/proHome.html
