@@ -79,6 +79,7 @@ main = do
     hPutStrLn file ""
     hPutStrLn file "import XSaiga.SolarmanTriplestore"
     hPutStrLn file "import XSaiga.Getts"
+    hPutStrLn file "import Control.Monad"
     hPutStrLn file ""
     hPutStrLn file "a $ b = a b"
     hPutStrLn file "infixr 0 $"
