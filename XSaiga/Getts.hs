@@ -36,11 +36,11 @@ class TripleStore m where
     getts_image :: m -> String -> String -> IO Image
     getts_image ev_data ev_type entity_type = do
         evs <- getts_1 ev_data ("?", "type", ev_type)
-        getts_inverse ev_data entity_type evs
+        getts_preimage ev_data entity_type evs
         
-    --getts_inverse returns the entities of entity_type of the events in the list evs
-    getts_inverse :: m -> String -> [Event] -> IO Image
-    getts_inverse ev_data entity_type evs = do
+    --getts_preimage returns the entities of entity_type of the events in the list evs
+    getts_preimage :: m -> String -> [Event] -> IO Image
+    getts_preimage ev_data entity_type evs = do
         pairs <- liftM concat $ mapM (\ev -> do
             ents <- getts_3 ev_data (ev, entity_type,"?")
             return $ zip ents (repeat ev)) evs
@@ -51,7 +51,7 @@ class TripleStore m where
     getts_members ev_data set = do
         evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
         evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
-        getts_inverse ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
+        getts_preimage ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
             
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
@@ -156,10 +156,10 @@ instance TripleStore SPARQLBackend where
                         distinct
                         return SelectQuery { queryVars = [subj,ev] }
     
-    --Efficient implementation of getts_inverse for SPARQL backend
-    getts_inverse = memoIO'' getts_inverse''
+    --Efficient implementation of getts_preimage for SPARQL backend
+    getts_preimage = memoIO'' getts_preimage''
         where
-        getts_inverse'' (SPARQL endpoint namespace_uri) en_type evs = do
+        getts_preimage'' (SPARQL endpoint namespace_uri) en_type evs = do
             resolvedEndpoint <- lookupEndpoint endpoint
             m <- selectQuery resolvedEndpoint query
             case m of

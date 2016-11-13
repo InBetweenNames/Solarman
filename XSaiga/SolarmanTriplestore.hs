@@ -123,7 +123,7 @@ make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 --TODO: Handle case where nothing is in props (return none)
 make_prop_termphrase prop nph = do
     list <- nph
-    props <- mapM (\(_,y) -> getts_inverse dataStore prop y >>= \loc -> return (map fst loc)) list
+    props <- mapM (\(_,y) -> getts_preimage dataStore prop y >>= \loc -> return (map fst loc)) list
     let finalList = unwords $ List.nub $ concat props
     return $ if finalList /= [] then finalList else "nothing."
 
@@ -214,7 +214,7 @@ filter_ev ev_data ((names,pred):list) ev = do
 {-filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
-    relevant_list <- mapM (\name -> getts_inverse ev_data name evs) names
+    relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
     res <- pred $ return $ concat $ relevant_list
     if res /= [] then filter_ev ev_data list evs else return False-}
     
@@ -222,7 +222,7 @@ filter_ev ev_data ((names,pred):list) evs = do
 filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
-    relevant_list <- mapM (\name -> getts_inverse ev_data name evs) names
+    relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
     res <- pred $ return $ concat $ relevant_list
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
     let relevant_evs = List.nub $ concatMap snd res 
