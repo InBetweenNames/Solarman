@@ -30,16 +30,16 @@ class TripleStore m where
     getts_1 :: m -> (Event, String, String) -> IO [String]
     getts_2 :: m -> (Event, String, String) -> IO [String]
     getts_3 :: m -> (Event, String, String) -> IO [String]
-    --getts_image computes the relation [(x,e)] such that e is an event of type ev_type
-    --and x is a subject of that event.  This is a default implementation that can be overridden
-    --in instances.  Output is expected to be sorted. TODO: Update this 
-    getts_image :: m -> String -> String -> IO Image
-    getts_image ev_data ev_type entity_type = do
+    --getts_fdbr computes the function defined by the entity-event relation r
+    --where r is the relation between entities of type entity_type
+    --and events of type event_type
+    getts_fdbr :: m -> String -> String -> IO FDBR
+    getts_fdbr ev_data ev_type entity_type = do
         evs <- getts_1 ev_data ("?", "type", ev_type)
         getts_preimage ev_data entity_type evs
         
     --getts_preimage returns the entities of entity_type of the events in the list evs
-    getts_preimage :: m -> String -> [Event] -> IO Image
+    getts_preimage :: m -> String -> [Event] -> IO FDBR
     getts_preimage ev_data entity_type evs = do
         pairs <- liftM concat $ mapM (\ev -> do
             ents <- getts_3 ev_data (ev, entity_type,"?")
@@ -47,7 +47,7 @@ class TripleStore m where
         return $ collect pairs
     
     --getts_members returns
-    getts_members :: m -> String -> IO Image
+    getts_members :: m -> String -> IO FDBR
     getts_members ev_data set = do
         evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
         evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
@@ -58,7 +58,7 @@ sortFirst = sortBy (\x y -> compare (fst x) (fst y))
 
 type Event = String
 type Triple = (Event, String, String)
-type Image = [(String,[Event])]
+type FDBR = [(String,[Event])]
 
 --For the "In Program" triple store
 instance TripleStore [Triple] where
@@ -135,10 +135,10 @@ instance TripleStore SPARQLBackend where
                           triple (iriRef a) (iriRef b) x
                           distinct
                           return SelectQuery { queryVars = [x] }
-    --Efficient implementation of getts_image for SPARQL backend
-    getts_image = memoIO''' getts_image'''
+    --Efficient implementation of getts_fdbr for SPARQL backend
+    getts_fdbr = memoIO''' getts_fdbr'''
         where
-        getts_image''' (SPARQL endpoint namespace_uri) ev_type en_type = do
+        getts_fdbr''' (SPARQL endpoint namespace_uri) ev_type en_type = do
                 resolvedEndpoint <- lookupEndpoint endpoint
                 m <- selectQuery resolvedEndpoint query
                 case m of
@@ -229,33 +229,33 @@ memoIO f a x = do
         Nothing -> f a x >>= \q -> (writeIORef memotable (M.insert (a,x) q m) >> return q)
         Just r -> return r
         
-memotable' :: IORef (M.Map (SPARQLBackend,String) Image)
+memotable' :: IORef (M.Map (SPARQLBackend,String) FDBR)
 {-# NOINLINE memotable' #-}
 memotable' = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO' ::(SPARQLBackend -> (String) -> IO Image) -> SPARQLBackend -> (String) -> IO Image
+memoIO' ::(SPARQLBackend -> (String) -> IO FDBR) -> SPARQLBackend -> (String) -> IO FDBR
 memoIO' f a x = do
     m <- readIORef memotable'
     case M.lookup (a,x) m of
         Nothing -> f a x >>= \q -> (writeIORef memotable' (M.insert (a,x) q m) >> return q)
         Just r -> return r
         
-memotable'' :: IORef (M.Map (SPARQLBackend,String,[String]) Image)
+memotable'' :: IORef (M.Map (SPARQLBackend,String,[String]) FDBR)
 {-# NOINLINE memotable'' #-}
 memotable'' = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO'' ::(SPARQLBackend -> String -> [String] -> IO Image) -> SPARQLBackend -> String -> [String] -> IO Image
+memoIO'' ::(SPARQLBackend -> String -> [String] -> IO FDBR) -> SPARQLBackend -> String -> [String] -> IO FDBR
 memoIO'' f a x y = do
     m <- readIORef memotable''
     case M.lookup (a,x,y) m of
         Nothing -> f a x y >>= \q -> (writeIORef memotable'' (M.insert (a,x,y) q m) >> return q)
         Just r -> return r
         
-memotable''' :: IORef (M.Map (SPARQLBackend,String,String) Image)
+memotable''' :: IORef (M.Map (SPARQLBackend,String,String) FDBR)
 {-# NOINLINE memotable''' #-}
 memotable''' = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO''' ::(SPARQLBackend -> String -> String -> IO Image) -> SPARQLBackend -> String -> String -> IO Image
+memoIO''' ::(SPARQLBackend -> String -> String -> IO FDBR) -> SPARQLBackend -> String -> String -> IO FDBR
 memoIO''' f a x y = do
     m <- readIORef memotable'''
     case M.lookup (a,x,y) m of
@@ -264,12 +264,12 @@ memoIO''' f a x y = do
 
         
 --Get members of named set
-get_members :: (TripleStore m) => m -> String -> IO Image
+get_members :: (TripleStore m) => m -> String -> IO FDBR
 get_members = getts_members
     
 --Get all subjects of a given event type
-get_subjs_of_event_type :: (TripleStore m) => m -> String -> IO Image
-get_subjs_of_event_type ev_data ev_type = make_image ev_data ev_type "subject"
+get_subjs_of_event_type :: (TripleStore m) => m -> String -> IO FDBR
+get_subjs_of_event_type ev_data ev_type = make_fdbr ev_data ev_type "subject"
 
 
 {-collect accepts a binary relation as input and computes the image img of each
@@ -307,11 +307,8 @@ condense = map (\list -> (fst $ head list, map snd list)) . List.groupBy cmp
   where
   cmp x y = (fst x) == (fst y)
 
---make_image accepts an event type as input, determines all subjects for
---all events of that type, and computes the image under the relation
---for each subject as described in the collect function
---Arguments: triple store, Event type (i.e. join_rel), Entity type (i.e. subject, object)
-make_image :: (TripleStore m) => m -> String -> String -> IO Image
-make_image = getts_image 
+--alias for getts_fdbr
+make_fdbr :: (TripleStore m) => m -> String -> String -> IO FDBR
+make_fdbr = getts_fdbr 
     
     

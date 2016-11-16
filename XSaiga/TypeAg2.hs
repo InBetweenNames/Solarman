@@ -55,7 +55,7 @@ attFunc
    ]
 -}
 type Entity         =  String  
-type ES             =  Image -- [Int]
+type ES             =  FDBR -- [Int]
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
 --type Relation     = (ES -> Bool) -> ES
 type Relation = String

@@ -106,7 +106,7 @@ what' nph = if result /= [] then result else "nothing."
     where result = unwords $ map fst nph
 what = liftM what'
 
-with :: (IO Image -> IO Image) -> ([String], IO Image -> IO Image)
+with :: (IO FDBR -> IO FDBR) -> ([String], IO FDBR -> IO FDBR)
 with tmph = (["with_implement"], tmph)
 
 by tmph = (["subject"], tmph)
@@ -190,7 +190,7 @@ make_relation ev_type tmph = make_filtered_relation dataStore ev_type [(["object
                 
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
-        images <- make_image ev_data rel "object"
+        images <- make_fdbr ev_data rel "object"
         objPairs <- filterM (\(_, evs) ->
             tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "subject", "?")) evs) images
         return $ map fst objPairs-}
@@ -211,7 +211,7 @@ filter_ev ev_data ((names,pred):list) ev = do
 --applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
 --given by a specific event
 --TODO: new filter_Ev
-{-filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
+{-filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
     relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
@@ -219,7 +219,7 @@ filter_ev ev_data ((names,pred):list) evs = do
     if res /= [] then filter_ev ev_data list evs else return False-}
     
 --new filter_ev: Handles prepositional phrases (IN TESTING)
-filter_ev :: (TripleStore m) => m -> [([String], IO Image -> IO Image)] -> [Event] -> IO Bool
+filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
     relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
@@ -230,21 +230,21 @@ filter_ev ev_data ((names,pred):list) evs = do
 
 {-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_filtered_relation ev_data rel tmph preps = do
-    images <- make_image ev_data rel "subject"
+    images <- make_fdbr ev_data rel "subject"
     subPairs <- filterM (\(_, evs) -> do
         filtEvents <- filterM (filter_ev ev_data preps) evs
         tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
     return $ map fst subPairs-}
     
 --Modified version of make_filtered_relation to accomodate new filter_ev
-make_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO Image -> IO Image)] -> IO Image
+make_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
 make_filtered_relation ev_data rel preps = do
-    images <- make_image ev_data rel "subject"
+    images <- make_fdbr ev_data rel "subject"
     filterM (\(_, evs) -> filter_ev ev_data preps evs) images
     
 {-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_inverted_filtered_relation ev_data rel preps = do
-    images <- make_image ev_data rel "object"
+    images <- make_fdbr ev_data rel "object"
     objPairs <- filterM (\(_, evs) -> anyM (filter_ev ev_data preps) evs) images
     return $ map fst objPairs
     where
@@ -252,9 +252,9 @@ make_inverted_filtered_relation ev_data rel preps = do
         anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst -}
 
 --Modified version of make_inverted_filtered_relation to accomodate new filter_ev
-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO Image -> IO Image)] -> IO Image
+make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
 make_inverted_filtered_relation ev_data rel preps = do
-    images <- make_image ev_data rel "object"
+    images <- make_fdbr ev_data rel "object"
     filterM (\(_, evs) -> filter_ev ev_data preps evs) images
 
 --Copied from old solarman:
