@@ -1,3 +1,5 @@
+module CmdLineInterface where
+
 import XSaiga.SolarmanTriplestore
 import System.Environment
 

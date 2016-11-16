@@ -70,7 +70,7 @@ data SPARQLBackend = SPARQL String String deriving (Ord, Eq)
 
 endpointTable :: IORef (M.Map String String)
 {-# NOINLINE endpointTable #-}
-endpointTable = unsafePerformIO $ newIORef M.empty
+endpointTable = unsafeDupablePerformIO $ newIORef M.empty
 
 lookupEndpoint :: String -> IO String
 lookupEndpoint url = do
@@ -220,7 +220,7 @@ deconstruct value = do
 
 memotable :: IORef (M.Map (SPARQLBackend,(String,String,String)) [String])
 {-# NOINLINE memotable #-}
-memotable = unsafePerformIO $ newIORef M.empty
+memotable = unsafeDupablePerformIO $ newIORef M.empty
 
 memoIO ::(SPARQLBackend -> (String, String, String) -> IO [String]) -> SPARQLBackend -> (String, String, String) -> IO [String]
 memoIO f a x = do
@@ -231,7 +231,7 @@ memoIO f a x = do
         
 memotable' :: IORef (M.Map (SPARQLBackend,String) Image)
 {-# NOINLINE memotable' #-}
-memotable' = unsafePerformIO $ newIORef M.empty
+memotable' = unsafeDupablePerformIO $ newIORef M.empty
 
 memoIO' ::(SPARQLBackend -> (String) -> IO Image) -> SPARQLBackend -> (String) -> IO Image
 memoIO' f a x = do
@@ -242,7 +242,7 @@ memoIO' f a x = do
         
 memotable'' :: IORef (M.Map (SPARQLBackend,String,[String]) Image)
 {-# NOINLINE memotable'' #-}
-memotable'' = unsafePerformIO $ newIORef M.empty
+memotable'' = unsafeDupablePerformIO $ newIORef M.empty
 
 memoIO'' ::(SPARQLBackend -> String -> [String] -> IO Image) -> SPARQLBackend -> String -> [String] -> IO Image
 memoIO'' f a x y = do
@@ -253,7 +253,7 @@ memoIO'' f a x y = do
         
 memotable''' :: IORef (M.Map (SPARQLBackend,String,String) Image)
 {-# NOINLINE memotable''' #-}
-memotable''' = unsafePerformIO $ newIORef M.empty
+memotable''' = unsafeDupablePerformIO $ newIORef M.empty
 
 memoIO''' ::(SPARQLBackend -> String -> String -> IO Image) -> SPARQLBackend -> String -> String -> IO Image
 memoIO''' f a x y = do
