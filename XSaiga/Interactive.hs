@@ -4,6 +4,7 @@ module XSaiga.Interactive where
 
 import XSaiga.SolarmanTriplestore
 import XSaiga.Getts
+import Control.Monad
 
 a $ b = a b
 infixr 0 $
@@ -45,6 +46,8 @@ somebody = a person
 everyone = every person
 everything = every thing
 everybody = every person
+telescopes = telescope
+places = place
 thing = get_members dataStore "thing"
 things = get_members dataStore "thing"
 planets = get_members dataStore "planet"
@@ -134,7 +137,6 @@ human = get_members dataStore "person"
 humans = get_members dataStore "person"
 people = get_members dataStore "person"
 telescope = get_members dataStore "telescope"
-telescopes = get_members dataStore "telescopes"
 cassegrain_telescope = make_pnoun "cassegrain_telescope"
 hooker_telescope = make_pnoun "hooker_telescope"
 schmidt_telescope = make_pnoun "schmidt_telescope"
@@ -238,7 +240,6 @@ spacecrafts = get_members dataStore "spacecrafts"
 voyager_1 = make_pnoun "voyager_1"
 voyager_2 = make_pnoun "voyager_2"
 place = get_members dataStore "place"
-places = get_members dataStore "places"
 mt_hopkins = make_pnoun "mt_hopkins"
 fort_davis = make_pnoun "fort_davis"
 cerro_tololo = make_pnoun "cerro_tololo"

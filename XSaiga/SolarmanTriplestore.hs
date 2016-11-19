@@ -19,12 +19,12 @@ dataStore = remoteData -- selects database
 endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
 namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
 remoteData = SPARQL endpoint_uri namespace_uri
-    
+
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
 
 makeset x = Set.toList $ Set.fromList x
-    
+
 --copied from gangster_v4: combinators
 termor tmph1 tmph2 ents =
         liftM List.nub $ liftM2 (++) (tmph1 ents) (tmph2 ents) --TODO: MERGE IMAGES PROPER
@@ -36,19 +36,20 @@ termand tmph1 tmph2 ents = do
         --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
         --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
 
-intersect_entevimages eei1  eei2 
+--TODO: FDBRs are sorted.  Use that to improve this.
+intersect_entevimages eei1  eei2
                 = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]
-        
+
 that = nounand
 
 nounand = liftM2 intersect_entevimages
 
 nounor' s t = List.nub(s ++ t)
 nounor = liftM2 nounor'
-       
+
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
-a = liftM2 intersect_entevimages    
+a = liftM2 intersect_entevimages
 any' = a
 the = a
 some = a
@@ -59,32 +60,31 @@ every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_entevimages np
 
 every = liftM2 every'
 
-{- TODO: 
+{- TODO:
 no' nph vbph =
     length (intersect nph vbph) == 0
 no = liftM2 no'
 -}
-    
+
 {- TODO:
 none' nph vbph =
     no nph vbph
 none = liftM2 none'
 -}
-  
+
 one' nph vbph   | length (res) == 1 = res
                 | otherwise = []
     where
     res = intersect_entevimages  nph vbph
-    
+
 one = liftM2 one'
 
 two' nph vbph   | length (res) == 2 = res
                 | otherwise = []
     where
     res = intersect_entevimages  nph vbph
-    
+
 two = liftM2 two'
-  
 
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
@@ -94,7 +94,7 @@ which nph vbph = do
     vbph_ <- vbph
     let result = unwords $ map fst $ intersect_entevimages nph_ vbph_
     return $ if result /= [] then result else "none."
-    
+
 how_many' nph vbph =
     show $ length (intersect_entevimages nph vbph)
 how_many = liftM2 how_many'
@@ -132,7 +132,6 @@ when' = make_prop_termphrase "year"
 how' = make_prop_termphrase "with_implement"
 whatobj = make_prop_termphrase "object"
 
-
 --end of copied from gangster_v4
 
 {-
@@ -160,23 +159,22 @@ exists = thing
 spin   = get_members dataStore ("spin")
 -}
 
-
 {-
 discover_intrans    = get_subjs_of_event_type dataStore ("discover_ev")
 orbit_intrans       = get_subjs_of_event_type dataStore ("orbit_ev")
 -}
 
-{-discover = make_relation "discover_ev" 
+{-discover = make_relation "discover_ev"
 discovered = discover
 
-orbit = make_relation "orbit_ev" 
+orbit = make_relation "orbit_ev"
 orbited = orbit-}
 
 --For prepositional phrases
 {-discover' = make_relation "discover_ev"
 discovered' = discover'
 
-orbit' = make_relation "orbit_ev" 
+orbit' = make_relation "orbit_ev"
 orbited' = orbit'-}
 
 {-hall = make_pnoun "hall"
@@ -187,14 +185,13 @@ refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 
 make_relation ev_type tmph = make_filtered_relation dataStore ev_type [(["object"],tmph)]
 
-                
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
         images <- make_fdbr ev_data rel "object"
         objPairs <- filterM (\(_, evs) ->
             tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "subject", "?")) evs) images
         return $ map fst objPairs-}
-        
+
 --Prepositional filtering
 
 --filter_ev takes a list of ([String], IO [String] -> IO Bool) where the [String] is the list of identifiers corresponding
@@ -205,7 +202,7 @@ filter_ev ev_data ((names,pred):list) ev = do
     relevant_list <- mapM (\name -> getts_3 ev_data (ev, name, "?")) names
     res <- pred $ return $ concat relevant_list
     if res then filter_ev ev_data list ev else return False-}
-    
+
 --Modified filter_ev to accommodate predicates like every, one, two, etc...
 --The difference is that it concatenates the data the preposition predicate needs to evaluate across all events and
 --applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
@@ -217,7 +214,7 @@ filter_ev ev_data ((names,pred):list) evs = do
     relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
     res <- pred $ return $ concat $ relevant_list
     if res /= [] then filter_ev ev_data list evs else return False-}
-    
+
 --new filter_ev: Handles prepositional phrases (IN TESTING)
 filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
@@ -225,7 +222,7 @@ filter_ev ev_data ((names,pred):list) evs = do
     relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
     res <- pred $ return $ concat $ relevant_list
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
-    let relevant_evs = List.nub $ concatMap snd res 
+    let relevant_evs = List.nub $ concatMap snd res
     if res /= [] then filter_ev ev_data list relevant_evs else return False
 
 {-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
@@ -235,13 +232,13 @@ make_filtered_relation ev_data rel tmph preps = do
         filtEvents <- filterM (filter_ev ev_data preps) evs
         tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
     return $ map fst subPairs-}
-    
+
 --Modified version of make_filtered_relation to accomodate new filter_ev
 make_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
 make_filtered_relation ev_data rel preps = do
     images <- make_fdbr ev_data rel "subject"
     filterM (\(_, evs) -> filter_ev ev_data preps evs) images
-    
+
 {-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_inverted_filtered_relation ev_data rel preps = do
     images <- make_fdbr ev_data rel "object"
@@ -269,7 +266,7 @@ is = yesno
 were = yesno
 are = yesno
 
---TODO: is this proper? 
+--TODO: is this proper?
 sand s1 s2 = do
     r1 <- s1
     r2 <- s2
@@ -280,7 +277,6 @@ sand s1 s2 = do
 ||  BASIC INTERPRETERS
 ||-----------------------------------------------------------------------------
 -}
-
 
 pnoun           =  pre_processed Pnoun
 cnoun           =  pre_processed Cnoun
@@ -314,43 +310,41 @@ quest6          =  pre_processed Quest6
 prep            =  pre_processed Prepn
 year            =  pre_processed Year
 
-
-pre_processed key 
- = let formAlts altTerminals  = memoize key (altTerminals) 
+pre_processed key
+ = let formAlts altTerminals  = memoize key (altTerminals)
        formTerminal [x]       = x
        formTerminal (x:xs)    = x <|>  formTerminal xs
-       list_of_ters           = [ terminal (term a) z 
+       list_of_ters           = [ terminal (term a) z
                                 | (a,b,z) <- dictionary
                                 , b == key]
    in  formAlts (formTerminal list_of_ters)
 
-
 meaning_of p dInp key
  = let dInput     = words dInp
-       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) [] 
+       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) []
        upperBound = (length dInput) + 1
-   in  formFinal key upperBound (snd $ appParser)   
+   in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ p dInp key
  = let dInput     = words dInp
-       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) [] 
+       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) []
        upperBound = (length dInput) + 1
-   in  (snd $ appParser)   
+   in  (snd $ appParser)
 
-formAtts key ePoint t 
- = concat $ concat $ concat $ concat  
+formAtts key ePoint t
+ = concat $ concat $ concat $ concat
    [[[[  val1 |(id1,val1)<-synAtts]
-           |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]     
+           |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
             |((i,inAt1),((cs,ct),rs)) <- sr ]
              |(s,sr) <- t, s == key ]
-formFinal key ePoint t 
- = concat $ concat $ concat $ concat  
+formFinal key ePoint t
+ = concat $ concat $ concat $ concat
    [[[[  val1 |(id1,val1)<-synAtts]
-           |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]     
+           |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
             |((i,inAt1),((cs,ct),rs)) <- sr ]
-             |(s,sr) <- t, s == key ]            
+             |(s,sr) <- t, s == key ]
 {-
-test p = unState (p ((1,[]),input) ([],[])) [] 
+test p = unState (p ((1,[]),input) ([],[])) []
 
 main   = do putStr  $ render80 $ formatAtts Question $ snd $ test (question T0 [])
 
@@ -360,11 +354,10 @@ type End      = (Int, InsAttVals)
 type Atts     = [AttValue] -- [(AttType, AttValue)]
 type InsAttVals = [(Instance, Atts)]
 
-
                  ,[(Start1,(Context,Result))]
 type Mtable   = [(MemoL
                  )
-                ] 
+                ]
 type Result   = [((Start1, End),[Tree MemoL])]
 ||-----------------------------------------------------------------------------
 || THE ATTRIBUTE GRAMMAR
@@ -372,38 +365,37 @@ type Result   = [((Start1, End),[Tree MemoL])]
 -}
 
 -- public <snouncla> = <cnoun> | <adjs> <cnoun>;
-snouncla 
+snouncla
  = memoize Snouncla
  (parser
-  (nt cnoun S3) 
+  (nt cnoun S3)
   [rule_s NOUNCLA_VAL OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL OF S3]]
   <|>
   parser (nt adjs S1  *> nt cnoun S2)
   [rule_s NOUNCLA_VAL OF LHS ISEQUALTO intrsct1 [synthesized ADJ_VAL      OF  S1,
                                                  synthesized NOUNCLA_VAL  OF  S2]]
-                                               
+
  )
 
 -------------------------------------------------------------------------------
 -- public <relnouncla> = <snouncla> <relpron> <joinvbph> | <snouncla>;
-relnouncla   
+relnouncla
  = memoize Relnouncla
-   (parser 
+   (parser
     (nt snouncla S1  *> nt relpron S2  *> nt joinvbph S3)
     [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle1[synthesized NOUNCLA_VAL  OF S1,
                                                        synthesized RELPRON_VAL  OF S2,
                                                        synthesized VERBPH_VAL   OF S3]]
-    <|>   
+    <|>
     parser
     (nt snouncla S4)
     [rule_s NOUNCLA_VAL OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL OF S4]]
    )
 ----------------------------------------------------------------------------
 
-
 -- public <nouncla> = <relnouncla> <nounjoin> <nouncla> | <relnouncla> <relpron> <linkingvb> <nouncla> | <relnouncla>;
-nouncla 
- = memoize Nouncla 
+nouncla
+ = memoize Nouncla
    (parser (nt relnouncla S1 *> nt nounjoin S2 *> nt nouncla S3)
     [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle2 [synthesized NOUNCLA_VAL  OF S1,
                                                         synthesized NOUNJOIN_VAL OF S2,
@@ -420,8 +412,8 @@ nouncla
 
 ------------------------------------------------------------------------------
 -- public <adjs> = <adj> <adjs> | <adj>;
-adjs   
- = memoize Adjs      
+adjs
+ = memoize Adjs
    (parser (nt adj S1 *> nt adjs S2)
     [rule_s ADJ_VAL  OF LHS ISEQUALTO intrsct2 [synthesized ADJ_VAL  OF S1,
                                                 synthesized ADJ_VAL  OF S2]]
@@ -431,7 +423,7 @@ adjs
    )
 ------------------------------------------------------------------------------
 -- public <detph> = <indefpron> | <det> <nouncla>;
-detph     
+detph
  = memoize Detph
    (parser (nt indefpron S3)
     [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S3]]
@@ -439,7 +431,7 @@ detph
     parser (nt det S1 *> nt nouncla S2)
     [rule_s TERMPH_VAL OF LHS ISEQUALTO applydet [synthesized DET_VAL      OF S1,
                                                   synthesized NOUNCLA_VAL  OF S2]]
-   )                                              
+   )
 
 ----------------------------------------------------------------------------------
 
@@ -452,7 +444,7 @@ detph
                         | <linkingvb> <jointermph> <transvb> <preps>;
  -}
 
-transvbph 
+transvbph
  = memoize Transvbph
    (parser (nt transvb S1) --"discovered"
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb_no_tmph [synthesized VERB_VAL OF S1]]
@@ -490,7 +482,7 @@ transvbph
                                                                       synthesized VERB_VAL      OF  S3,
                                                                       synthesized PREP_VAL      OF  S4]]
    )
-   
+
 ----------------------------------------------------------------------------------
 --NEW FOR PREPOSITIONAL PHRASES
 
@@ -505,7 +497,7 @@ preps
                                                    synthesized PREP_VAL OF S2]]
     )
 
--- public <prepph> = <prep> <jointermph>;	
+-- public <prepph> = <prep> <jointermph>;
 prepph
  = memoize Prepph
     (parser (nt prep S1 *> nt jointermph S2)
@@ -516,7 +508,7 @@ prepph
 ----------------------------------------------------------------------------------
 
 -- public <verbph> = <transvbph> | <intransvb> | <linkingvb> <det> <nouncla>;
-verbph 
+verbph
  = memoize Verbph
    (
     parser (nt transvbph S4)
@@ -530,24 +522,23 @@ verbph
    )
 ------------------------------------------------------------------------------------
 -- public <termph> = <pnoun> | <detph> | <year>;
-termph    
- = memoize Termph  
+termph
+ = memoize Termph
    (
-   parser (nt pnoun S1) 
+   parser (nt pnoun S1)
    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S1]]
-   <|>  
+   <|>
    parser (nt detph S2)
    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S2]]
    <|>
    parser (nt year S3)
    [rule_s TERMPH_VAL OF LHS ISEQUALTO applyyear [synthesized YEAR_VAL OF S3]]
    )
-             
 
 ------------------------------------------------------------------------------------
 -- public <jointermph> = <jointermph> <termphjoin> <jointermph> | <termph>;
-jointermph 
- = memoize Jointermph 
+jointermph
+ = memoize Jointermph
    (
 {-    parser (nt jointermph S1 *> nt termphjoin S2 *> nt termph S3)
         [rule_s TERMPH_VAL  OF LHS ISEQUALTO appjoin1 [synthesized TERMPH_VAL     OF S1,
@@ -565,8 +556,8 @@ jointermph
    )
 ------------------------------------------------------------------------------------
 -- public <joinvbph> = <verbph> <verbphjoin> <joinvbph> | <verbph>;
-joinvbph  
- = memoize Joinvbph   
+joinvbph
+ = memoize Joinvbph
    (
    parser (nt verbph S1  *> nt verbphjoin S2  *> nt joinvbph S3)
    [rule_s VERBPH_VAL  OF LHS ISEQUALTO appjoin2 [synthesized VERBPH_VAL    OF S1,
@@ -578,7 +569,7 @@ joinvbph
    )
 ---------------------------------------------------------------------------
 -- public <sent> = <jointermph> <joinvbph>;
-sent  
+sent
  = memoize Sent
    (
     parser (nt jointermph S1  *> nt joinvbph S2)
@@ -587,13 +578,13 @@ sent
    )
 -- **************************************************************************** --
 -- public <two_sent> = <sent> <sentjoin> <sent>;
-two_sent 
+two_sent
  = memoize Two_sent
    (
     parser (nt sent S1 *> nt sentjoin S2 *> nt sent S3)
     [rule_s SENT_VAL OF LHS ISEQUALTO sent_val_comp [synthesized SENT_VAL      OF  S1,
                                                      synthesized SENTJOIN_VAL  OF  S2,
-                                                     synthesized SENT_VAL      OF  S3]] 
+                                                     synthesized SENT_VAL      OF  S3]]
    )
 ------------------------------------------------------------------------------------
 {-
@@ -609,30 +600,30 @@ two_sent
                         | <sent>;
 
 -}
-question   
- = memoize Question  
+question
+ = memoize Question
    (
     parser (nt quest1 S1  *> nt sent S2 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
-                                              synthesized SENT_VAL    OF  S2]]  
+                                              synthesized SENT_VAL    OF  S2]]
     <|>
     parser (nt quest6 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
-                                              synthesized SENT_VAL    OF  S3]]  
+                                              synthesized SENT_VAL    OF  S3]]
     <|>
     parser (nt quest5 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
-                                              synthesized SENT_VAL    OF  S3]]  
+                                              synthesized SENT_VAL    OF  S3]]
     <|>
     parser (nt quest2 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
-                                              synthesized VERBPH_VAL    OF  S2]] 
+                                              synthesized VERBPH_VAL    OF  S2]]
     <|>
     parser (nt quest5 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
-                                              synthesized VERBPH_VAL    OF  S2]] 
+                                              synthesized VERBPH_VAL    OF  S2]]
     <|>
     parser (nt quest3 S1 *> nt nouncla S2 *> nt joinvbph S3)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans3 [synthesized QUEST3_VAL  OF S1,
@@ -645,7 +636,7 @@ question
                                               synthesized VERBPH_VAL  OF  S3]]
     <|>
     parser (nt two_sent S1)
-    [rule_s QUEST_VAL OF LHS ISEQUALTO truefalse [synthesized SENT_VAL OF  S1]]  
+    [rule_s QUEST_VAL OF LHS ISEQUALTO truefalse [synthesized SENT_VAL OF  S1]]
     <|>
     parser (nt sent S1)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO truefalse [synthesized SENT_VAL OF  S1]]
@@ -653,10 +644,10 @@ question
    )
 
 -- public <quest4> = <quest4a> <quest4b>;
-quest4 = memoize Quest4 
+quest4 = memoize Quest4
    (
-   parser (nt quest4a S1 *> nt quest4b S2) 
-   [rule_s QUEST3_VAL  OF LHS ISEQUALTO copy [synthesized QUEST3_VAL  OF  S1]] 
+   parser (nt quest4a S1 *> nt quest4b S2)
+   [rule_s QUEST3_VAL  OF LHS ISEQUALTO copy [synthesized QUEST3_VAL  OF  S1]]
    )
 ---------------------------------------------------------------------------------
 
@@ -666,42 +657,40 @@ query = memoize Query
         [rule_s QUEST_VAL  OF LHS ISEQUALTO copy [synthesized QUEST_VAL  OF  S1]]
         )
 
-
-
 {-
 || -----------------------------------------------------------------------------
 || THE SEMANTICS - PART I : The attribute evaluation  functions
 ||-----------------------------------------------------------------------------
-applyBiOp [e1,op,e2] 
+applyBiOp [e1,op,e2]
                   = \atts -> VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
 
 -}
 -- getAtts f (y,i) x = f (head (x y i))
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
-intrsct1         [x, y]    
+intrsct1         [x, y]
  = \atts -> NOUNCLA_VAL (liftM2 intersect_entevimages (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
-intrsct2         [x, y]         
+intrsct2         [x, y]
  = \atts -> ADJ_VAL (liftM2 intersect_entevimages (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
-applydet         [x, y]                 
+applydet         [x, y]
  = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
- 
+
 --make_trans_vb is very similar to make_relation.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
---Changed to get rid of make_trans_vb, since the getBR attribute was changed to not 
+--Changed to get rid of make_trans_vb, since the getBR attribute was changed to not
 --be a binary relation but instead a function that make_relation would give
 --I.e., the kind of function that make_trans_vb would have generated, since they were
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
 applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_filtered_relation dataStore reln ((["object"],predicate):preps)
-    where 
+    where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
-    
+
 applytransvbprep [x,y] atts = VERBPH_VAL $ make_filtered_relation dataStore reln [(["object"],predicate)]
     where
     reln = getAtts getBR atts x
@@ -725,44 +714,44 @@ apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph $ make_inve
     preps = case xs of
         [] -> []
         (x5:_) -> getAtts getPREPVAL atts x5
-    
+
 applyprepph     [x, y]
  = \atts -> PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             termph = getAtts getTVAL atts y in
         (prep_names, termph)
-        
+
 applyprep   [x]
  = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
- 
+
 applypreps      [x, y]
  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x):(getAtts getPREPVAL atts y)
- 
+
 applyyear [x]
  = \atts -> TERMPH_VAL $ make_pnoun $ show $ getAtts getYEARVAL atts x
- 
+
 --END PREPOSITIONAL PHRASES
-        
-applyvbph        [z]    
+
+applyvbph        [z]
  = \atts -> VERBPH_VAL (getAtts getAVALS atts z)
- 
-appjoin1         [x, y, z]     
+
+appjoin1         [x, y, z]
  = \atts -> TERMPH_VAL $ (getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z)
 
-appjoin2         [x, y, z]    
+appjoin2         [x, y, z]
  = \atts -> VERBPH_VAL ((getAtts getVJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
-apply_middle1    [x, y, z]    
+apply_middle1    [x, y, z]
  = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
-apply_middle2    [x, y, z]                  
+apply_middle2    [x, y, z]
  = \atts -> NOUNCLA_VAL ((getAtts getNJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
-apply_middle3    [x, y, z]    
+apply_middle3    [x, y, z]
  = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
 -- Think "a orbited by b" vs "b orbits a"
-{-drop3rd          [w, x, y, z]     
+{-drop3rd          [w, x, y, z]
  = \atts -> VERBPH_VAL $
         let reln = getAtts getBR atts x in
         let predicate = getAtts getTVAL atts z in
@@ -772,40 +761,37 @@ apply_middle3    [x, y, z]
 drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_inverted_filtered_relation dataStore reln preps
         where
         reln = getAtts getBR atts x
-        preps = case xs of 
+        preps = case xs of
             [] -> []
             (p:ps) -> getAtts getPREPVAL atts p
 --END PREPOSITIONAL PHRASES
-        
-apply_termphrase [x, y]     
+
+apply_termphrase [x, y]
  = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y))
- 
-sent_val_comp    [s1, f, s2]      
+
+sent_val_comp    [s1, f, s2]
  = \atts -> SENT_VAL ((getAtts getSJVAL atts f) (getAtts getSV atts s1) (getAtts getSV atts s2))
 
-ans1             [x, y]       
+ans1             [x, y]
  = \atts -> QUEST_VAL ((getAtts getQU1VAL atts x) (getAtts getSV atts y) )
 
-ans2             [x, y]     
+ans2             [x, y]
  = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getAVALS atts y))
 
-ans3             [x, y, z]     
+ans3             [x, y, z]
  = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
 
-ans5             [x, y, z]     
+ans5             [x, y, z]
  = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getSV atts z))
- 
-truefalse        [x]       
+
+truefalse        [x]
  = \atts -> QUEST_VAL $ do
         bool <- (getAtts getSV atts x)
         return $ if bool /= [] then "true." else "false."
-        
 
-
-        
 {-
 ||-----------------------------------------------------------------------------
-|| THE SEMANTICS - PART II : Functions used to obtain objects denoted by 
+|| THE SEMANTICS - PART II : Functions used to obtain objects denoted by
 ||   proper nouns, verbs, etc.
 ||-----------------------------------------------------------------------------
 
@@ -853,20 +839,20 @@ dictionary = [
     ("things",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
     ("planets",            Cnoun,     [NOUNCLA_VAL $ get_members dataStore "planet"]),
     ("planet",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "planet"]),
-    ("person",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "person"]),   
-    ("sun",                Cnoun,     [NOUNCLA_VAL $ get_members dataStore "sun"]), 
-    ("moon",               Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]), 
+    ("person",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "person"]),
+    ("sun",                Cnoun,     [NOUNCLA_VAL $ get_members dataStore "sun"]),
+    ("moon",               Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
     ("moons",              Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
     ("satellite",          Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
     ("satellites",         Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
     ("atmospheric",        Adj,       [ADJ_VAL $ get_members dataStore "atmospheric"]),
     ("blue",               Adj,       [ADJ_VAL $ get_members dataStore "blue"]),
-    ("solid",              Adj,       [ADJ_VAL $ get_members dataStore "solid"]),     
-    ("brown",              Adj,       [ADJ_VAL $ get_members dataStore "brown"]),   
-    ("gaseous",            Adj,       [ADJ_VAL $ get_members dataStore "gaseous"]),  
-    ("green",              Adj,       [ADJ_VAL $ get_members dataStore "green"]),  
-    ("red",                Adj,       [ADJ_VAL $ get_members dataStore "red"]),  
-    ("ringed",             Adj,       [ADJ_VAL $ get_members dataStore "ringed"]),  
+    ("solid",              Adj,       [ADJ_VAL $ get_members dataStore "solid"]),
+    ("brown",              Adj,       [ADJ_VAL $ get_members dataStore "brown"]),
+    ("gaseous",            Adj,       [ADJ_VAL $ get_members dataStore "gaseous"]),
+    ("green",              Adj,       [ADJ_VAL $ get_members dataStore "green"]),
+    ("red",                Adj,       [ADJ_VAL $ get_members dataStore "red"]),
+    ("ringed",             Adj,       [ADJ_VAL $ get_members dataStore "ringed"]),
     ("vacuumous",          Adj,       [ADJ_VAL $ get_members dataStore "vacuumous"]),
     ("exist",              Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
     ("exists",             Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
@@ -874,13 +860,13 @@ dictionary = [
     ("spins",              Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
     ("the",                Det,       [DET_VAL $ the]),
     ("a",                  Det,       [DET_VAL $ a]),
-    ("one",                Det,       [DET_VAL $ one]), 
-    ("an",                 Det,       [DET_VAL $ a]), 
-    ("some",               Det,       [DET_VAL $ a]), 
-    ("any",                Det,       [DET_VAL $ a]), 
-    --("no",                 Det,       [DET_VAL $ no]), 
-    ("every",              Det,       [DET_VAL $ every]), 
-    ("all",                Det,       [DET_VAL $ every]),  
+    ("one",                Det,       [DET_VAL $ one]),
+    ("an",                 Det,       [DET_VAL $ a]),
+    ("some",               Det,       [DET_VAL $ a]),
+    ("any",                Det,       [DET_VAL $ a]),
+    --("no",                 Det,       [DET_VAL $ no]),
+    ("every",              Det,       [DET_VAL $ every]),
+    ("all",                Det,       [DET_VAL $ every]),
     ("two",                Det,       [DET_VAL $ two]),
     ("bernard",            Pnoun,     [TERMPH_VAL $ make_pnoun "bernard"]),
     ("bond",               Pnoun,     [TERMPH_VAL $ make_pnoun "bond"]),
@@ -953,7 +939,7 @@ dictionary = [
     ("orbited",            Transvb,   [VERB_VAL ("orbit_ev")]),
     ("orbits",             Transvb,   [VERB_VAL ("orbit_ev")]),
     ("is",                 Linkingvb, [LINKINGVB_VAL  id]),
-    ("was",                Linkingvb, [LINKINGVB_VAL  id]), 
+    ("was",                Linkingvb, [LINKINGVB_VAL  id]),
     ("are",                Linkingvb, [LINKINGVB_VAL  id]),
     ("were",               Linkingvb, [LINKINGVB_VAL  id]),
     ("that",               Relpron,   [RELPRON_VAL    $ that]),
@@ -964,15 +950,15 @@ dictionary = [
     ("and",                Nounjoin,  [NOUNJOIN_VAL   $ nounand]),
     ("or",                 Nounjoin,  [NOUNJOIN_VAL   $ nounor]),
     ("and",                Termphjoin,[TERMPHJOIN_VAL termand]),
-    ("or",                 Termphjoin,[TERMPHJOIN_VAL termor]), 
+    ("or",                 Termphjoin,[TERMPHJOIN_VAL termor]),
     ("and",                Sentjoin,  [SENTJOIN_VAL   $ sand]),
     ("does",               Quest1,    [QUEST1_VAL     $ yesno]),
     ("did",                Quest1  ,  [QUEST1_VAL     $ yesno]),
     ("do",                 Quest1,    [QUEST1_VAL     $ yesno]),
     --AMBIGUOUS: how was phobos discovered ("is",                 Quest1,    [QUEST1_VAL     $ yesno]),
     --("was",                Quest1,    [QUEST1_VAL     $ yesno]),
-    --("are",                Quest1,    [QUEST1_VAL     $ yesno]),  
-    --("were",               Quest1,    [QUEST1_VAL     $ yesno]),  
+    --("are",                Quest1,    [QUEST1_VAL     $ yesno]),
+    --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
     ("what",               Quest2,    [QUEST2_VAL     $ what]),
     ("who",                Quest2,    [QUEST2_VAL     $ who]),
     ("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
@@ -985,10 +971,10 @@ dictionary = [
     ("many",               Quest4b,   [QUEST3_VAL     $ how_many]),
     ("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
     ("discoverer",  Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]),
-    ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]), 
-    ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla), 
+    ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]),
+    ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla),
     ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
-    --("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]), 
+    --("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
     --("orbits",      Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
     ("anyone",      Indefpron,meaning_of detph   "a person" Detph),
     ("anything",    Indefpron,meaning_of detph   "a thing" Detph),
@@ -1267,7 +1253,7 @@ dictionary = [
     ("styx",               Pnoun,     [TERMPH_VAL $ make_pnoun "styx"])
 
     ] ++ list_of_years
-    
+
 {-Major hack: Since the basic unit that the parser understands is strings (not characters), we have to manually add all years that we can query into the dictionary...
 That is, we can't make the parser understand "1984" and "1245" by having it recognize four numbers, instead it must recognize the entire string of numbers at once
 as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of "1", "9", "8", and "4").  Therefore, all possible strings must be added to the dictionary so that the parser can match them.
@@ -1276,17 +1262,15 @@ as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of 
 -}
 
 list_of_years = map (\n -> (show n, Year, [YEAR_VAL n])) $ concat [[1000 + x, 2000 + x] | x <- [0..999]]
-    
---test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) [] 
-test p input = unState (p ((1,[]),input) ([],[])) [] 
 
-
+--test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) []
+test p input = unState (p ((1,[]),input) ([],[])) []
 
 parse i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
-    
+
 findStart st ((s,ss):rest) | s == st   = [(s,ss)]
                            | otherwise = findStart st rest
-findStart st []                        = []     
+findStart st []                        = []
 
 input = words i1
 

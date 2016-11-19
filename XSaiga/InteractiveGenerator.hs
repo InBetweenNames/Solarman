@@ -52,7 +52,7 @@ typeActionMap = Map.fromList
     (TypeAg.Intransvb, v_make_intrans),
     (TypeAg.Adj, v_make_adj)]
 
-removeUnwanted = filter (\(x,y,z) -> x /= "discoverer" && x /= "discoverers") 
+removeUnwanted = filter (\(x,y,z) -> not $ x `elem` ["discoverer", "discoverers", "telescopes", "places"]) 
 
 genVariables = foldr var [] (removeUnwanted App.dictionary)
     where
@@ -99,6 +99,8 @@ main = do
     hPutStrLn file "everyone = every person"
     hPutStrLn file "everything = every thing"
     hPutStrLn file "everybody = every person"
+    hPutStrLn file "telescopes = telescope"
+    hPutStrLn file "places = place"
     printVars file
     hClose file
 
