@@ -41,10 +41,10 @@ v_discoverers_cnoun = "discoverers = get_subjs_of_event_type dataStore \"discove
 
 v_make_intrans = v_make_cnoun
 
-v_make_transvb name ev = makeFriendlyName name ++ " tmph = make_filtered_relation dataStore \"" ++ ev ++ "\" [([\"object\"],tmph)]" 
-v_make_transvb_filt name ev = makeFriendlyName name ++ "' tmph preps = make_filtered_relation dataStore \"" ++ ev ++"\" $ ([\"object\"], tmph):preps"
-v_make_transvb_inverted name ev = makeFriendlyName name ++ "_ = make_inverted_filtered_relation dataStore \"" ++ ev ++ "\""
---v_make_transvb_inverted_filt name ev = makeFriendlyName name ++ "_' tmph preps = make_inverted_filtered_relation dataStore \"" ++ ev ++ "\" $ ([\"object\"],tmph):preps"
+v_make_transvb name ev = makeFriendlyName name ++ " tmph = make_trans_active' dataStore \"" ++ ev ++ "\" [([\"object\"],tmph)]" 
+v_make_transvb_filt name ev = makeFriendlyName name ++ "' tmph preps = make_trans_active' dataStore \"" ++ ev ++"\" $ ([\"object\"], tmph):preps"
+v_make_transvb_inverted name ev = makeFriendlyName name ++ "_ = make_trans_passive' dataStore \"" ++ ev ++ "\""
+--v_make_transvb_inverted_filt name ev = makeFriendlyName name ++ "_' tmph preps = make_trans_passive' dataStore \"" ++ ev ++ "\" $ ([\"object\"],tmph):preps"
 
 typeActionMap = Map.fromList 
     [(TypeAg.Pnoun, v_make_pnoun),

@@ -37,25 +37,25 @@ termand tmph1 tmph2 ents = do
         --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
 
 --TODO: FDBRs are sorted.  Use that to improve this.
-intersect_entevimages eei1  eei2
+intersect_fdbr eei1  eei2
                 = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]
 
 that = nounand
 
-nounand = liftM2 intersect_entevimages
+nounand = liftM2 intersect_fdbr
 
 nounor' s t = List.nub(s ++ t)
 nounor = liftM2 nounor'
 
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
-a = liftM2 intersect_entevimages
+a = liftM2 intersect_fdbr
 any' = a
 the = a
 some = a
 an = a
 
-every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_entevimages nph vbph
+every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr nph vbph
                 | otherwise = []
 
 every = liftM2 every'
@@ -75,14 +75,14 @@ none = liftM2 none'
 one' nph vbph   | length (res) == 1 = res
                 | otherwise = []
     where
-    res = intersect_entevimages  nph vbph
+    res = intersect_fdbr  nph vbph
 
 one = liftM2 one'
 
 two' nph vbph   | length (res) == 2 = res
                 | otherwise = []
     where
-    res = intersect_entevimages  nph vbph
+    res = intersect_fdbr  nph vbph
 
 two = liftM2 two'
 
@@ -92,11 +92,11 @@ two = liftM2 two'
 which nph vbph = do
     nph_ <- nph
     vbph_ <- vbph
-    let result = unwords $ map fst $ intersect_entevimages nph_ vbph_
+    let result = unwords $ map fst $ intersect_fdbr nph_ vbph_
     return $ if result /= [] then result else "none."
 
 how_many' nph vbph =
-    show $ length (intersect_entevimages nph vbph)
+    show $ length (intersect_fdbr nph vbph)
 how_many = liftM2 how_many'
 
 who = which ((get_members dataStore "person") `nounor` (get_members dataStore "science_team"))
@@ -123,7 +123,7 @@ make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 --TODO: Handle case where nothing is in props (return none)
 make_prop_termphrase prop nph = do
     list <- nph
-    props <- mapM (\(_,y) -> getts_preimage dataStore prop y >>= \loc -> return (map fst loc)) list
+    props <- mapM (\(_,y) -> getts_fdbr_entevprop dataStore prop y >>= \loc -> return (map fst loc)) list
     let finalList = unwords $ List.nub $ concat props
     return $ if finalList /= [] then finalList else "nothing."
 
@@ -164,17 +164,17 @@ discover_intrans    = get_subjs_of_event_type dataStore ("discover_ev")
 orbit_intrans       = get_subjs_of_event_type dataStore ("orbit_ev")
 -}
 
-{-discover = make_relation "discover_ev"
+{-discover = make_trans_active "discover_ev"
 discovered = discover
 
-orbit = make_relation "orbit_ev"
+orbit = make_trans_active "orbit_ev"
 orbited = orbit-}
 
 --For prepositional phrases
-{-discover' = make_relation "discover_ev"
+{-discover' = make_trans_active "discover_ev"
 discovered' = discover'
 
-orbit' = make_relation "orbit_ev"
+orbit' = make_trans_active "orbit_ev"
 orbited' = orbit'-}
 
 {-hall = make_pnoun "hall"
@@ -183,7 +183,7 @@ mars = make_pnoun "mars"
 refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 -}
 
-make_relation ev_type tmph = make_filtered_relation dataStore ev_type [(["object"],tmph)]
+make_trans_active ev_type tmph = make_trans_active' dataStore ev_type [(["object"],tmph)]
 
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -211,7 +211,7 @@ filter_ev ev_data ((names,pred):list) ev = do
 {-filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
-    relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
+    relevant_list <- mapM (\name -> getts_fdbr_entevprop ev_data name evs) names
     res <- pred $ return $ concat $ relevant_list
     if res /= [] then filter_ev ev_data list evs else return False-}
 
@@ -219,28 +219,28 @@ filter_ev ev_data ((names,pred):list) evs = do
 filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
-    relevant_list <- mapM (\name -> getts_preimage ev_data name evs) names
+    relevant_list <- mapM (\name -> getts_fdbr_entevprop ev_data name evs) names
     res <- pred $ return $ concat $ relevant_list
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
     let relevant_evs = List.nub $ concatMap snd res
     if res /= [] then filter_ev ev_data list relevant_evs else return False
 
-{-make_filtered_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
-make_filtered_relation ev_data rel tmph preps = do
+{-make_trans_active' :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_trans_active' ev_data rel tmph preps = do
     images <- make_fdbr ev_data rel "subject"
     subPairs <- filterM (\(_, evs) -> do
         filtEvents <- filterM (filter_ev ev_data preps) evs
         tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
     return $ map fst subPairs-}
 
---Modified version of make_filtered_relation to accomodate new filter_ev
-make_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
-make_filtered_relation ev_data rel preps = do
+--Modified version of make_trans_active' to accomodate new filter_ev
+make_trans_active' :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
+make_trans_active' ev_data rel preps = do
     images <- make_fdbr ev_data rel "subject"
     filterM (\(_, evs) -> filter_ev ev_data preps evs) images
 
-{-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
-make_inverted_filtered_relation ev_data rel preps = do
+{-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
+make_trans_passive' ev_data rel preps = do
     images <- make_fdbr ev_data rel "object"
     objPairs <- filterM (\(_, evs) -> anyM (filter_ev ev_data preps) evs) images
     return $ map fst objPairs
@@ -248,9 +248,9 @@ make_inverted_filtered_relation ev_data rel preps = do
         anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
         anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst -}
 
---Modified version of make_inverted_filtered_relation to accomodate new filter_ev
-make_inverted_filtered_relation :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
-make_inverted_filtered_relation ev_data rel preps = do
+--Modified version of make_trans_passive' to accomodate new filter_ev
+make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
+make_trans_passive' ev_data rel preps = do
     images <- make_fdbr ev_data rel "object"
     filterM (\(_, evs) -> filter_ev ev_data preps evs) images
 
@@ -669,44 +669,44 @@ applyBiOp [e1,op,e2]
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
 intrsct1         [x, y]
- = \atts -> NOUNCLA_VAL (liftM2 intersect_entevimages (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> NOUNCLA_VAL (liftM2 intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 intrsct2         [x, y]
- = \atts -> ADJ_VAL (liftM2 intersect_entevimages (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> ADJ_VAL (liftM2 intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 applydet         [x, y]
  = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
 
---make_trans_vb is very similar to make_relation.  getBR must mean "get binary relation"
+--make_trans_vb is very similar to make_trans_active.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
 --Changed to get rid of make_trans_vb, since the getBR attribute was changed to not
---be a binary relation but instead a function that make_relation would give
+--be a binary relation but instead a function that make_trans_active would give
 --I.e., the kind of function that make_trans_vb would have generated, since they were
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_filtered_relation dataStore reln ((["object"],predicate):preps)
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' dataStore reln ((["object"],predicate):preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_filtered_relation dataStore reln [(["object"],predicate)]
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' dataStore reln [(["object"],predicate)]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
 
-applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_filtered_relation dataStore reln preps
+applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' dataStore reln preps
     where
     reln = getAtts getBR atts x
     preps = getAtts getPREPVAL atts y
 
-applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_filtered_relation dataStore reln []
+applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' dataStore reln []
     where
     reln = getAtts getBR atts x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph $ make_inverted_filtered_relation dataStore reln preps
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph $ make_trans_passive' dataStore reln preps
     where
     linkingvb = getAtts getLINKVAL atts x2
     termph = getAtts getTVAL atts x3
@@ -758,7 +758,7 @@ apply_middle3    [x, y, z]
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_inverted_filtered_relation dataStore reln preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' dataStore reln preps
         where
         reln = getAtts getBR atts x
         preps = case xs of
@@ -800,7 +800,7 @@ truefalse        [x]
 --test_wrt e s = e `elem` s
 
 -- FUNCTION USED TO DEFINE MEANINGS OF VERBS IN TERMS OF RELATIONS
---make_trans_vb rel p = [x | (x, image_x) <- collect rel, p image_x] -- Similar to make_relation
+--make_trans_vb rel p = [x | (x, image_x) <- collect rel, p image_x] -- Similar to make_trans_active
 
 {- TERMINALS IN JSGF FORM
 

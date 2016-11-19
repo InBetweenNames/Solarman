@@ -30,17 +30,17 @@ class TripleStore m where
     getts_1 :: m -> (Event, String, String) -> IO [String]
     getts_2 :: m -> (Event, String, String) -> IO [String]
     getts_3 :: m -> (Event, String, String) -> IO [String]
-    --getts_fdbr computes the function defined by the entity-event relation r
+    --getts_fdbr_entevprop_type computes the function defined by the entity-event relation r
     --where r is the relation between entities of type entity_type
     --and events of type event_type
-    getts_fdbr :: m -> String -> String -> IO FDBR
-    getts_fdbr ev_data ev_type entity_type = do
+    getts_fdbr_entevprop_type :: m -> String -> String -> IO FDBR
+    getts_fdbr_entevprop_type ev_data ev_type entity_type = do
         evs <- getts_1 ev_data ("?", "type", ev_type)
-        getts_preimage ev_data entity_type evs
+        getts_fdbr_entevprop ev_data entity_type evs
         
-    --getts_preimage returns the entities of entity_type of the events in the list evs
-    getts_preimage :: m -> String -> [Event] -> IO FDBR
-    getts_preimage ev_data entity_type evs = do
+    --getts_fdbr_entevprop returns the entities of entity_type of the events in the list evs
+    getts_fdbr_entevprop :: m -> String -> [Event] -> IO FDBR
+    getts_fdbr_entevprop ev_data entity_type evs = do
         pairs <- liftM concat $ mapM (\ev -> do
             ents <- getts_3 ev_data (ev, entity_type,"?")
             return $ zip ents (repeat ev)) evs
@@ -51,7 +51,7 @@ class TripleStore m where
     getts_members ev_data set = do
         evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
         evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
-        getts_preimage ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
+        getts_fdbr_entevprop ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
             
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
@@ -135,10 +135,10 @@ instance TripleStore SPARQLBackend where
                           triple (iriRef a) (iriRef b) x
                           distinct
                           return SelectQuery { queryVars = [x] }
-    --Efficient implementation of getts_fdbr for SPARQL backend
-    getts_fdbr = memoIO''' getts_fdbr'''
+    --Efficient implementation of getts_fdbr_entevprop_type for SPARQL backend
+    getts_fdbr_entevprop_type = memoIO''' getts_fdbr_entevprop_type'''
         where
-        getts_fdbr''' (SPARQL endpoint namespace_uri) ev_type en_type = do
+        getts_fdbr_entevprop_type''' (SPARQL endpoint namespace_uri) ev_type en_type = do
                 resolvedEndpoint <- lookupEndpoint endpoint
                 m <- selectQuery resolvedEndpoint query
                 case m of
@@ -156,10 +156,10 @@ instance TripleStore SPARQLBackend where
                         distinct
                         return SelectQuery { queryVars = [subj,ev] }
     
-    --Efficient implementation of getts_preimage for SPARQL backend
-    getts_preimage = memoIO'' getts_preimage''
+    --Efficient implementation of getts_fdbr_entevprop for SPARQL backend
+    getts_fdbr_entevprop = memoIO'' getts_fdbr_entevprop''
         where
-        getts_preimage'' (SPARQL endpoint namespace_uri) en_type evs = do
+        getts_fdbr_entevprop'' (SPARQL endpoint namespace_uri) en_type evs = do
             resolvedEndpoint <- lookupEndpoint endpoint
             m <- selectQuery resolvedEndpoint query
             case m of
@@ -307,8 +307,8 @@ condense = map (\list -> (fst $ head list, map snd list)) . List.groupBy cmp
   where
   cmp x y = (fst x) == (fst y)
 
---alias for getts_fdbr
+--alias for getts_fdbr_entevprop_type
 make_fdbr :: (TripleStore m) => m -> String -> String -> IO FDBR
-make_fdbr = getts_fdbr 
+make_fdbr = getts_fdbr_entevprop_type 
     
     
