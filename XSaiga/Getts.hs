@@ -102,7 +102,7 @@ instance TripleStore SPARQLBackend where
                       x <- var
                       triple x (iriRef b) (iriRef c)
                       distinct
-                      return SelectQuery { queryVars = [x] }
+                      selectVars [x]
     --getts_2 =  getts_2''
     getts_2 = memoIO getts_2''
         where
@@ -118,7 +118,7 @@ instance TripleStore SPARQLBackend where
                           x <- var
                           triple  (iriRef a) x (iriRef c)
                           distinct
-                          return SelectQuery { queryVars = [x] }
+                          selectVars [x]
     --getts_3 =  getts_3''
     getts_3 = memoIO getts_3''
         where
@@ -134,7 +134,7 @@ instance TripleStore SPARQLBackend where
                           x <- var
                           triple (iriRef a) (iriRef b) x
                           distinct
-                          return SelectQuery { queryVars = [x] }
+                          selectVars [x]
     --Efficient implementation of getts_fdbr_entevprop_type for SPARQL backend
     getts_fdbr_entevprop_type = memoIO''' getts_fdbr_entevprop_type'''
         where
@@ -154,7 +154,7 @@ instance TripleStore SPARQLBackend where
                         triple ev (sol .:. (pack en_type)) subj
                         orderNext subj
                         distinct
-                        return SelectQuery { queryVars = [subj,ev] }
+                        selectVars [subj, ev]
     
     --Efficient implementation of getts_fdbr_entevprop for SPARQL backend
     getts_fdbr_entevprop = memoIO'' getts_fdbr_entevprop''
@@ -175,7 +175,7 @@ instance TripleStore SPARQLBackend where
                     --Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
                     orderNext subj
                     distinct
-                    return SelectQuery { queryVars = [subj,ev] } 
+                    selectVars [subj, ev]
                 
     --Efficient implementation of getts_members for SPARQL backend
     
@@ -199,7 +199,7 @@ instance TripleStore SPARQLBackend where
                     triple ev (sol .:. (pack "object")) (sol .:. (pack set))
                     orderNext subj
                     distinct
-                    return SelectQuery { queryVars = [subj,ev] }
+                    selectVars [subj, ev]
     
             
 removeUri :: String -> String -> String         
