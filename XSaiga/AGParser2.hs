@@ -1,7 +1,6 @@
 {-# LANGUAGE Trustworthy #-}
 module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
-import Text.PrettyPrint.HughesPJ as PPH hiding (empty)  -- ((PPH.<+>), vcat, text, render,($$),nest,Doc)
 import Data.List
 import XSaiga.TypeAg2
 import Control.Monad
@@ -567,123 +566,8 @@ op   = memoize Op
     terminal (term "*") [B_OP (*)] <|>   
     terminal (term "/") [B_OP (div)]    
        )
-
------------------------------------------------- Arithmetic Expression ------------------------------------------------
-
------------ PrettyPrint ------------------------
-{-
-po :: (PP' a) => (String -> IO ()) -> a -> IO ()
-po act x = do
-    stuff <- pp' x
-    act $ render80 stuff
-    
-render80 = renderStyle (style{lineLength = 80})
-
-
- class PP' a where
-      pp' :: a -> IO Doc
-
-instance PP' Doc where
-      pp' c = return c
-
-instance PP' Char where
-      pp' c = return $ text $ show c
-instance PP' AttValue where
-      pp' (VAL i) = showio (VAL i) >>= return . text
-      pp' (B_OP i)= showio (B_OP i) >>= return .text
-      
-      
-instance PP' Int where
-      pp' i = return $ text $ show i
-    
-instance PP' Id where
-      pp' i = return $ text $ show i       
-
-instance PP' a => PP' (Maybe a) where
-      pp' Nothing  = return $ text "Nothing"
-      pp' (Just x) = pp' x >>= (\y -> return $ parens $ text "Just" PPH.<+> y)
-
-instance (PP' a, PP' b) => PP' (a,b) where
-      -- pp' (a,b) = parens $ pp' a PPH.<+> text "->" PPH.<+> pp' b
-      pp' (a,b) =  pp' a >>= \z -> (pp' b >>= (\y -> return $ z PPH.<+> text "->" PPH.<+> y))
-instance PP' a => PP' [a] where
-      pp' []     = return $ brackets $ text ""
-      pp' (x:xs) = liftM sep $ (liftM2 (:)) (pp' x) (sequence [ pp' y | y <- xs ])
-                      
-instance (Show t) => PP' (Tree t) where
-      -- pp' Empty             = text "{_}"
-      pp' (Leaf x)          = return $ text "Leaf" PPH.<+> text (show x)
-      pp' (Branch ts)       = liftM2 (PPH.<+>) (return $ text "Branch") (liftM brackets $ liftM sep $ liftM (punctuate comma) $ sequence $ map pp' ts)
-      --pp' (SubNode (x,(s,e))) = return $ text "SubNode" PPH.<+> text (show x) PPH.<+> text (show (s,e)) 
-      -- PPH.<+> pp' ts
-      -}
-
-{-TODO:
-format :: Mtable -> Doc
-format t
- = vcat
-   [ text (show s) 
-     $$                                          
-     nest 3 (pp' [text "START at:" PPH.<+> pp' i PPH.<+>  text "; Inherited atts:" PPH.<+>  vcat [vcat [text (showID id0) PPH.<+> vcat [text (show ty0v0) |ty0v0 <-val0]|(id0,val0)<-inAt1]] PPH.<+>
-                  text "" $$ vcat [{-    text "Inherited Atts. -" 
-                                   
-                                   $$   
-                                       vcat [vcat [text (showID id1) PPH.<+> vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-(nub inAtt2)]] 
-                                   
-                                   $$-}  nest 3
-                                   (   text "END at:" PPH.<+> pp' end                                    
-                                   $$  text "Synthesized Atts. -"
-                                   
-                                   $$  vcat [vcat [text (showID id1) PPH.<+> vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]] 
-                                   
-                                   $$  text "Packed Tree -"
-                                   
-                                   $$  pp' ts)
-                                       |(((st,inAtt2),(end,synAtts)), ts)<-rs] 
-                                   
-                | ((i,inAt1),((cs,ct),rs)) <- sr ])
-   
-   
-   | (s,sr) <- t ]
--}
-   
-
-showID (x,y) = show y -- only the instance
-
-
---- ** printing ony own atts ** ---
-{-TODO:
-formatAtts :: MemoL -> Mtable -> Doc
-formatAtts key t
- = vcat
-   [ text (show s) 
-     $$                                          
-     nest 3 (pp' [text "START at:" PPH.<+> pp' i PPH.<+>  text "; Inherited atts:" PPH.<+>  vcat [vcat [text (showID id0) PPH.<+> vcat [text (show ty0v0) |ty0v0 <-val0]|(id0,val0)<-inAt1]] PPH.<+>
-                  text "" $$ vcat [nest 3
-                                   (   text "END at:" PPH.<+> pp' end                                    
-                                   $$  text "Synthesized Atts. -"
-                                   
-                                   $$  vcat [vcat [text (showID id1) PPH.<+> vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]] 
-                                   
-                                   -- $$  text "Packed Tree -"
-                                   
-                                   {- $$  pp' ts -} )
-                                       |(((st,inAtt2),(end,synAtts)), ts)<-rs] 
-                                   
-                | ((i,inAt1),((cs,ct),rs)) <- sr ])
-   
-   
-   | (s,sr) <- t, s == key ]
--}
  
-{-formatAttsFinalAlt :: MemoL -> Int -> State -> [Doc]
-formatAttsFinalAlt  key e t  = 
-    [pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
-                            |(id1,val1)<-synAtts]] )
-                            |(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
-              | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]
-              -}
-              
+             
 --The unformatted parse tree
 attsFinalAlt :: MemoL -> Int -> State -> [[[[[[AttValue]]]]]]
 attsFinalAlt  key e t  = 
@@ -696,36 +580,4 @@ attsFinalAlt  key e t  =
 formatAttsFinalAlt :: MemoL -> Int -> State -> [AttValue]
 formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ concat $ attsFinalAlt key e t
 
-{-formatAttsFinal  key t  = 
-   [(pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]] )|(((st,inAtt2),(end,synAtts)), ts)<-rs] 
-                                   
-                | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]-}
-                    
--- *************** for printing the fist element of the return pair ***************
-{-TODO:
-formatForFst ::Result -> Doc
-formatForFst res = vcat 
-                 -- [text (show ty0v0) |ty0v0 <-val0]|(id0,val0)<-inAt1]] PPH.PPH.<+> text "" $$ vcat 
-                 
-                 [   text "START at:" PPH.<+> pp' st 
-                 
-                 {-
-                 $$  text "Inherited Atts. -" 
-                 $$  vcat [vcat [text (showID id1) PPH.<+> vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-inAtt2]] 
-                 -}
-                 
-                 PPH.<+> text "END at:" PPH.<+> pp' end 
-                 $$  nest 3 
-                     (text "Synthesized Atts. of"
-                 
-                 PPH.<+> vcat [vcat [text (showID id1) PPH.<+> text "::" PPH.<+> vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]]
-                 
-                 $$  pp' ts)
-                    |(((st,inAtt2),(end,synAtts)), ts)<-res] 
-
-
--}
--- *************** for printing the fist element of the return pair ***************
-
------------ PrettyPrint --------------------------
-
+                   
