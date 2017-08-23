@@ -1,10 +1,12 @@
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 import qualified XSaiga.SolarmanTriplestore as App
 import qualified XSaiga.TypeAg2 as TypeAg
 import qualified Data.Map.Strict as Map
-import System.IO
-import Data.String.Utils
+import qualified Data.Text as T
+import qualified System.IO as SIO
+import Data.Text.IO
 import Data.List
 import Data.Char
 import Data.Maybe
@@ -14,7 +16,7 @@ import Data.Maybe
 
 filterDict t = map (\(x,y,z) -> (x,y)) $ filter (\(_,y,_) -> y == t) App.dictionary
 
-makeFriendlyName = map toLower . replace "-" "_"
+makeFriendlyName = T.toLower . T.replace "-" "_"
 
 cnounMap = Map.fromList
     [("things", "thing"),
@@ -32,8 +34,8 @@ cnounMap = Map.fromList
     ("teams", "science_team")]
 
 
-v_make_pnoun name = makeFriendlyName name ++ " = make_pnoun \"" ++ name ++ "\""
-v_make_cnoun name = makeFriendlyName name ++ " = get_members dataStore \"" ++ fromMaybe name (Map.lookup name cnounMap) ++ "\""
+v_make_pnoun name = makeFriendlyName name `T.append` " = make_pnoun \"" `T.append` name `T.append` "\""
+v_make_cnoun name = makeFriendlyName name `T.append` " = get_members dataStore \"" `T.append` fromMaybe name (Map.lookup name cnounMap) `T.append` "\""
 v_make_adj = v_make_cnoun
 
 v_discoverer_cnoun = "discoverer = get_subjs_of_event_type dataStore \"discover_ev\""
@@ -41,10 +43,10 @@ v_discoverers_cnoun = "discoverers = get_subjs_of_event_type dataStore \"discove
 
 v_make_intrans = v_make_cnoun
 
-v_make_transvb name ev = makeFriendlyName name ++ " tmph = make_trans_active' dataStore \"" ++ ev ++ "\" [([\"object\"],tmph)]" 
-v_make_transvb_filt name ev = makeFriendlyName name ++ "' tmph preps = make_trans_active' dataStore \"" ++ ev ++"\" $ ([\"object\"], tmph):preps"
-v_make_transvb_inverted name ev = makeFriendlyName name ++ "_ = make_trans_passive' dataStore \"" ++ ev ++ "\""
---v_make_transvb_inverted_filt name ev = makeFriendlyName name ++ "_' tmph preps = make_trans_passive' dataStore \"" ++ ev ++ "\" $ ([\"object\"],tmph):preps"
+v_make_transvb name ev = makeFriendlyName name `T.append` " tmph = make_trans_active' dataStore \"" `T.append` ev `T.append` "\" [([\"object\"],tmph)]" 
+v_make_transvb_filt name ev = makeFriendlyName name `T.append` "' tmph preps = make_trans_active' dataStore \"" `T.append` ev `T.append`"\" $ ([\"object\"], tmph):preps"
+v_make_transvb_inverted name ev = makeFriendlyName name `T.append` "_ = make_trans_passive' dataStore \"" `T.append` ev `T.append` "\""
+--v_make_transvb_inverted_filt name ev = makeFriendlyName name `T.append` "_' tmph preps = make_trans_passive' dataStore \"" `T.append` ev `T.append` "\" $ ([\"object\"],tmph):preps"
 
 typeActionMap = Map.fromList 
     [(TypeAg.Pnoun, v_make_pnoun),
@@ -72,9 +74,10 @@ verbForm file transVbList ev = flip mapM_ transVbList $ \transVb -> do
 
 
 main = do
-    file <- openFile "Interactive.hs" WriteMode
+    file <- SIO.openFile "Interactive.hs" SIO.WriteMode
     hPutStrLn file "{-# LANGUAGE NoMonomorphismRestriction #-}"
     hPutStrLn file "{-# LANGUAGE NoImplicitPrelude #-}"
+    hPutStrLn file "{-# LANGUAGE OverloadedStrings #-}"
     hPutStrLn file "module XSaiga.Interactive where"
     hPutStrLn file ""
     hPutStrLn file "import XSaiga.SolarmanTriplestore"
@@ -102,5 +105,5 @@ main = do
     hPutStrLn file "telescopes = telescope"
     hPutStrLn file "places = place"
     printVars file
-    hClose file
+    SIO.hClose file
 
