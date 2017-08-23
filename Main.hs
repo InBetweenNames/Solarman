@@ -106,6 +106,8 @@ interpret "who is judy" = "She is my friend. She knows about poetry"
 interpret "who is monty"   
    = "Monty is my friend. He is a student"
      `T.append` " at the university of Windsor."
+
+{-
 interpret "can I talk to judy" 
               ="yes. here she is"
                 `T.append` "<goto>http://cs.uwindsor.ca/~speechweb/p_d_speechweb/judy/judy.xml</goto>"
@@ -117,6 +119,8 @@ interpret "can I talk to monty"
 interpret "can I talk to solar man" 
               ="yes. here he is"
                 `T.append` "<goto>http://cs.uwindsor.ca/~speechweb/p_d_speechweb/solarman/solarman.xml</goto>"
+
+-}
 
 interpret "who do you know" = "i only know three people. Judy, Monty, and Solarman."
 
