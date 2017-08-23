@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                XSaiga
-version:             1.5.0.0
+version:             1.6.0.0
 synopsis:            An implementation of a polynomial-time top-down parser suitable for NLP
 -- description:
 homepage:            http://hafiz.myweb.cs.uwindsor.ca/proHome.html
@@ -39,9 +39,10 @@ description:
 Library
   build-depends: base >=4.6 && < 5, pretty, hsparql >=0.2, rdf4h, text, containers, network
   exposed-modules: XSaiga.Getts, XSaiga.AGParser2, XSaiga.TypeAg2, XSaiga.SolarmanTriplestore, XSaiga.Interactive, XSaiga.LocalData
+  extensions: OverloadedStrings
 
 Executable Solarman
-  main-is: Main.hs
-  --other-modules:  SolarmanTriplestore
-  build-depends:  base >=4.6 && < 5, containers >=0.5, pretty >=1.1, cgi  >=3001.1, rdf4h >=1.2, hsparql >=0.2, text >=0.11, network, XSaiga >= 1.5.0.0
-  extensions: DoAndIfThenElse,FlexibleInstances,NoMonomorphismRestriction
+  main-is:Main.hs
+  other-modules:XSaiga.AGParser2 XSaiga.Getts XSaiga.LocalData XSaiga.SolarmanTriplestore XSaiga.TypeAg2
+  build-depends:  base >=4.6 && < 5, containers >=0.5, pretty >=1.1, cgi, rdf4h >=1.2, hsparql >=0.2, text >=0.11, network, bytestring
+  extensions: DoAndIfThenElse,FlexibleInstances,NoMonomorphismRestriction,OverloadedStrings
