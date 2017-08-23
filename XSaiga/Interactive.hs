@@ -1,5 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module XSaiga.Interactive where
 
 import XSaiga.SolarmanTriplestore

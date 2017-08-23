@@ -2,6 +2,7 @@
 module XSaiga.TypeAg2 where
 
 import XSaiga.Getts
+import Data.Text as T hiding (map)
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -11,7 +12,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)} 
               | U_OP            {getU_OP    ::   (Int -> Int)} 
               | SENT_VAL        {getSV      ::   IO ES}
-              | ErrorVal        {getEVAL    ::   String}    
+              | ErrorVal        {getEVAL    ::   Text}    
           | NOUNCLA_VAL     {getAVALS   ::   IO ES} 
           | VERBPH_VAL      {getAVALS   ::   IO ES}  
           | ADJ_VAL         {getAVALS   ::   IO ES} 
@@ -22,21 +23,21 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
           | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
           | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO ES) -> (IO ES -> IO ES) -> (IO ES -> IO ES)) }
-          | PREP_VAL        {getPREPVAL ::  ([([String], IO ES -> IO ES)])} -- used in "hall discovered phobos with a telescope" as "with".  
-          | PREPN_VAL       {getPREPNVAL :: [String]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
-          | PREPPH_VAL      {getPREPPHVAL :: ([String], IO ES -> IO ES)}
+          | PREP_VAL        {getPREPVAL ::  ([([Text], IO ES -> IO ES)])} -- used in "hall discovered phobos with a telescope" as "with".  
+          | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
+          | PREPPH_VAL      {getPREPPHVAL :: ([Text], IO ES -> IO ES)}
           | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
           | SENTJOIN_VAL    {getSJVAL   ::   (IO ES -> IO ES -> IO ES)}
-          | DOT_VAL         {getDOTVAL  ::   IO String}
-          | QM_VAL          {getQMVAL   ::   IO String}
-          | QUEST_VAL       {getQUVAL   ::   IO String}
-          | QUEST1_VAL      {getQU1VAL  ::   (IO ES -> IO String)}
-          | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO String)}
-          | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO String)}
+          | DOT_VAL         {getDOTVAL  ::   IO Text}
+          | QM_VAL          {getQMVAL   ::   IO Text}
+          | QUEST_VAL       {getQUVAL   ::   IO Text}
+          | QUEST1_VAL      {getQU1VAL  ::   (IO ES -> IO Text)}
+          | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO Text)}
+          | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO Text)}
           | YEAR_VAL        {getYEARVAL ::   Int}
 
 --            | RESULT [sys_message]
-data MemoL    = Start | Tree | Num | Emp | ALeaf String | Expr | Op  | ET
+data MemoL    = Start | Tree | Num | Emp | ALeaf Text | Expr | Op  | ET
               | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6
                 deriving (Eq,Ord,Show)
@@ -54,48 +55,46 @@ attFunc
     (QUEST2_VAL,getQU2VAL),(QUEST3_VAL,getQU3VAL)   
    ]
 -}
-type Entity         =  String  
+type Entity         =  Text  
 type ES             =  FDBR -- [Int]
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
 --type Relation     = (ES -> Bool) -> ES
-type Relation = String
+type Relation = Text
 
 data DisplayTree = B [DisplayTree]
                  | N Int
                    deriving (Show, Eq)
 
 
---instance Show AttValue where
-
-showio :: AttValue -> IO String
-showio (VAL  j)     = return $ "VAL "    ++ show j
-showio (MaxVal j)   = return $ "MaxVal " ++ show j
-showio (SubVal j)   = return $ "SubVal " ++ show j
-showio (RepVal j)   = return $ "RepVal " ++ show j
-showio (Res j)      = return $ "Tree: "  ++ show j
-showio (B_OP j)     = return $ "B_OP"
-showio (U_OP j)     = return $ "U_OP"
-showio (SENT_VAL j) = j >>= return . show 
+showio :: AttValue -> IO Text
+showio (VAL  j)     = return $ pack $ "VAL "    ++ show j
+showio (MaxVal j)   = return $ pack $ "MaxVal " ++ show j
+showio (SubVal j)   = return $ pack $ "SubVal " ++ show j
+showio (RepVal j)   = return $ pack $ "RepVal " ++ show j
+showio (Res j)      = return $ pack $ "Tree: "  ++ show j
+showio (B_OP j)     = return $ pack $ "B_OP"
+showio (U_OP j)     = return $ pack $ "U_OP"
+showio (SENT_VAL j) = j >>= return . pack . show 
 showio (ErrorVal j) = return j
-showio (NOUNCLA_VAL j) = j >>= return . (++) "NOUNCLA_VAL " . unwords . map fst
-showio (VERBPH_VAL j)  = j >>= return . (++) "VERBPH_VAL " . unwords . map fst
-showio (ADJ_VAL    j)  = j >>= return . (++) "ADJ_VAL " . unwords . map fst
-showio (TERMPH_VAL j)  = return "TERMPH_VAL "      
-showio (DET_VAL j)     = return "DET_VAL " 
-showio (VERB_VAL j)    = return $ "VERB_VAL " ++ j
-showio (RELPRON_VAL j)  = return "RELPRON_VAL "
-showio (NOUNJOIN_VAL j)  = return "NOUNJOIN_VAL "
-showio (VBPHJOIN_VAL j)  = return "VBPHJOIN_VAL "
-showio (TERMPHJOIN_VAL j)  = return "TERMPHJOIN_VAL "
-showio (PREP_VAL j)  = return "PREP_VAL "
-showio (LINKINGVB_VAL j)  = return "LINKINGVB_VAL "
-showio (SENTJOIN_VAL j)  = return "SENTJOIN_VAL "
+showio (NOUNCLA_VAL j) = j >>= return . T.append (pack "NOUNCLA_VAL ") . T.unwords . map fst
+showio (VERBPH_VAL j)  = j >>= return . T.append (pack "VERBPH_VAL ") . T.unwords . map fst
+showio (ADJ_VAL    j)  = j >>= return . T.append (pack "ADJ_VAL ") . T.unwords . map fst
+showio (TERMPH_VAL j)  = return $ pack $ "TERMPH_VAL "      
+showio (DET_VAL j)     = return $ pack $ "DET_VAL " 
+showio (VERB_VAL j)    = return $ append (pack "VERB_VAL ") j
+showio (RELPRON_VAL j)  = return $ pack $ "RELPRON_VAL "
+showio (NOUNJOIN_VAL j)  = return $ pack $ "NOUNJOIN_VAL "
+showio (VBPHJOIN_VAL j)  = return $ pack $ "VBPHJOIN_VAL "
+showio (TERMPHJOIN_VAL j)  = return $ pack $ "TERMPHJOIN_VAL "
+showio (PREP_VAL j)  = return $ pack $ "PREP_VAL "
+showio (LINKINGVB_VAL j)  = return $ pack $ "LINKINGVB_VAL "
+showio (SENTJOIN_VAL j)  = return $ pack $ "SENTJOIN_VAL "
 showio (DOT_VAL j) = j 
 showio (QM_VAL j) = j 
 showio (QUEST_VAL j) = j 
-showio (QUEST1_VAL j)  = return "QUEST1_VAL"
-showio (QUEST2_VAL j)  = return "QUEST2_VAL"
-showio (QUEST3_VAL j)  = return "SENTJOIN_VAL"
+showio (QUEST1_VAL j)  = return $ pack $ "QUEST1_VAL"
+showio (QUEST2_VAL j)  = return $ pack $ "QUEST2_VAL"
+showio (QUEST3_VAL j)  = return $ pack $ "SENTJOIN_VAL"
 
 {-instance Show AttValue where
     show (VAL  j)     = "VAL "    ++ show j

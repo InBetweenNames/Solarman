@@ -1,7 +1,10 @@
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
 import Data.List
+import qualified Data.Text as T
 import XSaiga.TypeAg2
 import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
@@ -40,7 +43,7 @@ data Tree a = Leaf (a,Instance)
 
 type NodeName = MemoL
 type Start1   = (Int, InsAttVals)
-type Start    = ((Int,InsAttVals), [String])
+type Start    = ((Int,InsAttVals), [T.Text])
 type End      = (Int, InsAttVals)
 type Atts     = [AttValue] -- [(AttType, AttValue)]
 type InsAttVals = [(Instance, Atts)]
@@ -172,7 +175,7 @@ empty_cuts = ([],[])
 empty :: [(Instance, Atts)] -> M Foo
 empty atts (x,inp) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
-term :: String -> Instance -> [(Instance, Atts)] -> [(Instance, Atts)] -> M Foo
+term :: T.Text -> Instance -> [(Instance, Atts)] -> [(Instance, Atts)] -> M Foo
 term c id atts iatts ((r,a),dInp) l 
  |r - 1 == length dInp       = return (empty_cuts,[])
  |dInp!!(r - 1) == c         = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf c, id)])])

@@ -1,9 +1,11 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module XSaiga.Getts where
 import Data.List as List
+import Data.Text as T hiding (concat, map, zip, head)
 import Control.Monad
 import Debug.Trace
 
@@ -14,7 +16,6 @@ import qualified Data.Map.Strict as Map
 import Data.RDF hiding (triple, Triple)
 import Database.HSparql.Connection
 import Database.HSparql.QueryGenerator
-import Data.Text hiding (head, concat, map, zip, drop, length)
 
 --For caching name lookup
 import qualified Network.Socket as Net
@@ -23,31 +24,35 @@ import qualified Data.Map as M
 import Data.IORef
 import System.IO.Unsafe
 
-addUri namespace_uri = (namespace_uri ++)
+addUri namespace_uri = (T.append namespace_uri)
+
+type Event = Text
+type Triple = (Event, Text, Text)
+type FDBR = [(Text,[Event])]
 
 --getts returns all triples in the triple store that match the given parameters
 class TripleStore m where
-    getts_1 :: m -> (Event, String, String) -> IO [String]
-    getts_2 :: m -> (Event, String, String) -> IO [String]
-    getts_3 :: m -> (Event, String, String) -> IO [String]
+    getts_1 :: m -> Triple -> IO [Text]
+    getts_2 :: m -> Triple -> IO [Text]
+    getts_3 :: m -> Triple -> IO [Text]
     --getts_fdbr_entevprop_type computes the function defined by the entity-event relation r
     --where r is the relation between entities of type entity_type
     --and events of type event_type
-    getts_fdbr_entevprop_type :: m -> String -> String -> IO FDBR
+    getts_fdbr_entevprop_type :: m -> Text -> Text -> IO FDBR
     getts_fdbr_entevprop_type ev_data ev_type entity_type = do
         evs <- getts_1 ev_data ("?", "type", ev_type)
         getts_fdbr_entevprop ev_data entity_type evs
         
     --getts_fdbr_entevprop returns the entities of entity_type of the events in the list evs
-    getts_fdbr_entevprop :: m -> String -> [Event] -> IO FDBR
+    getts_fdbr_entevprop :: m -> Text -> [Event] -> IO FDBR
     getts_fdbr_entevprop ev_data entity_type evs = do
         pairs <- liftM concat $ mapM (\ev -> do
-            ents <- getts_3 ev_data (ev, entity_type,"?")
+            ents <- getts_3 ev_data (ev, entity_type, "?")
             return $ zip ents (repeat ev)) evs
         return $ collect pairs
     
     --getts_members returns
-    getts_members :: m -> String -> IO FDBR
+    getts_members :: m -> Text -> IO FDBR
     getts_members ev_data set = do
         evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
         evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
@@ -56,17 +61,13 @@ class TripleStore m where
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
 
-type Event = String
-type Triple = (Event, String, String)
-type FDBR = [(String,[Event])]
-
 --For the "In Program" triple store
 instance TripleStore [Triple] where
     getts_1 ev_data ("?", b, c) = return [x | (x,y,z) <- ev_data, b == y, c == z]
     getts_2 ev_data (a, "?", c) = return [y | (x,y,z) <- ev_data, a == x, c == z]
     getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
 
-data SPARQLBackend = SPARQL String String deriving (Ord, Eq)
+data SPARQLBackend = SPARQL String Text deriving (Ord, Eq)
 
 endpointTable :: IORef (M.Map String String)
 {-# NOINLINE endpointTable #-}
@@ -80,9 +81,9 @@ lookupEndpoint url = do
       \x -> (writeIORef endpointTable (M.insert url (newURL (showAddress x) (getURLPath url)) m) >> return (newURL (showAddress x) (getURLPath url)))
     Just res -> return res
   where
-  getServer = List.takeWhile (\x -> '/' /= x) . drop 7
+  getServer = List.takeWhile (\x -> '/' /= x) . List.drop 7
   showAddress = show . Net.addrAddress . head
-  getURLPath xs = drop (7 + (length $ getServer xs)) xs
+  getURLPath xs = List.drop (7 + (List.length $ getServer xs)) xs
   newURL server path = "http://" ++ server ++ path
 
 --the String in this instance is to be the endpoint that you wish to query
@@ -90,9 +91,9 @@ instance TripleStore SPARQLBackend where
     --getts_1 =  getts_1''
     getts_1 = memoIO getts_1''
         where
-        getts_1'' (SPARQL endpoint namespace_uri) ("?", b, c) = preprocess namespace_uri $ getts_1'(pack "?", pack (addUri namespace_uri b), pack (addUri namespace_uri c))
+        getts_1'' (SPARQL endpoint namespace_uri) ("?", b, c) = preprocess namespace_uri $ getts_1'("?", addUri namespace_uri b, addUri namespace_uri c)
             where
-            getts_1' :: (t, Text, Text) -> IO [[BindingValue]]
+            getts_1' :: (Text, Text, Text) -> IO [[BindingValue]]
             getts_1' (a, b, c) = do
                  resolvedEndpoint <- lookupEndpoint endpoint
                  (Just s) <- selectQuery resolvedEndpoint getts_1_query
@@ -106,7 +107,7 @@ instance TripleStore SPARQLBackend where
     --getts_2 =  getts_2''
     getts_2 = memoIO getts_2''
         where
-        getts_2'' (SPARQL endpoint namespace_uri) (a, "?", c) = preprocess namespace_uri $ getts_2'(pack (addUri namespace_uri a), pack "?", pack (addUri namespace_uri c))
+        getts_2'' (SPARQL endpoint namespace_uri) (a, "?", c) = preprocess namespace_uri $ getts_2'(addUri namespace_uri a,  "?", addUri namespace_uri c)
             where
                 getts_2' :: (Text, Text, Text) -> IO [[BindingValue]]
                 getts_2' (a, b, c) = do
@@ -122,7 +123,7 @@ instance TripleStore SPARQLBackend where
     --getts_3 =  getts_3''
     getts_3 = memoIO getts_3''
         where
-        getts_3'' (SPARQL endpoint namespace_uri) (a, b, "?") = preprocess namespace_uri $ getts_3'(pack (addUri namespace_uri a), pack (addUri namespace_uri b), pack "?")
+        getts_3'' (SPARQL endpoint namespace_uri) (a, b, "?") = preprocess namespace_uri $ getts_3'(addUri namespace_uri a, addUri namespace_uri b, "?")
             where
                 getts_3' :: (Text, Text, Text) -> IO [[BindingValue]]
                 getts_3' (a, b, c) = do
@@ -147,11 +148,11 @@ instance TripleStore SPARQLBackend where
                 where
                     query :: Query SelectQuery
                     query = do
-                        sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
+                        sol <- prefix ("sol") (iriRef namespace_uri)
                         ev <- var
                         subj <- var
-                        triple ev (sol .:. (pack "type")) (sol .:. (pack ev_type))
-                        triple ev (sol .:. (pack en_type)) subj
+                        triple ev (sol .:. "type") (sol .:. ev_type)
+                        triple ev (sol .:. en_type) subj
                         orderNext subj
                         distinct
                         selectVars [subj, ev]
@@ -167,11 +168,11 @@ instance TripleStore SPARQLBackend where
                 Nothing -> return []
             where
                 query = do
-                    sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
+                    sol <- prefix "sol" (iriRef namespace_uri)
                     subj <- var
                     ev <- var
-                    triple ev (sol .:. (pack en_type)) subj
-                    filterExpr $ regex ev $ (pack $ List.intercalate "|" (map (++ "$") evs))
+                    triple ev (sol .:. en_type) subj
+                    filterExpr $ regex ev $ (T.intercalate "|" (map (`T.append` "$") evs))
                     --Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
                     orderNext subj
                     distinct
@@ -191,71 +192,71 @@ instance TripleStore SPARQLBackend where
             where
                 query :: Query SelectQuery
                 query = do
-                    sol <- prefix (pack "sol") (iriRef (pack namespace_uri))
+                    sol <- prefix "sol" (iriRef namespace_uri)
                     ev <- var
                     subj <- var
-                    triple ev (sol .:. (pack "type")) (sol .:. (pack "membership"))
-                    triple ev (sol .:. (pack "subject")) subj
-                    triple ev (sol .:. (pack "object")) (sol .:. (pack set))
+                    triple ev (sol .:. "type") (sol .:. "membership")
+                    triple ev (sol .:. "subject") subj
+                    triple ev (sol .:. "object") (sol .:. set)
                     orderNext subj
                     distinct
                     selectVars [subj, ev]
     
             
-removeUri :: String -> String -> String         
-removeUri namespace_uri = drop $ length namespace_uri
+removeUri :: Text -> Text -> Text         
+removeUri namespace_uri = T.drop $ T.length namespace_uri
                       
-preprocess :: String -> IO [[BindingValue]] -> IO [String]
+preprocess :: Text -> IO [[BindingValue]] -> IO [Text]
 preprocess namespace_uri bvals = bvals >>= \x -> return $ map (removeUri namespace_uri . deconstruct) $ concat x
 
 
-deconstruct :: BindingValue -> String
+deconstruct :: BindingValue -> Text
 deconstruct value = do
     let (Bound node) = value
     case node of
-        UNode strURI -> unpack strURI
-        LNode (PlainL strLit) -> unpack strLit
+        UNode strURI -> strURI
+        LNode (PlainL strLit) -> strLit
 
 
 
-memotable :: IORef (M.Map (SPARQLBackend,(String,String,String)) [String])
+memotable :: IORef (M.Map (SPARQLBackend,Triple) [Text])
 {-# NOINLINE memotable #-}
 memotable = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO ::(SPARQLBackend -> (String, String, String) -> IO [String]) -> SPARQLBackend -> (String, String, String) -> IO [String]
+memoIO ::(SPARQLBackend -> Triple -> IO [Text]) -> SPARQLBackend -> Triple -> IO [Text]
 memoIO f a x = do
     m <- readIORef memotable
     case M.lookup (a,x) m of
         Nothing -> f a x >>= \q -> (writeIORef memotable (M.insert (a,x) q m) >> return q)
         Just r -> return r
         
-memotable' :: IORef (M.Map (SPARQLBackend,String) FDBR)
+memotable' :: IORef (M.Map (SPARQLBackend,Text) FDBR)
 {-# NOINLINE memotable' #-}
 memotable' = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO' ::(SPARQLBackend -> (String) -> IO FDBR) -> SPARQLBackend -> (String) -> IO FDBR
+memoIO' ::(SPARQLBackend -> Text -> IO FDBR) -> SPARQLBackend -> Text -> IO FDBR
 memoIO' f a x = do
     m <- readIORef memotable'
     case M.lookup (a,x) m of
         Nothing -> f a x >>= \q -> (writeIORef memotable' (M.insert (a,x) q m) >> return q)
         Just r -> return r
         
-memotable'' :: IORef (M.Map (SPARQLBackend,String,[String]) FDBR)
+memotable'' :: IORef (M.Map (SPARQLBackend,Text,[Text]) FDBR)
 {-# NOINLINE memotable'' #-}
 memotable'' = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO'' ::(SPARQLBackend -> String -> [String] -> IO FDBR) -> SPARQLBackend -> String -> [String] -> IO FDBR
+memoIO'' ::(SPARQLBackend -> Text -> [Text] -> IO FDBR) -> SPARQLBackend -> Text -> [Text] -> IO FDBR
 memoIO'' f a x y = do
     m <- readIORef memotable''
     case M.lookup (a,x,y) m of
         Nothing -> f a x y >>= \q -> (writeIORef memotable'' (M.insert (a,x,y) q m) >> return q)
         Just r -> return r
         
-memotable''' :: IORef (M.Map (SPARQLBackend,String,String) FDBR)
+memotable''' :: IORef (M.Map (SPARQLBackend,Text,Text) FDBR)
 {-# NOINLINE memotable''' #-}
 memotable''' = unsafeDupablePerformIO $ newIORef M.empty
 
-memoIO''' ::(SPARQLBackend -> String -> String -> IO FDBR) -> SPARQLBackend -> String -> String -> IO FDBR
+memoIO''' ::(SPARQLBackend -> Text -> Text -> IO FDBR) -> SPARQLBackend -> Text -> Text -> IO FDBR
 memoIO''' f a x y = do
     m <- readIORef memotable'''
     case M.lookup (a,x,y) m of
@@ -264,11 +265,11 @@ memoIO''' f a x y = do
 
         
 --Get members of named set
-get_members :: (TripleStore m) => m -> String -> IO FDBR
+get_members :: (TripleStore m) => m -> Text -> IO FDBR
 get_members = getts_members
     
 --Get all subjects of a given event type
-get_subjs_of_event_type :: (TripleStore m) => m -> String -> IO FDBR
+get_subjs_of_event_type :: (TripleStore m) => m -> Text -> IO FDBR
 get_subjs_of_event_type ev_data ev_type = make_fdbr ev_data ev_type "subject"
 
 
@@ -308,7 +309,7 @@ condense = map (\list -> (fst $ head list, map snd list)) . List.groupBy cmp
   cmp x y = (fst x) == (fst y)
 
 --alias for getts_fdbr_entevprop_type
-make_fdbr :: (TripleStore m) => m -> String -> String -> IO FDBR
+make_fdbr :: (TripleStore m) => m -> Text -> Text -> IO FDBR
 make_fdbr = getts_fdbr_entevprop_type 
     
     

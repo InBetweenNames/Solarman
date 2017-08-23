@@ -1,7 +1,12 @@
 {-# LANGUAGE Safe #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module XSaiga.LocalData where
 
+import Data.Text
+
+--Perhaps should use map...
+localData :: [(Text, Text, Text)]
 localData = [("event1000", "object", "sol"), 
     ("event1000", "subject", "mercury"), 
     ("event1000", "type", "orbit_ev"), 

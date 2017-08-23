@@ -1,10 +1,13 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module XSaiga.SolarmanTriplestore where
 
-import Prelude hiding ((*>))
+import Prelude hiding ((*>), words, unwords, concat, concatMap, null)
 import XSaiga.Getts
-import Data.List as List
+import Data.List as List hiding (words, unwords)
+import qualified Data.Text as T
 import qualified Data.Set as Set
 import XSaiga.AGParser2
 import XSaiga.TypeAg2
@@ -17,7 +20,7 @@ import qualified XSaiga.LocalData as Local
 dataStore = remoteData -- selects database
 
 endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
-namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
+namespace_uri = T.pack "http://solarman.richard.myweb.cs.uwindsor.ca#"
 remoteData = SPARQL endpoint_uri namespace_uri
 
 --copied from gangster_v4: utility functions for making lists unique
@@ -92,29 +95,30 @@ two = liftM2 two'
 which nph vbph = do
     nph_ <- nph
     vbph_ <- vbph
-    let result = unwords $ map fst $ intersect_fdbr nph_ vbph_
-    return $ if result /= [] then result else "none."
+    let result = T.unwords $ map fst $ intersect_fdbr nph_ vbph_
+    return $ if not $ T.null result then result else "none."
 
 how_many' nph vbph =
-    show $ length (intersect_fdbr nph vbph)
+    T.pack $ show $ List.length (intersect_fdbr nph vbph)
 how_many = liftM2 how_many'
 
 who = which ((get_members dataStore "person") `nounor` (get_members dataStore "science_team"))
 
 --New
-what' nph = if result /= [] then result else "nothing."
-    where result = unwords $ map fst nph
+what' nph = if not $ T.null result then result else "nothing."
+    where result = T.unwords $ map fst nph
 what = liftM what'
 
-with :: (IO FDBR -> IO FDBR) -> ([String], IO FDBR -> IO FDBR)
+with :: (IO FDBR -> IO FDBR) -> ([T.Text], IO FDBR -> IO FDBR)
 with tmph = (["with_implement"], tmph)
 
 by tmph = (["subject"], tmph)
 
 at tmph = (["location"], tmph)
 
-in' tmph = (["location", "year"], make_pnoun $ show tmph)
+in' tmph = (["location", "year"], make_pnoun tmph)
 
+make_pnoun :: T.Text -> (IO FDBR -> IO FDBR)
 make_pnoun noun = liftM $ make_pnoun' noun
 make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 
@@ -124,8 +128,8 @@ make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 make_prop_termphrase prop nph = do
     list <- nph
     props <- mapM (\(_,y) -> getts_fdbr_entevprop dataStore prop y >>= \loc -> return (map fst loc)) list
-    let finalList = unwords $ List.nub $ concat props
-    return $ if finalList /= [] then finalList else "nothing."
+    let finalList = T.unwords $ List.nub $ List.concat props
+    return $ if not $ T.null finalList then finalList else "nothing."
 
 where' = make_prop_termphrase "location"
 when' = make_prop_termphrase "year"
@@ -216,14 +220,14 @@ filter_ev ev_data ((names,pred):list) evs = do
     if res /= [] then filter_ev ev_data list evs else return False-}
 
 --new filter_ev: Handles prepositional phrases (IN TESTING)
-filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
-filter_ev _ [] _ = return True
+filter_ev :: (TripleStore m) => m -> [([T.Text], IO FDBR -> IO FDBR)] -> [Event] -> IO [Event]
+filter_ev ev_data [] evs = return evs
 filter_ev ev_data ((names,pred):list) evs = do
     relevant_list <- mapM (\name -> getts_fdbr_entevprop ev_data name evs) names
-    res <- pred $ return $ concat $ relevant_list
+    res <- pred $ return $ List.concat $ relevant_list
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
-    let relevant_evs = List.nub $ concatMap snd res
-    if res /= [] then filter_ev ev_data list relevant_evs else return False
+    let relevant_evs = List.nub $ List.concatMap snd res
+    if not $ List.null res then filter_ev ev_data list relevant_evs else return []
 
 {-make_trans_active' :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_active' ev_data rel tmph preps = do
@@ -234,10 +238,12 @@ make_trans_active' ev_data rel tmph preps = do
     return $ map fst subPairs-}
 
 --Modified version of make_trans_active' to accomodate new filter_ev
-make_trans_active' :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
+make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
 make_trans_active' ev_data rel preps = do
     images <- make_fdbr ev_data rel "subject"
-    filterM (\(_, evs) -> filter_ev ev_data preps evs) images
+    --filterM (\(_, evs) -> not $ List.null $ filter_ev ev_data preps evs) images
+    fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev ev_data preps evs >>= (\x -> return (subj, x))) images
+    filterM (return . not . List.null . snd) fdbrRelevantEvs
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -249,10 +255,12 @@ make_trans_passive' ev_data rel preps = do
         anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst -}
 
 --Modified version of make_trans_passive' to accomodate new filter_ev
-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO FDBR -> IO FDBR)] -> IO FDBR
+make_trans_passive' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
 make_trans_passive' ev_data rel preps = do
     images <- make_fdbr ev_data rel "object"
-    filterM (\(_, evs) -> filter_ev ev_data preps evs) images
+    --filterM (\(_, evs) -> not $ List.null $ filter_ev ev_data preps evs) images
+    fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev ev_data preps evs >>= (\x -> return (subj, x))) images
+    filterM (return . not . List.null . snd) fdbrRelevantEvs
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
@@ -304,7 +312,7 @@ quest3          =  pre_processed Quest3
 quest4a         =  pre_processed Quest4a
 quest4b         =  pre_processed Quest4b
 quest5          =  pre_processed Quest5
-quest6          =  pre_processed Quest6
+--quest6          =  pre_processed Quest6
 
 --NEW FOR PREPOSITIONAL PHRASES
 prep            =  pre_processed Prepn
@@ -320,25 +328,25 @@ pre_processed key
    in  formAlts (formTerminal list_of_ters)
 
 meaning_of p dInp key
- = let dInput     = words dInp
+ = let dInput     = T.words dInp
        appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) []
-       upperBound = (length dInput) + 1
+       upperBound = (List.length dInput) + 1
    in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ p dInp key
- = let dInput     = words dInp
+ = let dInput     = T.words dInp
        appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) []
-       upperBound = (length dInput) + 1
+       upperBound = (List.length dInput) + 1
    in  (snd $ appParser)
 
 formAtts key ePoint t
- = concat $ concat $ concat $ concat
+ = List.concat $ List.concat $ List.concat $ List.concat
    [[[[  val1 |(id1,val1)<-synAtts]
            |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
             |((i,inAt1),((cs,ct),rs)) <- sr ]
              |(s,sr) <- t, s == key ]
 formFinal key ePoint t
- = concat $ concat $ concat $ concat
+ = List.concat $ List.concat $ List.concat $ List.concat
    [[[[  val1 |(id1,val1)<-synAtts]
            |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
             |((i,inAt1),((cs,ct),rs)) <- sr ]
@@ -607,11 +615,6 @@ question
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
                                               synthesized SENT_VAL    OF  S2]]
     <|>
-    parser (nt quest6 S1  *> nt quest1 S2  *>  nt sent S3 )
-    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
-                                              synthesized QUEST1_VAL OF S2,
-                                              synthesized SENT_VAL    OF  S3]]
-    <|>
     parser (nt quest5 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
@@ -728,7 +731,7 @@ applypreps      [x, y]
  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x):(getAtts getPREPVAL atts y)
 
 applyyear [x]
- = \atts -> TERMPH_VAL $ make_pnoun $ show $ getAtts getYEARVAL atts x
+ = \atts -> TERMPH_VAL $ make_pnoun $ T.pack $ show $ getAtts getYEARVAL atts x
 
 --END PREPOSITIONAL PHRASES
 
@@ -834,6 +837,7 @@ truefalse        [x]
 
 -}
 
+dictionary :: [(T.Text, MemoL, [AttValue])]
 dictionary = [
     ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
     ("things",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
@@ -961,7 +965,7 @@ dictionary = [
     --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
     ("what",               Quest2,    [QUEST2_VAL     $ what]),
     ("who",                Quest2,    [QUEST2_VAL     $ who]),
-    ("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
+    ("what",               Quest5,    [QUEST2_VAL     $ whatobj]),
     ("where",              Quest5,    [QUEST2_VAL     $ where']),
     ("when",               Quest5,    [QUEST2_VAL     $ when']),
     ("how",                Quest5,    [QUEST2_VAL     $ how']),
@@ -1261,12 +1265,12 @@ as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of 
 **this might need to be altered**
 -}
 
-list_of_years = map (\n -> (show n, Year, [YEAR_VAL n])) $ concat [[1000 + x, 2000 + x] | x <- [0..999]]
+list_of_years = map (\n -> (T.pack $ show n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) []
 test p input = unState (p ((1,[]),input) ([],[])) []
 
-parse i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
+parse i = formatAttsFinalAlt Question  ((List.length (T.words i))+1) $ snd $ test (question T0 []) (T.words i)
 
 formatParseIO = mapM id . map showio . parse
 
@@ -1274,7 +1278,7 @@ findStart st ((s,ss):rest) | s == st   = [(s,ss)]
                            | otherwise = findStart st rest
 findStart st []                        = []
 
-input = words i1
+input = T.words i1
 
 i1 = "which moons that were discovered by hall orbit mars" -- OK
 i2 = "who discovered a moon that orbits mars" -- OK
