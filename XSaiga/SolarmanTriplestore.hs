@@ -1268,6 +1268,8 @@ test p input = unState (p ((1,[]),input) ([],[])) []
 
 parse i = formatAttsFinalAlt Question  ((length (words i))+1) $ snd $ test (question T0 []) (words i)
 
+formatParseIO = mapM id . map showio . parse
+
 findStart st ((s,ss):rest) | s == st   = [(s,ss)]
                            | otherwise = findStart st rest
 findStart st []                        = []

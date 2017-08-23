@@ -3,8 +3,8 @@
 
 module Main where
 import qualified XSaiga.SolarmanTriplestore as App
-import Text.PrettyPrint.HughesPJ
 import Network.CGI
+import qualified Data.List as List
 
 cgiMain :: CGI CGIResult
 cgiMain = do
@@ -120,8 +120,8 @@ interpret _ = "BLANKVALNOTUSED"
 interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
-        output <- App.parse input
-        let formatted = render $ vcat $ output
+        output <- App.formatParseIO input
+        let formatted = concat $ List.intersperse " " output
         if null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
 

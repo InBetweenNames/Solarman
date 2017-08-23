@@ -97,6 +97,36 @@ showio (QUEST1_VAL j)  = return "QUEST1_VAL"
 showio (QUEST2_VAL j)  = return "QUEST2_VAL"
 showio (QUEST3_VAL j)  = return "SENTJOIN_VAL"
 
+{-instance Show AttValue where
+    show (VAL  j)     = "VAL "    ++ show j
+    show (MaxVal j)   = "MaxVal " ++ show j
+    show (SubVal j)   = "SubVal " ++ show j
+    show (RepVal j)   = "RepVal " ++ show j
+    show (Res j)      = "Tree: "  ++ show j
+    show (B_OP j)     = "B_OP"
+    show (U_OP j)     = "U_OP"
+    show (SENT_VAL j) = show j
+    show (ErrorVal j) =  j
+    show (NOUNCLA_VAL j) = "NOUNCLA_VAL " ++ unwords $ map fst j
+    show (VERBPH_VAL j)  = "VERBPH_VAL " ++ unwords $ map fst j
+    show (ADJ_VAL    j)  = "ADJ_VLA " ++ unwords $ map fst j
+    show (TERMPH_VAL j)  = "TERMPH_VAL "      
+    show (DET_VAL j)     = "DET_VAL " 
+    show (VERB_VAL j)    =  "VERB_VAL " ++ j
+    show (RELPRON_VAL j)  = "RELPRON_VAL "
+    show (NOUNJOIN_VAL j)  = "NOUNJOIN_VAL "
+    show (VBPHJOIN_VAL j)  = "VBPHJOIN_VAL "
+    show (TERMPHJOIN_VAL j)  = "TERMPHJOIN_VAL "
+    show (PREP_VAL j)  = "PREP_VAL "
+    show (LINKINGVB_VAL j)  = "LINKINGVB_VAL "
+    show (SENTJOIN_VAL j)  = "SENTJOIN_VAL "
+    show (DOT_VAL j) = j 
+    show (QM_VAL j) = j 
+    show (QUEST_VAL j) = j 
+    show (QUEST1_VAL j)  = "QUEST1_VAL"
+    show (QUEST2_VAL j)  = "QUEST2_VAL"
+    show (QUEST3_VAL j)  = "SENTJOIN_VAL"-}
+
 instance Eq AttValue where
     (VAL  j)           == (VAL  j')     = True
     (MaxVal j)         == (MaxVal j')   = True

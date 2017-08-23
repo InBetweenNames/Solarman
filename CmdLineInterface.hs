@@ -5,6 +5,6 @@ import System.Environment
 
 main = do
   [query] <- getArgs
-  res <- parse query
+  res <- formatParseIO query
   print res
 

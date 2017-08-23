@@ -571,6 +571,7 @@ op   = memoize Op
 ------------------------------------------------ Arithmetic Expression ------------------------------------------------
 
 ----------- PrettyPrint ------------------------
+{-
 po :: (PP' a) => (String -> IO ()) -> a -> IO ()
 po act x = do
     stuff <- pp' x
@@ -579,7 +580,7 @@ po act x = do
 render80 = renderStyle (style{lineLength = 80})
 
 
-class PP' a where
+ class PP' a where
       pp' :: a -> IO Doc
 
 instance PP' Doc where
@@ -615,6 +616,7 @@ instance (Show t) => PP' (Tree t) where
       pp' (Branch ts)       = liftM2 (PPH.<+>) (return $ text "Branch") (liftM brackets $ liftM sep $ liftM (punctuate comma) $ sequence $ map pp' ts)
       --pp' (SubNode (x,(s,e))) = return $ text "SubNode" PPH.<+> text (show x) PPH.<+> text (show (s,e)) 
       -- PPH.<+> pp' ts
+      -}
 
 {-TODO:
 format :: Mtable -> Doc
@@ -674,13 +676,25 @@ formatAtts key t
    | (s,sr) <- t, s == key ]
 -}
  
-formatAttsFinalAlt :: MemoL -> Int -> State -> IO [Doc]
+{-formatAttsFinalAlt :: MemoL -> Int -> State -> [Doc]
 formatAttsFinalAlt  key e t  = 
-    --return [pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
-    sequence [(sequence [liftM vcat $ sequence [(liftM vcat $ sequence [liftM vcat $ sequence [liftM vcat $ sequence [liftM text (showio ty1v1) | ty1v1<-val1]
+    [pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]
                             |(id1,val1)<-synAtts]] )
                             |(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
-        | ((i,inAt1),((cs,ct),rs)) <- sr ]) >>= pp' | (s,sr) <- t, s == key ]
+              | ((i,inAt1),((cs,ct),rs)) <- sr ]) | (s,sr) <- t, s == key ]
+              -}
+              
+--The unformatted parse tree
+attsFinalAlt :: MemoL -> Int -> State -> [[[[[[AttValue]]]]]]
+attsFinalAlt  key e t  = 
+    [ [ [( [ [ [  ty1v1  |ty1v1<-val1]
+                            |(id1,val1)<-synAtts]] )
+                            |(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
+              | ((i,inAt1),((cs,ct),rs)) <- sr ] | (s,sr) <- t, s == key ]
+              
+--The unformatted flattened parse trees
+formatAttsFinalAlt :: MemoL -> Int -> State -> [AttValue]
+formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ concat $ attsFinalAlt key e t
 
 {-formatAttsFinal  key t  = 
    [(pp' [vcat [(vcat [vcat [vcat [text (show ty1v1)  |ty1v1<-val1]|(id1,val1)<-synAtts]] )|(((st,inAtt2),(end,synAtts)), ts)<-rs] 
