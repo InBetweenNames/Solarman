@@ -37,12 +37,12 @@ description:
 		\[4] <http://speechweb2.cs.uwindsor.ca/solarman/demo_sparql.html>
 
 Library
-  build-depends: base >=4.6 && < 5, pretty, hsparql >=0.2, rdf4h, text, containers, network
+  build-depends: base >=4.6 && < 5, pretty, hsparql >=0.2, rdf4h, text, containers, network, text-show
   exposed-modules: XSaiga.Getts, XSaiga.AGParser2, XSaiga.TypeAg2, XSaiga.SolarmanTriplestore, XSaiga.Interactive, XSaiga.LocalData
   extensions: OverloadedStrings
 
 Executable Solarman
   main-is:Main.hs
   other-modules:XSaiga.AGParser2 XSaiga.Getts XSaiga.LocalData XSaiga.SolarmanTriplestore XSaiga.TypeAg2
-  build-depends:  base >=4.6 && < 5, containers >=0.5, pretty >=1.1, cgi, rdf4h >=1.2, hsparql >=0.2, text >=0.11, network, bytestring
+  build-depends:  base >=4.6 && < 5, containers >=0.5, pretty >=1.1, cgi, rdf4h >=1.2, hsparql >=0.2, text >=0.11, network, bytestring, text-show
   extensions: DoAndIfThenElse,FlexibleInstances,NoMonomorphismRestriction,OverloadedStrings

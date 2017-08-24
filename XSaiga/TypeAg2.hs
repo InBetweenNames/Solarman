@@ -1,8 +1,10 @@
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE OverloadedStrings #-}
 module XSaiga.TypeAg2 where
 
 import XSaiga.Getts
 import Data.Text as T hiding (map)
+import TextShow
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -65,36 +67,39 @@ data DisplayTree = B [DisplayTree]
                  | N Int
                    deriving (Show, Eq)
 
+instance TextShow DisplayTree where
+  showb (B x) = showbList x
+  showb (N i) = showb i
 
 showio :: AttValue -> IO Text
-showio (VAL  j)     = return $ pack $ "VAL "    ++ show j
-showio (MaxVal j)   = return $ pack $ "MaxVal " ++ show j
-showio (SubVal j)   = return $ pack $ "SubVal " ++ show j
-showio (RepVal j)   = return $ pack $ "RepVal " ++ show j
-showio (Res j)      = return $ pack $ "Tree: "  ++ show j
-showio (B_OP j)     = return $ pack $ "B_OP"
-showio (U_OP j)     = return $ pack $ "U_OP"
-showio (SENT_VAL j) = j >>= return . pack . show 
+showio (VAL  j)     = return $ "VAL " `T.append` showt j
+showio (MaxVal j)   = return $ "MaxVal " `T.append` showt j
+showio (SubVal j)   = return $ "SubVal " `T.append` showt j
+showio (RepVal j)   = return $ "RepVal " `T.append` showt j
+showio (Res j)      = return $ "Tree: "  `T.append` showt j
+showio (B_OP j)     = return $ "B_OP"
+showio (U_OP j)     = return $ "U_OP"
+showio (SENT_VAL j) = j >>= return . showt 
 showio (ErrorVal j) = return j
-showio (NOUNCLA_VAL j) = j >>= return . T.append (pack "NOUNCLA_VAL ") . T.unwords . map fst
-showio (VERBPH_VAL j)  = j >>= return . T.append (pack "VERBPH_VAL ") . T.unwords . map fst
-showio (ADJ_VAL    j)  = j >>= return . T.append (pack "ADJ_VAL ") . T.unwords . map fst
-showio (TERMPH_VAL j)  = return $ pack $ "TERMPH_VAL "      
-showio (DET_VAL j)     = return $ pack $ "DET_VAL " 
-showio (VERB_VAL j)    = return $ append (pack "VERB_VAL ") j
-showio (RELPRON_VAL j)  = return $ pack $ "RELPRON_VAL "
-showio (NOUNJOIN_VAL j)  = return $ pack $ "NOUNJOIN_VAL "
-showio (VBPHJOIN_VAL j)  = return $ pack $ "VBPHJOIN_VAL "
-showio (TERMPHJOIN_VAL j)  = return $ pack $ "TERMPHJOIN_VAL "
-showio (PREP_VAL j)  = return $ pack $ "PREP_VAL "
-showio (LINKINGVB_VAL j)  = return $ pack $ "LINKINGVB_VAL "
-showio (SENTJOIN_VAL j)  = return $ pack $ "SENTJOIN_VAL "
+showio (NOUNCLA_VAL j) = j >>= return . T.append ( "NOUNCLA_VAL ") . T.unwords . map fst
+showio (VERBPH_VAL j)  = j >>= return . T.append ( "VERBPH_VAL ") . T.unwords . map fst
+showio (ADJ_VAL    j)  = j >>= return . T.append ( "ADJ_VAL ") . T.unwords . map fst
+showio (TERMPH_VAL j)  = return $ "TERMPH_VAL "      
+showio (DET_VAL j)     = return $ "DET_VAL " 
+showio (VERB_VAL j)    = return $ T.append "VERB_VAL"  j
+showio (RELPRON_VAL j)  = return $ "RELPRON_VAL "
+showio (NOUNJOIN_VAL j)  = return $ "NOUNJOIN_VAL "
+showio (VBPHJOIN_VAL j)  = return $ "VBPHJOIN_VAL "
+showio (TERMPHJOIN_VAL j)  = return $ "TERMPHJOIN_VAL "
+showio (PREP_VAL j)  = return $ "PREP_VAL "
+showio (LINKINGVB_VAL j)  = return $ "LINKINGVB_VAL "
+showio (SENTJOIN_VAL j)  = return $ "SENTJOIN_VAL "
 showio (DOT_VAL j) = j 
 showio (QM_VAL j) = j 
 showio (QUEST_VAL j) = j 
-showio (QUEST1_VAL j)  = return $ pack $ "QUEST1_VAL"
-showio (QUEST2_VAL j)  = return $ pack $ "QUEST2_VAL"
-showio (QUEST3_VAL j)  = return $ pack $ "SENTJOIN_VAL"
+showio (QUEST1_VAL j)  = return $ "QUEST1_VAL"
+showio (QUEST2_VAL j)  = return $ "QUEST2_VAL"
+showio (QUEST3_VAL j)  = return $ "SENTJOIN_VAL"
 
 {-instance Show AttValue where
     show (VAL  j)     = "VAL "    ++ show j
