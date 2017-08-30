@@ -14,7 +14,7 @@ import XSaiga.TypeAg2
 import Control.Monad
 import Debug.Trace
 import qualified XSaiga.LocalData as Local
-import TextShow
+import XSaiga.ShowText
 
 --change between remoteData and localData
 --dataStore = Local.localData
@@ -100,7 +100,7 @@ which nph vbph = do
     return $ if not $ T.null result then result else "none."
 
 how_many' nph vbph =
-    showt $ List.length (intersect_fdbr nph vbph)
+    tshow $ List.length (intersect_fdbr nph vbph)
 how_many = liftM2 how_many'
 
 who = which ((get_members dataStore "person") `nounor` (get_members dataStore "science_team"))
@@ -121,7 +121,7 @@ make_pnoun :: T.Text -> (IO FDBR -> IO FDBR)
 make_pnoun noun = liftM $ make_pnoun' noun
 make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 
-in' tmph = (["location", "year"], make_pnoun $ showt tmph)
+in' tmph = (["location", "year"], make_pnoun $ tshow tmph)
 --New for new new semantics
 
 --TODO: Handle case where nothing is in props (return none)
@@ -731,7 +731,7 @@ applypreps      [x, y]
  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x):(getAtts getPREPVAL atts y)
 
 applyyear [x]
-  = \atts -> TERMPH_VAL $ make_pnoun $ showt $ getAtts getYEARVAL atts x
+  = \atts -> TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
 
 --END PREPOSITIONAL PHRASES
 
@@ -1265,7 +1265,7 @@ as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of 
 **this might need to be altered**
 -}
 
-list_of_years = map (\n -> (showt n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
+list_of_years = map (\n -> (tshow n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) []
 test p input = unState (p ((1,[]),input) ([],[])) []

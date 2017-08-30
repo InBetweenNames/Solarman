@@ -4,7 +4,7 @@ module XSaiga.TypeAg2 where
 
 import XSaiga.Getts
 import Data.Text as T hiding (map)
-import TextShow
+import XSaiga.ShowText
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -67,19 +67,15 @@ data DisplayTree = B [DisplayTree]
                  | N Int
                    deriving (Show, Eq)
 
-instance TextShow DisplayTree where
-  showb (B x) = showbList x
-  showb (N i) = showb i
-
 showio :: AttValue -> IO Text
-showio (VAL  j)     = return $ "VAL " `T.append` showt j
-showio (MaxVal j)   = return $ "MaxVal " `T.append` showt j
-showio (SubVal j)   = return $ "SubVal " `T.append` showt j
-showio (RepVal j)   = return $ "RepVal " `T.append` showt j
-showio (Res j)      = return $ "Tree: "  `T.append` showt j
+showio (VAL  j)     = return $ "VAL " `T.append` tshow j
+showio (MaxVal j)   = return $ "MaxVal " `T.append` tshow j
+showio (SubVal j)   = return $ "SubVal " `T.append` tshow j
+showio (RepVal j)   = return $ "RepVal " `T.append` tshow j
+showio (Res j)      = return $ "Tree: "  `T.append` tshow j
 showio (B_OP j)     = return $ "B_OP"
 showio (U_OP j)     = return $ "U_OP"
-showio (SENT_VAL j) = j >>= return . showt 
+showio (SENT_VAL j) = j >>= return . tshow 
 showio (ErrorVal j) = return j
 showio (NOUNCLA_VAL j) = j >>= return . T.append ( "NOUNCLA_VAL ") . T.unwords . map fst
 showio (VERBPH_VAL j)  = j >>= return . T.append ( "VERBPH_VAL ") . T.unwords . map fst
