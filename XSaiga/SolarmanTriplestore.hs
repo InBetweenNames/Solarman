@@ -237,13 +237,16 @@ make_trans_active' ev_data rel tmph preps = do
         tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
     return $ map fst subPairs-}
 
+prepProps :: [([T.Text], a)] -> [T.Text]
+prepProps = nub . concatMap fst
+
 --Modified version of make_trans_active' to accomodate new filter_ev
 make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
 make_trans_active' ev_data rel preps = do
-    images <- make_fdbr ev_data rel "subject"
-    --filterM (\(_, evs) -> not $ List.null $ filter_ev ev_data preps evs) images
-    fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev ev_data preps evs >>= (\x -> return (subj, x))) images
-    filterM (return . not . List.null . snd) fdbrRelevantEvs
+  triples <- getts_triples_entevprop_type ev_data ("subject":(prepProps preps)) rel
+  let images = getts_fdbr_entevprop_triples triples "subject"
+  fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
+  filterM (return . not . List.null . snd) fdbrRelevantEvs
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -257,8 +260,8 @@ make_trans_passive' ev_data rel preps = do
 --Modified version of make_trans_passive' to accomodate new filter_ev
 make_trans_passive' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
 make_trans_passive' ev_data rel preps = do
-    images <- make_fdbr ev_data rel "object"
-    --filterM (\(_, evs) -> not $ List.null $ filter_ev ev_data preps evs) images
+    triples <- getts_triples_entevprop_type ev_data ("object":(prepProps preps)) rel
+    let images = getts_fdbr_entevprop_triples triples "object"
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev ev_data preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs
 

@@ -38,11 +38,13 @@ class TripleStore m where
     --getts_fdbr_entevprop_type computes the function defined by the entity-event relation r
     --where r is the relation between entities of type entity_type
     --and events of type event_type
-    getts_fdbr_entevprop_type :: m -> Text -> Text -> IO FDBR
-    getts_fdbr_entevprop_type ev_data ev_type entity_type = do
-        evs <- getts_1 ev_data ("?", "type", ev_type)
-        getts_fdbr_entevprop ev_data entity_type evs
+    --getts_fdbr_entevprop_type :: m -> Text -> Text -> IO FDBR
+    --getts_fdbr_entevprop_type ev_data ev_type entity_type = do
+    --    evs <- getts_1 ev_data ("?", "type", ev_type)
+    --    getts_fdbr_entevprop ev_data entity_type evs
         
+    getts_triples_entevprop_type :: m -> [Text] -> Text -> IO [Triple]
+    
     --getts_fdbr_entevprop returns the entities of entity_type of the events in the list evs
     getts_fdbr_entevprop :: m -> Text -> [Event] -> IO FDBR
     getts_fdbr_entevprop ev_data entity_type evs = do
@@ -53,19 +55,30 @@ class TripleStore m where
     
     --getts_members returns
     getts_members :: m -> Text -> IO FDBR
-    getts_members ev_data set = do
+    {-getts_members ev_data set = do
         evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
         evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
-        getts_fdbr_entevprop ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership
+        getts_fdbr_entevprop ev_data "subject" $ intersect evs_with_set_as_object evs_with_type_membership-}
             
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
+
+getts_fdbr_entevprop_triples :: [Triple] -> Text -> FDBR
+getts_fdbr_entevprop_triples ev_data entity_type 
+  = collect $ map (\(x, _, z) -> (z, x)) $ List.filter (\(x, y, z) -> y == entity_type) ev_data
 
 --For the "In Program" triple store
 instance TripleStore [Triple] where
     getts_1 ev_data ("?", b, c) = return [x | (x,y,z) <- ev_data, b == y, c == z]
     getts_2 ev_data (a, "?", c) = return [y | (x,y,z) <- ev_data, a == x, c == z]
     getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
+    getts_triples_entevprop_type ev_data propNames ev_type = return ev_data --no-op
+    getts_members ev_data set = do
+      evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
+      evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
+      let evs = intersect evs_with_set_as_object evs_with_type_membership
+      let setRel = [(y, x) | (x, y, _) <- ev_data, x `elem` evs, "subject" == y]
+      return $ collect $ setRel
 
 data SPARQLBackend = SPARQL String Text deriving (Ord, Eq)
 
@@ -137,7 +150,7 @@ instance TripleStore SPARQLBackend where
                           distinct
                           selectVars [x]
     --Efficient implementation of getts_fdbr_entevprop_type for SPARQL backend
-    getts_fdbr_entevprop_type = memoIO''' getts_fdbr_entevprop_type'''
+    {-getts_fdbr_entevprop_type = memoIO''' getts_fdbr_entevprop_type'''
         where
         getts_fdbr_entevprop_type''' (SPARQL endpoint namespace_uri) ev_type en_type = do
                 resolvedEndpoint <- lookupEndpoint endpoint
@@ -155,10 +168,31 @@ instance TripleStore SPARQLBackend where
                         triple ev (sol .:. en_type) subj
                         orderNext subj
                         distinct
-                        selectVars [subj, ev]
+                        selectVars [subj, ev]-}
     
+    
+    getts_triples_entevprop_type (SPARQL endpoint namespace_uri) propNames ev_type = do
+      resolvedEndpoint <- lookupEndpoint endpoint
+      m <- selectQuery resolvedEndpoint query
+      case m of
+        (Just res) -> return $ map (\[x, y, z] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)) res
+        Nothing -> return []
+      where
+        query :: Query SelectQuery
+        query = do
+          sol <- prefix "sol" (iriRef namespace_uri)
+          ev <- var
+          prop <- var
+          ent <- var
+          triple ev prop ent
+          triple ev (sol .:. "type") (sol .:. ev_type)
+          filterExpr $ regex prop $ (T.intercalate "|" (map (`T.append` "$") propNames))
+          selectVars [ev, prop, ent]
+
+
+
     --Efficient implementation of getts_fdbr_entevprop for SPARQL backend
-    getts_fdbr_entevprop = memoIO'' getts_fdbr_entevprop''
+    {-getts_fdbr_entevprop = memoIO'' getts_fdbr_entevprop''
         where
         getts_fdbr_entevprop'' (SPARQL endpoint namespace_uri) en_type evs = do
             resolvedEndpoint <- lookupEndpoint endpoint
@@ -173,10 +207,9 @@ instance TripleStore SPARQLBackend where
                     ev <- var
                     triple ev (sol .:. en_type) subj
                     filterExpr $ regex ev $ (T.intercalate "|" (map (`T.append` "$") evs))
-                    --Data.List.foldr1 Database.HSparql.QueryGenerator.union $ map (\ev -> triple (sol .:. pack(ev))  (sol .:. pack("subject")) subj) evs -- UNION nesting problem
                     orderNext subj
                     distinct
-                    selectVars [subj, ev]
+                    selectVars [subj, ev]-}
                 
     --Efficient implementation of getts_members for SPARQL backend
     
@@ -201,8 +234,8 @@ instance TripleStore SPARQLBackend where
                     orderNext subj
                     distinct
                     selectVars [subj, ev]
-    
-            
+
+
 removeUri :: Text -> Text -> Text         
 removeUri namespace_uri = T.drop $ T.length namespace_uri
                       
@@ -270,8 +303,10 @@ get_members = getts_members
     
 --Get all subjects of a given event type
 get_subjs_of_event_type :: (TripleStore m) => m -> Text -> IO FDBR
-get_subjs_of_event_type ev_data ev_type = make_fdbr ev_data ev_type "subject"
-
+--get_subjs_of_event_type ev_data ev_type = make_fdbr ev_data ev_type "subject"
+get_subjs_of_event_type ev_data ev_type = do
+  rt <- getts_triples_entevprop_type ev_data ["subject"] ev_type
+  return $ getts_fdbr_entevprop_triples rt "subject"
 
 {-collect accepts a binary relation as input and computes the image img of each
 element x in the projection of the left column of the relation, under the relation,
@@ -309,7 +344,7 @@ condense = map (\list -> (fst $ head list, map snd list)) . List.groupBy cmp
   cmp x y = (fst x) == (fst y)
 
 --alias for getts_fdbr_entevprop_type
-make_fdbr :: (TripleStore m) => m -> Text -> Text -> IO FDBR
-make_fdbr = getts_fdbr_entevprop_type 
+--make_fdbr :: (TripleStore m) => m -> Text -> Text -> IO FDBR
+--make_fdbr = getts_fdbr_entevprop_type 
     
     
