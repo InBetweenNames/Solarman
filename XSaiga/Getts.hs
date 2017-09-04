@@ -171,7 +171,6 @@ instance TripleStore SPARQLBackend where
           prop <- var
           ent <- var
           triple ev prop ent
-          filterList ev evs
           filterExpr $ List.foldr1 (.||.) $ map ((ev .==.) . (sol .:. )) evs
           filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames
           selectVars [ev, prop, ent]

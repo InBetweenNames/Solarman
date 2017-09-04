@@ -124,7 +124,6 @@ make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 in' tmph = (["location", "year"], make_pnoun $ tshow tmph)
 --New for new new semantics
 
---TODO: better handle these with solarmanv3.  currently must go over entire triplestore??
 --Strategy: collect all events, get all triples of those evs with prop
 --use getts_fdbr_entevprop or similar to...
 
