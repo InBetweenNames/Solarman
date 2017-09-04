@@ -40,7 +40,7 @@ Library
   build-depends: base >=4.6 && < 5, pretty, hsparql >=0.2, rdf4h, text, containers, network
   exposed-modules: XSaiga.Getts, XSaiga.AGParser2, XSaiga.TypeAg2, XSaiga.SolarmanTriplestore, XSaiga.Interactive, XSaiga.LocalData
   other-modules: XSaiga.ShowText
-  extensions: OverloadedStrings,FlexibleInstances,NoMonomorhpismRestriction
+  extensions: OverloadedStrings,FlexibleInstances,NoMonomorphismRestriction
 
 Executable Solarman
   main-is:Main.hs

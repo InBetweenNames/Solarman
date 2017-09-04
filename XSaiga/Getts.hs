@@ -37,16 +37,13 @@ class TripleStore m where
     getts_3 :: m -> Triple -> IO [Text]
             
     getts_triples_entevprop_type :: m -> [Text] -> Text -> IO [Triple]
-    
-    --getts_fdbr_entevprop returns the entities of entity_type of the events in the list evs
-    getts_fdbr_entevprop :: m -> Text -> [Event] -> IO FDBR
-    getts_fdbr_entevprop ev_data entity_type evs = do
-        pairs <- liftM concat $ mapM (\ev -> do
-            ents <- getts_3 ev_data (ev, entity_type, "?")
-            return $ zip ents (repeat ev)) evs
-        return $ collect pairs
-    
-    --getts_members returns
+    getts_triples_entevprop_type ev_data propNames ev_type = do
+      evs_with_type_ev_type <- getts_1 ev_data ("?", "type", ev_type)
+      getts_triples_entevprop ev_data propNames evs_with_type_ev_type
+
+    getts_triples_entevprop :: m -> [Text] -> [Event] -> IO [Triple]
+   
+    --getts_members returns the members of a given set as an FDBR
     getts_members :: m -> Text -> IO FDBR
                 
 
@@ -61,9 +58,10 @@ instance TripleStore [Triple] where
     getts_1 ev_data ("?", b, c) = return [x | (x,y,z) <- ev_data, b == y, c == z]
     getts_2 ev_data (a, "?", c) = return [y | (x,y,z) <- ev_data, a == x, c == z]
     getts_3 ev_data (a, b, "?") = return [z | (x,y,z) <- ev_data, a == x, b == y]
-    getts_triples_entevprop_type ev_data propNames ev_type = do
-      evs_with_type_ev_type <- getts_1 ev_data ("?", "type", ev_type)
-      return $ List.filter (\(s, v, o) -> s `elem` evs_with_type_ev_type && o `elem` propNames) ev_data
+    
+    getts_triples_entevprop ev_data propNames evs = do
+      return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` propNames) ev_data
+    
     getts_members ev_data set = do
       evs_with_set_as_object <- getts_1 ev_data ("?", "object", set)
       evs_with_type_membership <- getts_1 ev_data ("?", "type", "membership")
@@ -156,31 +154,29 @@ instance TripleStore SPARQLBackend where
           ent <- var
           triple ev prop ent
           triple ev (sol .:. "type") (sol .:. ev_type)
-          filterExpr $ regex prop $ (T.intercalate "|" (map (`T.append` "$") propNames))
+          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames
           selectVars [ev, prop, ent]
 
-
-    --Efficient implementation of getts_fdbr_entevprop for SPARQL backend TODO: solarmanv3
-    getts_fdbr_entevprop = memoIO'' getts_fdbr_entevprop''
-        where
-        getts_fdbr_entevprop'' (SPARQL endpoint namespace_uri) en_type evs = do
-            resolvedEndpoint <- lookupEndpoint endpoint
-            m <- selectQuery resolvedEndpoint query
-            case m of
-                (Just res) -> return $ condense $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
-                Nothing -> return []
-            where
-                query = do
-                    sol <- prefix "sol" (iriRef namespace_uri)
-                    subj <- var
-                    ev <- var
-                    triple ev (sol .:. en_type) subj
-                    filterExpr $ regex ev $ (T.intercalate "|" (map (`T.append` "$") evs))
-                    orderNext subj
-                    distinct
-                    selectVars [subj, ev]
-    --Efficient implementation of getts_members for SPARQL backend
+    getts_triples_entevprop (SPARQL endpoint namespace_uri) propNames evs = do
+      resolvedEndpoint <- lookupEndpoint endpoint
+      m <- selectQuery resolvedEndpoint query
+      case m of
+        (Just res) -> return $ map (\[x, y, z] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)) res
+        Nothing -> return []
+      where
+        query :: Query SelectQuery
+        query = do
+          sol <- prefix "sol" (iriRef namespace_uri)
+          ev <- var
+          prop <- var
+          ent <- var
+          triple ev prop ent
+          filterList ev evs
+          filterExpr $ List.foldr1 (.||.) $ map ((ev .==.) . (sol .:. )) evs
+          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames
+          selectVars [ev, prop, ent]
     
+    --Efficient implementation of getts_members for SPARQL backend
     getts_members = memoIO' getts_members'
     --getts_members = getts_members'
         where
@@ -202,7 +198,6 @@ instance TripleStore SPARQLBackend where
                     orderNext subj
                     distinct
                     selectVars [subj, ev]
-
 
 removeUri :: Text -> Text -> Text         
 removeUri namespace_uri = T.drop $ T.length namespace_uri

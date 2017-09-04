@@ -124,13 +124,17 @@ make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 in' tmph = (["location", "year"], make_pnoun $ tshow tmph)
 --New for new new semantics
 
---TODO: Handle case where nothing is in props (return none)
 --TODO: better handle these with solarmanv3.  currently must go over entire triplestore??
+--Strategy: collect all events, get all triples of those evs with prop
+--use getts_fdbr_entevprop or similar to...
+
+make_prop_termphrase :: (TripleStore m) => m -> T.Text -> IO FDBR -> IO T.Text
 make_prop_termphrase ev_data prop nph = do
-    list <- nph
-    props <- mapM (\(_,y) -> getts_fdbr_entevprop ev_data prop y >>= \loc -> return (map fst loc)) list
-    let finalList = T.unwords $ List.nub $ List.concat props
-    return $ if not $ T.null finalList then finalList else "nothing."
+  list <- nph
+  let evs = List.nub $ List.concatMap snd list
+  rtriples  <- getts_triples_entevprop ev_data [prop] evs
+  let finalList = T.unwords $ List.nub $ map (\(x,y,z) -> z) rtriples
+  return $ if not $ T.null finalList then finalList else "nothing."
 
 where' = make_prop_termphrase dataStore "location"
 when' = make_prop_termphrase dataStore "year"
