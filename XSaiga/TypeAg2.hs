@@ -5,6 +5,24 @@ module XSaiga.TypeAg2 where
 import XSaiga.Getts
 import Data.Text as T hiding (map)
 import XSaiga.ShowText
+import Control.Applicative
+
+type TF a = [Triple] -> a
+data GettsUnion = GettsTP [Text] Text | GettsMembers Text | GettsNone | GettsAttachP Text GettsUnion
+data SemFunc a = SemFunc a GettsUnion
+
+iunion :: GettsUnion -> GettsUnion -> GettsUnion
+iunion GettsNone u = u
+iunion u GettsNone = u
+
+--a <*> moon <*> spins... a 
+
+instance Functor SemFunc where
+  fmap f (SemFunc sem iu) = SemFunc (f sem) iu
+
+instance Applicative SemFunc where
+  (SemFunc f iu1) <*> (SemFunc sem iu2) = SemFunc (f sem) (iu1 `iunion` iu2)
+  pure x = SemFunc x GettsNone
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
