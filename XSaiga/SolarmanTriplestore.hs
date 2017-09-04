@@ -125,16 +125,17 @@ in' tmph = (["location", "year"], make_pnoun $ tshow tmph)
 --New for new new semantics
 
 --TODO: Handle case where nothing is in props (return none)
-make_prop_termphrase prop nph = do
+--TODO: better handle these with solarmanv3.  currently must go over entire triplestore??
+make_prop_termphrase ev_data prop nph = do
     list <- nph
-    props <- mapM (\(_,y) -> getts_fdbr_entevprop dataStore prop y >>= \loc -> return (map fst loc)) list
+    props <- mapM (\(_,y) -> getts_fdbr_entevprop ev_data prop y >>= \loc -> return (map fst loc)) list
     let finalList = T.unwords $ List.nub $ List.concat props
     return $ if not $ T.null finalList then finalList else "nothing."
 
-where' = make_prop_termphrase "location"
-when' = make_prop_termphrase "year"
-how' = make_prop_termphrase "with_implement"
-whatobj = make_prop_termphrase "object"
+where' = make_prop_termphrase dataStore "location"
+when' = make_prop_termphrase dataStore "year"
+how' = make_prop_termphrase dataStore "with_implement"
+whatobj = make_prop_termphrase dataStore "object"
 
 --end of copied from gangster_v4
 
@@ -220,13 +221,14 @@ filter_ev ev_data ((names,pred):list) evs = do
     if res /= [] then filter_ev ev_data list evs else return False-}
 
 --new filter_ev: Handles prepositional phrases (IN TESTING)
-filter_ev :: (TripleStore m) => m -> [([T.Text], IO FDBR -> IO FDBR)] -> [Event] -> IO [Event]
+filter_ev :: [Triple] -> [([T.Text], IO FDBR -> IO FDBR)] -> [Event] -> IO [Event]
 filter_ev ev_data [] evs = return evs
 filter_ev ev_data ((names,pred):list) evs = do
-    relevant_list <- mapM (\name -> getts_fdbr_entevprop ev_data name evs) names
-    res <- pred $ return $ List.concat $ relevant_list
+    let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) ev_data -- only get triples with our events
+    let relevant_list    = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names 
+    res <- pred $ return $ relevant_list
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
-    let relevant_evs = List.nub $ List.concatMap snd res
+    let relevant_evs = List.nub $ concatMap snd res
     if not $ List.null res then filter_ev ev_data list relevant_evs else return []
 
 {-make_trans_active' :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
@@ -244,7 +246,7 @@ prepProps = nub . concatMap fst
 make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
 make_trans_active' ev_data rel preps = do
   triples <- getts_triples_entevprop_type ev_data ("subject":(prepProps preps)) rel
-  let images = getts_fdbr_entevprop_triples triples "subject"
+  let images = make_fdbr_with_prop triples "subject"
   fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
   filterM (return . not . List.null . snd) fdbrRelevantEvs
 
@@ -261,8 +263,8 @@ make_trans_passive' ev_data rel preps = do
 make_trans_passive' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
 make_trans_passive' ev_data rel preps = do
     triples <- getts_triples_entevprop_type ev_data ("object":(prepProps preps)) rel
-    let images = getts_fdbr_entevprop_triples triples "object"
-    fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev ev_data preps evs >>= (\x -> return (subj, x))) images
+    let images = make_fdbr_with_prop triples "object"
+    fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs
 
 --Copied from old solarman:
