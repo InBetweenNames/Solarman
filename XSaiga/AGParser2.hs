@@ -14,13 +14,11 @@ import Control.Applicative hiding ((<|>), (*>))
 
 ---- ************************************ -----------------------
 
-type Instance = IRec
                 
 data SorI     = S | I |NILL  deriving (Eq,Ord,Show, Enum) 
                 -- Synthesized or inherited or NILL
 
-
-type IRec     = (SorI, Id) 
+type Instance     = (SorI, Id) 
                 -- uniquely determines synthesized or inherited attribute for an NT
                 
 data Useless  = OF|ISEQUALTO  deriving (Show, Eq)

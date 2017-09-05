@@ -294,18 +294,18 @@ sand s1 s2 = do
 ||-----------------------------------------------------------------------------
 -}
 
-pnoun           =  pre_processed Pnoun
-cnoun           =  pre_processed Cnoun
-adj             =  pre_processed Adj
-det             =  pre_processed Det
-intransvb       =  pre_processed Intransvb
-transvb         =  pre_processed Transvb
-linkingvb       =  pre_processed Linkingvb
-relpron         =  pre_processed Relpron
-termphjoin      =  pre_processed Termphjoin
-verbphjoin      =  pre_processed Verbphjoin
-nounjoin        =  pre_processed Nounjoin
-indefpron       =  pre_processed Indefpron
+pnoun           =  memoize_terminals_from_dictionary Pnoun
+cnoun           =  memoize_terminals_from_dictionary Cnoun
+adj             =  memoize_terminals_from_dictionary Adj
+det             =  memoize_terminals_from_dictionary Det
+intransvb       =  memoize_terminals_from_dictionary Intransvb
+transvb         =  memoize_terminals_from_dictionary Transvb
+linkingvb       =  memoize_terminals_from_dictionary Linkingvb
+relpron         =  memoize_terminals_from_dictionary Relpron
+termphjoin      =  memoize_terminals_from_dictionary Termphjoin
+verbphjoin      =  memoize_terminals_from_dictionary Verbphjoin
+nounjoin        =  memoize_terminals_from_dictionary Nounjoin
+indefpron       =  memoize_terminals_from_dictionary Indefpron
 {-
 terminator      =  uninterpreted (SPECIAL_SYMBOL_TERM ".")
                    $orelse
@@ -313,27 +313,24 @@ terminator      =  uninterpreted (SPECIAL_SYMBOL_TERM ".")
                    $orelse
                    uninterpreted (SPECIAL_SYMBOL_TERM "\n")
 -}
-sentjoin        =  pre_processed Sentjoin
-quest1          =  pre_processed Quest1
-quest2          =  pre_processed Quest2
-quest3          =  pre_processed Quest3
-quest4a         =  pre_processed Quest4a
-quest4b         =  pre_processed Quest4b
-quest5          =  pre_processed Quest5
---quest6          =  pre_processed Quest6
+sentjoin        =  memoize_terminals_from_dictionary Sentjoin
+quest1          =  memoize_terminals_from_dictionary Quest1
+quest2          =  memoize_terminals_from_dictionary Quest2
+quest3          =  memoize_terminals_from_dictionary Quest3
+quest4a         =  memoize_terminals_from_dictionary Quest4a
+quest4b         =  memoize_terminals_from_dictionary Quest4b
+quest5          =  memoize_terminals_from_dictionary Quest5
+--quest6          =  memoize_terminals_from_dictionary Quest6
 
 --NEW FOR PREPOSITIONAL PHRASES
-prep            =  pre_processed Prepn
-year            =  pre_processed Year
+prep            =  memoize_terminals_from_dictionary Prepn
+year            =  memoize_terminals_from_dictionary Year
 
-pre_processed key
- = let formAlts altTerminals  = memoize key (altTerminals)
-       formTerminal [x]       = x
-       formTerminal (x:xs)    = x <|>  formTerminal xs
-       list_of_ters           = [ terminal (term a) z
-                                | (a,b,z) <- dictionary
-                                , b == key]
-   in  formAlts (formTerminal list_of_ters)
+memoize_terminals_from_dictionary key
+  = let key_words              = filter (\(_,type',_) -> type' == key) dictionary
+        list_of_terms          = map (\(a, _, z) -> terminal (term a) z) key_words
+        altTerminals           = foldr1 (<|>) list_of_terms
+    in  memoize key altTerminals
 
 meaning_of p dInp key
  = let dInput     = T.words dInp
