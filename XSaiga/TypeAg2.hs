@@ -57,6 +57,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | YEAR_VAL        {getYEARVAL ::   Int}
 
 --            | RESULT [sys_message]
+--Also called a "NodeName"
 data MemoL    = Start | Tree | Num | Emp | ALeaf Text | Expr | Op  | ET
               | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6

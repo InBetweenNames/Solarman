@@ -1,5 +1,6 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
@@ -8,7 +9,7 @@ import qualified Data.Text as T
 import XSaiga.TypeAg2
 import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
-
+import Control.Monad.State.Lazy
 
 
 
@@ -18,78 +19,48 @@ import Control.Applicative hiding ((<|>), (*>))
 data SorI     = S | I |NILL  deriving (Eq,Ord,Show, Enum) 
                 -- Synthesized or inherited or NILL
 
-type Instance     = (SorI, Id) 
+type Instance = (SorI, Id) 
                 -- uniquely determines synthesized or inherited attribute for an NT
                 
 data Useless  = OF|ISEQUALTO  deriving (Show, Eq)
                 -- for decorating the semantic rules
-
-
        
-data SRule_   = NT {iden :: Id, par :: NTType} | Rule {par' :: SeqType} | DRule {par'' :: SRule_ } 
-
-type NTType  = Id -> InsAttVals -> M Foo
-type SeqType = Id -> InsAttVals -> [SemRule] -> Result -> M Foo
-type AltType = NTType
-type SemRule =  (Instance,(InsAttVals, Id) -> InsAttVals)
-------------
-data Tree a = Leaf (a,Instance)
-            | Branch [Tree a] 
-            | SubNode ((NodeName, Instance), (Start1,End))
-              deriving (Eq)
-
-
-type NodeName = MemoL
-type Start1   = (Int, InsAttVals)
-type Start    = ((Int,InsAttVals), [T.Text])
-type End      = (Int, InsAttVals)
 type Atts     = [AttValue] -- [(AttType, AttValue)]
-type InsAttVals = [(Instance, Atts)]
 
+type InsAttVals = [(Instance,Atts)]
 
-type Mtable   = [(MemoL
-                 ,[(Start1,(Context,Result))]
-                 )
-                ] 
-type Result   = [((Start1, End),[Tree MemoL])]
+type Start    = ((Int,InsAttVals), [T.Text])
 
-type State    = Mtable
 type Context  = ([MemoL],[(Int,[(MemoL, Int)])])
 
-type M a = Start -> Context -> StateM a
-type Seq a = Id -> InsAttVals -> [SemRule] -> Result -> Start -> Context -> StateM a
-type Foo = (Context, Result)
+--These are the same??
+type Start1   = (Int, InsAttVals)
+type End      = (Int, InsAttVals)
 
--- ============================
-newtype StateM t = State { unState :: State -> (t,State) }
+data Tree = Leaf (MemoL,Instance)
+            | SubNode ((MemoL, Instance), (Start1,End))
+            | Branch [Tree] 
+              deriving (Eq)
 
-instance Functor StateM where
-    fmap  = liftM
+type Result   = [((Start1, End),[Tree])]
 
-instance Applicative StateM where
-    pure  = return
-    (<*>) = ap  -- defined in Control.Monad
+--Also called an "MTable" or "State" originally
+type MemoTable = [(MemoL ,[(Start1,(Context,Result))])] 
 
-instance Monad StateM where
-  -- defines state propagation
-  State m            >>= k 
-         = State (\s -> let (a,y) = m s in unState (k a) y)
-  return k             =  State (\s -> (k,s))
+type M = Start -> Context -> State MemoTable (Context, Result)
 
+type NTType  = Id -> InsAttVals -> M
 
- -- extracts the state from the monad
-get       :: StateM State
-get        = State (\s -> (s,s))
-put       :: State -> StateM ()
-put s      = State (\_ -> ((),s))
-modify    :: (State -> State) -> StateM ()
-modify sf  = State (\s -> ((), sf s))
+type SemRule = (Instance, (InsAttVals, Id) -> InsAttVals)
 
--- =============================
+type SeqType = Id -> InsAttVals -> [SemRule] -> Result -> M
+
+------------
+
 
 --------------- ******************************************** ---------------------------
 
-(<|>) :: AltType -> AltType -> AltType
+(<|>) :: NTType -> NTType -> NTType
 (p <|> q) idx inhx ((i,a),inp) c 
  = do (l1,m) <- p idx inhx ((i,[]),inp) c 
       (l2,n) <- q idx inhx ((i,[]),inp) c
@@ -170,189 +141,140 @@ addToBranch (q1,[Leaf (x2,i2)])
 
 
 empty_cuts = ([],[])                   
-empty :: [(Instance, Atts)] -> M Foo
-empty atts (x,inp) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
-
-term :: T.Text -> Instance -> [(Instance, Atts)] -> [(Instance, Atts)] -> M Foo
-term c id atts iatts ((r,a),dInp) l 
- |r - 1 == length dInp       = return (empty_cuts,[])
- |dInp!!(r - 1) == c         = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf c, id)])])
- |otherwise                  = return (empty_cuts,[])  
+empty :: InsAttVals -> M
+empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
         
 memoize name f id downAtts ((inp,dAtts),dInput) context 
  = do s <- get        
       case (lookupT name inp (snd context) s) of   
-       Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd1 lRes) 
-                       return (fst1 lRes,lookUpRes)
+       Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd lRes) 
+                       return (fst lRes,lookUpRes)
        Nothing
            | funccount (snd context) inp name > (length dInput) - inp + 1
                -> return (([name],[]),[])
-           | otherwise -> do let iC = ([],(incContext (snd context) name inp))
+           | otherwise -> do let iC = ([],(addNT name inp $ snd context))
                              (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC 
-                   -- let ((l,newRes),s1) = unState (f id downAtts (inp,dAtts) iC) s
-                             let l1          = makeContext (fst l) (findContext (snd context) inp)
+                   -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
+                             let l1          = makeContext (fst l) (findContext inp (snd context))
                              s1             <- get
-                             let udtTab      = udt (l1,newRes) s1 name (inp,downAtts)  
+                             let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 
                              let newFoundRes = addNode name (S, id) (inp,downAtts) newRes
                              put udtTab
                              return ( l1 ,newFoundRes)
 
-        
+findWithFst key    = find ((== key) . fst)
 
+filterWithFst key  = filter ((== key) . fst)
 
-findContext []     inp                    = []
-findContext ((st,rest):sr) inp| st == inp = [(st,rest)]
-                      | otherwise = findContext sr inp
-                                                 
-        
-      
+replaceSnd key def f list
+  = before ++ replaceFirst replacePoint
+  where
+    (before, replacePoint) = break ((== key) . fst) list
+    replaceFirst [] = [(key, def)]
+    replaceFirst ((a, b):nc) = (a, f b):nc                           
 
-funccount []         inp name         = 0
-funccount ((key,funcp):rest) inp name | key == inp = findf funcp 
-                          | otherwise  = funccount rest inp name
+--TODO: Should this return all matches?  why return a list?
+findContext inp = maybe [] (:[]) . findWithFst inp
 
-                 where
-                 findf  []           = 0
-                 findf  ((tk,fc):rx) | tk == name = fc 
-                         | otherwise  = findf rx        
-        
-            
-fst1 [(a,b)] = a
-snd1 [(a,b)] = b   
+funccount list inp name = maybe 0 id $ do
+  (_, funcp) <- findWithFst inp list
+  (_, fc)    <- findWithFst name funcp
+  return fc
 
-makeContext [] [(st,((n,c):ncs))]          = ([],[])
-makeContext (r:rs) []                      = ((r:rs),[])
-makeContext [] []                          = ([],[])
-makeContext (r:rs) [(st,((n,c):ncs))]      = ((r:rs), [(st,makeContext_ (r:rs) ((n,c):ncs))])
+makeContext [] _          = empty_cuts
+makeContext rs []         = (rs, [])
+makeContext rs [(st,ncs)] = (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
 
-makeContext_ [] ((n,c):ncs)      = []
-makeContext_ (r:rs) ((n,c):ncs)  = makeContext__ r ((n,c):ncs) ++ makeContext_ rs ((n,c):ncs)
+--Merged with incContext
+addNT name inp = replaceSnd inp [(name,1)] $ replaceSnd name 1 (+1)
 
-makeContext__ r [] = []
-makeContext__ r ((n,c):ncs) | r == n    = (n,c): makeContext__ r ncs
-                            | otherwise = makeContext__ r ncs
+addNode name id (s',dA) [] = []  
 
-
-incContext [] name inp  = [(inp,[(name,1)])]
-incContext ((st,((n,c):nc)):sn) name inp  
-                  | st == inp = ((st, (addNT ((n,c):nc)) name inp ) :sn) 
-                  | otherwise = ((st,((n,c):nc)): incContext sn name inp )
- 
-
-addNT []  name inp                     = [(name,1)]
-addNT ((n,c):nc) name inp  | n == name = ((n,(c + 1)):nc)
-                           | otherwise = ((n,c):addNT nc name inp)
-                           
-
-addNode name id (s',dA)  []                            
-                       = []                           
-addNode name id (s',dA)  oldRes -- ((((s,newIh),(e,atts)),t):rs)  
- = let res     = packAmb oldRes
+addNode name id (s',dA)  oldResult -- ((((s,newIh),(e,atts)),t):rs)  
+ = let res     = packAmb oldResult
        newSh x = [ ((sOri, snd id),attVal)| ((sOri, idOld),attVal)<- x]
    in  [(((s,newIh),(e, newSh atts)),[SubNode ((name, id),((s,nub dA),(e, newSh atts)))]) 
-       | (((s,newIh),(e,atts)),t) <- oldRes]
-mapName i []            = []
-mapName i ((i',r):rest) = (i,r): mapName i rest
+       | (((s,newIh),(e,atts)),t) <- oldResult]
 
+packAmb [] = []
+packAmb [x] = [x]
+packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:ys)
+  where
+  packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
+  isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 
-packAmb []                                                  = []
-packAmb [((s1,e1),t1)]                                      = [((s1,e1),t1)]
-packAmb [((s1,e1),t1),((s2,e2),t2)]    | isEq (s1,e1) (s2,e2) = [((s2,(fst e2, groupAtts (snd e1 ++ snd e2))), t1++t2)]
-                                       | otherwise          = [((s1,e1),t1),((s2,e2),t2)]
+lookupT name inp context mTable
+  | null res_in_table = Nothing 
+  | otherwise          = checkUsability inp context (lookupRes inp (res_in_table !! 0)) 
+  where 
+    res_in_table = map snd $ filterWithFst name mTable
 
-packAmb (((s1,e1),t1):((s2,e2),t2):xs) | isEq (s1,e1) (s2,e2) = packAmb (((s2,(fst e2, groupAtts (snd e1 ++ snd e2))), t1++t2):xs)
-                                       | otherwise          = ((s1,e1),t1):packAmb (((s2,e2),t2):xs)
+lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
-isEq ((s1,b1),(e1,y1)) ((s2,b2),(e2,y2))
- | s1 == s2 && e1 == e2 = True
- | otherwise            = False
- 
+checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
+  where
+  --Want Nothing to be the case if list is empty or the inp could not be found
+  findInp inp sc = findWithFst inp sc >>= (empty . snd)
+  empty [] = Nothing
+  empty x  = Just x
+  checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
+  checkUsability_ Nothing  _       _       = Nothing         -- if cc at j is empty then don't re-use
+  checkUsability_ (Just ccs) (Just scs) scres  | and $ condCheck ccs scs = Just scres
+                                               | otherwise = Nothing
+  condCheck ccs scs = map (condCheck_ ccs) scs
+  condCheck_ ccs (n1, cs1) = maybe False (\(_, cs) -> cs >= cs1) $ findWithFst n1 ccs 
 
-lookupT name inp context mTable 
- | lookupT1 name inp context mTable == [] = Nothing
- | otherwise                              = Just (lookupT1 name inp context mTable) 
+{-nub (dA ++ dAtts)-}
+--udt == "update table"?
+udt :: (Context, Result) -> MemoL -> Start1 -> MemoTable -> MemoTable
+udt res name (inp, dAtts) = replaceSnd name [((inp,dAtts),res)] (my_merge (inp,nub dAtts) res)
 
+replaceSndG key def list
+  = before ++ replaceFirst replacePoint
+  where
+    (before, replacePoint) = break ((== key) . fst . fst) list
+    replaceFirst [] = [def]
+    replaceFirst ((a, b):nc) = def:nc                           
 
-lookupT1 name inp context mTable | res_in_table == [] = [] 
-                                 | otherwise          = checkUsability inp context (lookupRes (res_in_table !! 0) inp)
-                        
-                   where 
-                   res_in_table = [pairs|(n,pairs) <- mTable,n == name]
+my_merge (inp,ndAtts) res = replaceSndG inp ((inp,ndAtts),res) 
 
-
-lookupRes [] inp                       = []
-lookupRes (((i,dA),res):rs) inp | i == inp  = [res]
-                                | otherwise = lookupRes rs inp 
-
-
-checkUsability inp context [] = []
-checkUsability inp context [((re,sc),res)] | re == []  =  [((re,sc),res)]
-                                           | otherwise =  checkUsability_ (findInp inp context) (findInp inp sc) [((re,sc),res)]
-
-
-findInp inp []                     = []
-findInp inp ((s,c):sc) | s == inp  = c
-                       | otherwise = findInp inp sc
-
- 
-checkUsability_ [] [] [(sc,res)]             = [(sc,res)]
-checkUsability_ ((n,cs):ccs) [] [(sc,res)]   = [(sc,res)] -- if lc at j is empty then re-use
-checkUsability_ [] ((n1,cs1):scs) [(sc,res)] = []         -- if cc at j is empty then don't re-use
-checkUsability_ ((n,cs):ccs) ((n1,cs1):scs) [(sc,res)] 
-                                             | and $ condCheck ((n,cs):ccs) ((n1,cs1):scs) = [(sc,res)]
-                                             | otherwise                                   = []
-                                             
-                                             
-
-condCheck ((n,cs):ccs) [(n1,cs1)]     = [condCheck_ ((n,cs):ccs) (n1,cs1)]
-condCheck ((n,cs):ccs) ((n1,cs1):scs) = condCheck_ ((n,cs):ccs) (n1,cs1) : condCheck ((n,cs):ccs) scs
-
-condCheck_ [] (n1,cs1)                  = False
-condCheck_ ((n,cs):ccs) (n1,cs1) 
-                 | n1 == n && cs >= cs1 = True
-                 | n1 == n && cs < cs1  = False
-                 | otherwise            = condCheck_ ccs (n1,cs1)
-                          
-
-
-udt :: (Context, Result) -> State -> MemoL -> Start1 -> State
-udt res mTable name (inp,dAtts)  
-               = update mTable name (inp,dAtts) res 
-               
-update [] name (inp,dAtts) res                 = [(name,[((inp,dAtts), res)])]
-update ((key, pairs):rest) name (inp,dAtts) res 
-               | key == name = (key,my_merge (inp,dAtts)  res pairs):rest
-               | otherwise   = ((key, pairs): update rest name (inp,dAtts) res )
-
-
-my_merge (inp,dAtts)  res [] = [((inp,nub dAtts), res)]
-my_merge (inp,dAtts)  res (((i,dA), es):rest) 
-               |inp == i  = ((inp,nub dAtts{-nub (dA ++ dAtts)-}), res):rest 
-               |otherwise = ((i,dA), es): my_merge (inp,dAtts) res rest 
-
-
-pickResult ((c,r),t) = r
-
+{-
+my_merge (inp,ndAtts) res [] = [((inp,ndAtts), res)]
+my_merge (inp,ndAtts) res (((i,dA), es):rest) 
+               |inp == i  = ((inp,ndAtts), res):rest 
+               |otherwise = ((i,dA), es): my_merge (inp,ndAtts) res rest 
+-}
 
 --------------- ************************* semantics of ATTRIBUTE GRAMMAR ************************* --------------------------
 
-terminal syn semRules id inhAtts ((i,a),inp) c  
- = do  syn (S,id) [((S,id),semRules)] inhAtts ((i,[]),inp) c
+--                               atts          iatts      Context was "l"
+terminal :: T.Text -> Atts -> Id -> InsAttVals -> M
+terminal str semRules id _ ((i,a),inp) c  
+ = (term str) ((i,[]),inp) c
+    where
+    inst = (S, id)
+    atts = [(inst,semRules)]
+    term :: T.Text -> M
+    term str ((r,a),dInp) _ 
+     |r - 1 == length dInp       = return (empty_cuts,[])
+     |dInp!!(r - 1) == str       = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
+     |otherwise                  = return (empty_cuts,[])  
+
 
 nt :: NTType -> Id -> SeqType
 nt fx idx id inhAtts semRules altFromSibs 
- = let groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud]
-       ownInAtts                    = mapInherited (groupRule'' (I, idx) semRules)  altFromSibs inhAtts id 
-   in fx idx ownInAtts 
+ = let groupRule'' inst       = map snd $ filter ((inst ==) . fst) semRules
+       ownInheritedAtts       = mapInherited (groupRule'' (I, idx)) altFromSibs inhAtts id 
+   in fx idx ownInheritedAtts 
 
-parser :: SeqType -> [SemRule] -> Id -> InsAttVals -> M Foo
+parser :: SeqType -> [SemRule] -> Id -> InsAttVals -> M
 parser synRule semRules id inhAtts i c
  =      do
            s <- get
            let ((e,altFromSibs),d)     =
                 let sRule                        = groupRule'' (S, LHS) semRules
-                    ((l,newRes),st)              = unState ((synRule id inhAtts semRules altFromSibs) i c) s
+                    ((l,newRes),st)              = runState ((synRule id inhAtts semRules altFromSibs) i c) s
                     groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud]
                 in  ((l, mapSynthesize  sRule newRes inhAtts id),st)
            put d
@@ -371,47 +293,27 @@ mapSynthesize sems res  downAtts id
        |(((st,inAtts), (en,synAtts)),[t]) <- res]
    
 
--- mapSem' [] _ _            = []
-mapInherited sems res []       id    
- = let appSems [] vals        = []
-       appSems (r:rules) vals = r (vals, id) ++ appSems rules vals 
-   in  concat [appSems sems (findAtts t) | (((st,inAtts), (en,synAtts)),[t]) <- res]
+applySemantics vals id = concatMap (\rule -> rule (vals, id)) 
+
+mapInherited sems res [] id    
+  = concat [applySemantics (findAtts t) id sems | (((st,inAtts), (en,synAtts)),[t]) <- res]
    
 mapInherited sems []  downAtts id    
- = let appSems [] vals        = []
-       appSems (r:rules) vals = r (vals, id) ++ appSems rules vals   
-   in  appSems sems downAtts -- concat ( map (appSems id sems) (group downAtts))
+  = applySemantics downAtts id sems -- concat ( map (appSems id sems) (group downAtts))
 
 mapInherited sems res downAtts id    
- = let appSems [] vals        = []
-       appSems (r:rules) vals = r (vals, id) ++ appSems rules vals   
-   in  concat [appSems sems ((groupAtts downAtts) ++ synAtts ++ (findAtts t)) 
+  = concat [applySemantics ((groupAtts downAtts) ++ synAtts ++ (findAtts t)) id sems 
               | (((st,inAtts), (en,synAtts)),[t]) <- res]
-
---------------------------------------
-gMax []        = []
-gMax [(a,[b])] = [(a,[b])]
-
-gMax [(a,[b]),(a1,[b1])] | getAVAL b >= getAVAL b1 = [(a,[b])]
-                         | otherwise  = [(a1,[b1])]
-
-gMax ((a,[b]):(a1,[b1]):rest) | getAVAL b >= getAVAL b1 = gMax ((a,[b]):rest)
-                              | otherwise  = gMax ((a1,[b1]):rest)
-
 
 groupAtts []                    = []
 groupAtts [(a,b)]               = [(a,b)]
-groupAtts [(a,b),(a1,b1)]       = [(a,b++b1)]
-groupAtts ((a,b):(a1,b1):rest)  = (a,b++b1): groupAtts rest 
+groupAtts [(a,b),(_,b1)]       = [(a,b++b1)]
+groupAtts ((a,b):(_,b1):rest)  = (a,b++b1): groupAtts rest 
 
 --------------------------------------
-findAtts (Branch (t:ts))                 
- = findAtts t ++ findAtts (Branch ts)
-findAtts (SubNode ((n,i),((s,v'),(e,v)))) =  v' ++ v
-findAtts (Leaf (a,id))                    =  [] 
-findAtts (Branch [])                      =  []
-
-addAtts x y = x ++ y
+findAtts (Branch ts)                  = concatMap findAtts ts
+findAtts (SubNode (_,((_,v'),(_,v)))) = v' ++ v
+findAtts (Leaf _)                     = [] 
 
 --------------------------------------------------------
 
@@ -419,6 +321,7 @@ addAtts x y = x ++ y
 rule_i          = rule I
 rule_s          = rule S
 
+--TODO: more undefined...
 rule s_or_i typ oF pID isEq userFun listOfExp 
  = let formAtts  id spec =  (id, (forNode id . spec))
        forNode   id atts = [(id, atts)]
@@ -432,14 +335,14 @@ rule s_or_i typ oF pID isEq userFun listOfExp
 synthesized = valOf S
 inherited   = valOf I
 
-valOf :: SorI -> (a -> AttValue) -> Useless -> Id -> [(Instance, Atts)] ->  Id -> [AttValue]
+valOf :: SorI -> (a -> AttValue) -> Useless -> Id -> InsAttVals ->  Id -> Atts
 valOf ud typ o_f x  ivs x' | x == LHS   = getAttVals (ud , x') ivs typ
                            | otherwise  = getAttVals (ud , x ) ivs typ
 
-getAttVals :: Instance -> [(Instance, Atts)] -> (a -> AttValue) -> [AttValue]
+--TODO: Whoa!!!!  not cool! 
+getAttVals :: Instance -> InsAttVals -> (a -> AttValue) -> Atts
 getAttVals x ((i,v):ivs) typ =
- let typeCheck typ t = if (typ undefined) == t then True else False
-     getAttVals_ typ (t:tvs) = if (typ undefined) == t then (t :getAttVals_ typ tvs)
+ let getAttVals_ typ (t:tvs) = if (typ undefined) == t then (t :getAttVals_ typ tvs)
                                else getAttVals_ typ tvs                
      getAttVals_ typ []      = [] -- ErrorVal {-- 100 --} "ERROR id found but no value"
  in  
@@ -450,11 +353,11 @@ getAttVals x [] typ          = [ErrorVal {-- 200 --} "ERROR no id"]
 -------- ************************************** ------------
 
 ------------------------- user functions ------------------   
-apply :: [(Instance,Atts)] -> Id -> ([(Instance,Atts)] -> Id -> AttValue) -> Int
+apply :: InsAttVals -> Id -> (InsAttVals -> Id -> AttValue) -> Int
 apply  y i x   = getAVAL (x y i)
 apply_ y i x   = getB_OP (x y i)
 
-apply__ :: [(Instance,Atts)] -> Id -> ([(Instance,Atts)] -> Id -> AttValue) -> DisplayTree
+apply__ :: InsAttVals -> Id -> (InsAttVals -> Id -> AttValue) -> DisplayTree
 apply__ y i x  = getRVAL (x y i)
 
 applyMax  y i x   = getAVAL (foldr (getMax) (MaxVal 0) (x y i))
@@ -529,11 +432,11 @@ tree   = memoize Tree
 
 num  = memoize Num
        (
-        terminal (term "1") [MaxVal 1] <|> 
-    terminal (term "2") [MaxVal 2] <|>
-    terminal (term "3") [MaxVal 3] <|>  
-    terminal (term "4") [MaxVal 4] <|>  
-    terminal (term "5") [MaxVal 5]  
+        terminal "1" [MaxVal 1] <|> 
+    terminal "2" [MaxVal 2] <|>
+    terminal "3" [MaxVal 3] <|>  
+    terminal "4" [MaxVal 4] <|>  
+    terminal "5" [MaxVal 5]  
        )
 ------------------------------------------------ Arithmetic Expression ------------------------------------------------
 
@@ -562,23 +465,20 @@ expr = memoize Expr
 
 op   = memoize Op
        (
-    terminal (term "+") [B_OP (+)] <|> 
-    terminal (term "-") [B_OP (-)] <|>  
-    terminal (term "*") [B_OP (*)] <|>   
-    terminal (term "/") [B_OP (div)]    
+    terminal "+" [B_OP (+)] <|> 
+    terminal "-" [B_OP (-)] <|>  
+    terminal "*" [B_OP (*)] <|>   
+    terminal "/" [B_OP (div)]    
        )
  
-             
+--The nastiest list comprehension I have ever seen in my life     
 --The unformatted parse tree
-attsFinalAlt :: MemoL -> Int -> State -> [[[[[[AttValue]]]]]]
-attsFinalAlt  key e t  = 
-    [ [ [( [ [ [  ty1v1  |ty1v1<-val1]
-                            |(id1,val1)<-synAtts]] )
-                            |(((st,inAtt2),(end,synAtts)), ts)<-rs, end == e]                 
-              | ((i,inAt1),((cs,ct),rs)) <- sr ] | (s,sr) <- t, s == key ]
+
+attsFinalAlt :: MemoL -> Int -> MemoTable -> [[[[Atts]]]]
+attsFinalAlt  key e t  =  [ [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ] | (s,sr) <- t, s == key ]
               
 --The unformatted flattened parse trees
-formatAttsFinalAlt :: MemoL -> Int -> State -> [AttValue]
-formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ concat $ attsFinalAlt key e t
+formatAttsFinalAlt :: MemoL -> Int -> MemoTable -> Atts
+formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ attsFinalAlt key e t
 
                    

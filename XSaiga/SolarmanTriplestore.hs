@@ -15,7 +15,7 @@ import Control.Monad
 import Debug.Trace
 import qualified XSaiga.LocalData as Local
 import XSaiga.ShowText
-
+import Control.Monad.State.Lazy
 --change between remoteData and localData
 --dataStore = Local.localData
 dataStore = remoteData -- selects database
@@ -328,19 +328,19 @@ year            =  memoize_terminals_from_dictionary Year
 
 memoize_terminals_from_dictionary key
   = let key_words              = filter (\(_,type',_) -> type' == key) dictionary
-        list_of_terms          = map (\(a, _, z) -> terminal (term a) z) key_words
+        list_of_terms          = map (\(a, _, z) -> terminal a z) key_words
         altTerminals           = foldr1 (<|>) list_of_terms
     in  memoize key altTerminals
 
 meaning_of p dInp key
  = let dInput     = T.words dInp
-       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) []
+       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) []
        upperBound = (List.length dInput) + 1
    in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ p dInp key
  = let dInput     = T.words dInp
-       appParser  = unState (p T0 [] ((1,[]), dInput) ([],[])) []
+       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) []
        upperBound = (List.length dInput) + 1
    in  (snd $ appParser)
 
@@ -357,7 +357,7 @@ formFinal key ePoint t
             |((i,inAt1),((cs,ct),rs)) <- sr ]
              |(s,sr) <- t, s == key ]
 {-
-test p = unState (p ((1,[]),input) ([],[])) []
+test p = runState (p ((1,[]),input) ([],[])) []
 
 main   = do putStr  $ render80 $ formatAtts Question $ snd $ test (question T0 [])
 
@@ -1272,10 +1272,10 @@ as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of 
 
 list_of_years = map (\n -> (tshow n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
 
---test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ unState (p T0 [] ((1,[]),words inp) ([],[])) []
-test p input = unState (p ((1,[]),input) ([],[])) []
+--test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
+test p input = runState (p ((1,[]),input) ([],[])) []
 
-parse i = formatAttsFinalAlt Question  ((List.length (T.words i))+1) $ snd $ test (question T0 []) (T.words i)
+parse i = formatAttsFinalAlt Question  ((List.length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
 
 formatParseIO = mapM id . map showio . parse
 
