@@ -63,8 +63,24 @@ instance TripleStore [Triple] where
       let evs_with_set_as_object = getts_1 ev_data ("?", "object", set)
       let evs_with_type_membership = getts_1 ev_data ("?", "type", "membership")
       let evs = intersect evs_with_set_as_object evs_with_type_membership
-      let setRel = [(y, x) | (x, y, _) <- ev_data, x `elem` evs, "subject" == y]
+      let setRel = [(z, x) | (x, y, z) <- ev_data, x `elem` evs, "subject" == y]
       return $ collect $ setRel
+
+pure_getts_triples_entevprop_type ev_data propNames ev_type =
+  pure_getts_triples_entevprop ev_data propNames evs_with_type_ev_type
+  where
+    evs_with_type_ev_type = getts_1 ev_data ("?", "type", ev_type)
+
+pure_getts_triples_entevprop ev_data propNames evs
+  = List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` propNames) ev_data
+
+pure_getts_members ev_data set = collect $ setRel
+  where
+    evs_with_set_as_object = getts_1 ev_data ("?", "object", set)
+    evs_with_type_membership = getts_1 ev_data ("?", "type", "membership")
+    evs = intersect evs_with_set_as_object evs_with_type_membership
+    setRel = [(z, x) | (x, y, z) <- ev_data, x `elem` evs, "subject" == y]
+
 
 data SPARQLBackend = SPARQL String Text deriving (Ord, Eq)
 
@@ -158,17 +174,7 @@ deconstruct value = do
     case node of
         UNode strURI -> strURI
         LNode (PlainL strLit) -> strLit
-        
---Get members of named set
-get_members :: (TripleStore m) => m -> Text -> IO FDBR
-get_members = getts_members
-    
---Get all subjects of a given event type
-get_subjs_of_event_type :: (TripleStore m) => m -> Text -> IO FDBR
---get_subjs_of_event_type ev_data ev_type = make_fdbr ev_data ev_type "subject"
-get_subjs_of_event_type ev_data ev_type = do
-  rt <- getts_triples_entevprop_type ev_data ["subject"] ev_type
-  return $ make_fdbr_with_prop rt "subject"
+
 
 {-collect accepts a binary relation as input and computes the image img of each
 element x in the projection of the left column of the relation, under the relation,

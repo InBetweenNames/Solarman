@@ -9,11 +9,12 @@ import Control.Applicative
 
 type TF a = [Triple] -> a
 data GettsUnion = GettsTP [Text] Text | GettsMembers Text | GettsNone | GettsAttachP Text GettsUnion
-data SemFunc a = SemFunc a GettsUnion
+data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsUnion }
 
 iunion :: GettsUnion -> GettsUnion -> GettsUnion
 iunion GettsNone u = u
 iunion u GettsNone = u
+iunion u v = v --TODO
 
 --a <*> moon <*> spins... a 
 
@@ -24,6 +25,16 @@ instance Applicative SemFunc where
   (SemFunc f iu1) <*> (SemFunc sem iu2) = SemFunc (f sem) (iu1 `iunion` iu2)
   pure x = SemFunc x GettsNone
 
+--PUBLIC INTERFACE (TODO)
+--Get members of named set
+--get_members :: (TripleStore m) => m -> Text -> IO FDBR
+--get_members = getts_members
+get_members :: Text -> SemFunc (TF FDBR)
+get_members set = SemFunc { getSem = (\r -> pure_getts_members r set) , getGetts = GettsMembers set }
+
+get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
+get_subjs_of_event_type ev_type = SemFunc { getSem = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject"), getGetts = GettsTP ["subject"] ev_type }
+
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
               | SubVal          {getAVAL    ::   Int}
@@ -31,29 +42,29 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)} 
               | U_OP            {getU_OP    ::   (Int -> Int)} 
-              | SENT_VAL        {getSV      ::   IO ES}
+              | SENT_VAL        {getSV      ::   SemFunc (TF FDBR)}
               | ErrorVal        {getEVAL    ::   Text}    
-          | NOUNCLA_VAL     {getAVALS   ::   IO ES} 
-          | VERBPH_VAL      {getAVALS   ::   IO ES}  
-          | ADJ_VAL         {getAVALS   ::   IO ES} 
-          | TERMPH_VAL      {getTVAL    ::   (IO ES -> IO ES)}     
-          | DET_VAL         {getDVAL    ::   (IO ES -> IO ES -> IO ES)} 
+              | NOUNCLA_VAL     {getAVALS   ::   SemFunc (TF FDBR)} 
+              | VERBPH_VAL      {getAVALS   ::   SemFunc (TF FDBR)}  
+              | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR)} 
+              | TERMPH_VAL      {getTVAL    ::   SemFunc (TF FDBR -> TF FDBR)}     
+              | DET_VAL         {getDVAL    ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)} 
           | VERB_VAL        {getBR      ::   Relation}      
-          | RELPRON_VAL     {getRELVAL  ::   (IO ES -> IO ES -> IO ES)}    
-          | NOUNJOIN_VAL    {getNJVAL   ::   (IO ES -> IO ES -> IO ES)}
-          | VBPHJOIN_VAL    {getVJVAL   ::   (IO ES -> IO ES -> IO ES)}    
-          | TERMPHJOIN_VAL  {getTJVAL   ::   ((IO ES -> IO ES) -> (IO ES -> IO ES) -> (IO ES -> IO ES)) }
-          | PREP_VAL        {getPREPVAL ::  ([([Text], IO ES -> IO ES)])} -- used in "hall discovered phobos with a telescope" as "with".  
+          | RELPRON_VAL     {getRELVAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
+          | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
+          | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
+          | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
+          | PREP_VAL        {getPREPVAL ::  ([([Text], SemFunc (TF FDBR -> TF FDBR))])} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
-          | PREPPH_VAL      {getPREPPHVAL :: ([Text], IO ES -> IO ES)}
-          | LINKINGVB_VAL   {getLINKVAL ::   (IO ES -> IO ES)}
-          | SENTJOIN_VAL    {getSJVAL   ::   (IO ES -> IO ES -> IO ES)}
-          | DOT_VAL         {getDOTVAL  ::   IO Text}
-          | QM_VAL          {getQMVAL   ::   IO Text}
-          | QUEST_VAL       {getQUVAL   ::   IO Text}
-          | QUEST1_VAL      {getQU1VAL  ::   (IO ES -> IO Text)}
-          | QUEST2_VAL      {getQU2VAL  ::   (IO ES -> IO Text)}
-          | QUEST3_VAL      {getQU3VAL  ::   (IO ES -> IO ES -> IO Text)}
+          | PREPPH_VAL      {getPREPPHVAL :: ([Text], SemFunc (TF FDBR -> TF FDBR))}
+          | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
+          | SENTJOIN_VAL    {getSJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
+          | DOT_VAL         {getDOTVAL  ::   SemFunc (TF Text)}
+          | QM_VAL          {getQMVAL   ::   SemFunc (TF Text)}
+          | QUEST_VAL       {getQUVAL   ::   SemFunc (TF Text)}
+          | QUEST1_VAL      {getQU1VAL  ::   SemFunc (TF FDBR -> TF Text)}
+          | QUEST2_VAL      {getQU2VAL  ::   SemFunc (TF FDBR -> TF Text)}
+          | QUEST3_VAL      {getQU3VAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF Text)}
           | YEAR_VAL        {getYEARVAL ::   Int}
 
 --            | RESULT [sys_message]
@@ -77,16 +88,15 @@ attFunc
    ]
 -}
 type Entity         =  Text  
-type ES             =  FDBR -- [Int]
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
---type Relation     = (ES -> Bool) -> ES
+--type Relation     = (ES -> Bool) -> FDBR
 type Relation = Text
 
 data DisplayTree = B [DisplayTree]
                  | N Int
                    deriving (Show, Eq)
 
-showio :: AttValue -> IO Text
+{-showio :: AttValue -> IO Text
 showio (VAL  j)     = return $ "VAL " `T.append` tshow j
 showio (MaxVal j)   = return $ "MaxVal " `T.append` tshow j
 showio (SubVal j)   = return $ "SubVal " `T.append` tshow j
@@ -114,7 +124,8 @@ showio (QM_VAL j) = j
 showio (QUEST_VAL j) = j 
 showio (QUEST1_VAL j)  = return $ "QUEST1_VAL"
 showio (QUEST2_VAL j)  = return $ "QUEST2_VAL"
-showio (QUEST3_VAL j)  = return $ "SENTJOIN_VAL"
+showio (QUEST3_VAL j)  = return $ "SENTJOIN_VAL"-}
+
 
 {-instance Show AttValue where
     show (VAL  j)     = "VAL "    ++ show j

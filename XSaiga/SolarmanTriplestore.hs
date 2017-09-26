@@ -16,6 +16,7 @@ import Debug.Trace
 import qualified XSaiga.LocalData as Local
 import XSaiga.ShowText
 import Control.Monad.State.Lazy
+import Control.Applicative hiding ((*>), (<|>))
 --change between remoteData and localData
 --dataStore = Local.localData
 dataStore = remoteData -- selects database
@@ -27,42 +28,64 @@ remoteData = SPARQL endpoint_uri namespace_uri
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
 
-makeset x = Set.toList $ Set.fromList x
+--TODO: MERGE IMAGES PROPER
+termor' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
+termor' tmph1 tmph2 ents = List.nub <$> ((++) <$> tmph1 ents <*> tmph2 ents)
 
 --copied from gangster_v4: combinators
-termor tmph1 tmph2 ents =
-        liftM List.nub $ liftM2 (++) (tmph1 ents) (tmph2 ents) --TODO: MERGE IMAGES PROPER
+termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
+termor = pure termor'
 
-termand tmph1 tmph2 ents = do
-        t1 <- tmph1 ents
-        t2 <- tmph2 ents
-        if t1 /= [] && t2 /= [] then return $ List.nub $ t1 ++ t2 else return []
-        --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
-        --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
+termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
+{-termand' tmph1 tmph2 ents r =
+  if not (List.null applied_tmph1) && not (List.null applied_tmph2)
+  then List.nub $ applied_tmph1 ++ applied_tmph2
+  else []
+  where
+    applied_tmph1 = tmph1 ents r :: FDBR
+    applied_tmph2 = tmph2 ents r :: FDBR
+-}
+termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.null $ tmph2 ents r) then termor' tmph1 tmph2 ents r else []
+
+--May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
+--TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
+termand = pure termand'
 
 --TODO: FDBRs are sorted.  Use that to improve this.
-intersect_fdbr eei1  eei2
-                = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]
+intersect_fdbr'' eei1  eei2
+ = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]
+
+intersect_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
+intersect_fdbr' = liftA2 intersect_fdbr'' --intersect_fdbr'' <$> tf1 <*> tf2
+
+nounand :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
+nounand = pure intersect_fdbr'
 
 that = nounand
 
-nounand = liftM2 intersect_fdbr
+--TODO: MERGE IMAGES PROPER
 
-nounor' s t = List.nub(s ++ t)
-nounor = liftM2 nounor'
+nounor' :: TF FDBR -> TF FDBR -> TF FDBR
+nounor' s t = List.nub <$> ((++) <$> s <*> t)
+nounor = pure nounor'
 
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
-a = liftM2 intersect_fdbr
+a = pure intersect_fdbr'
 any' = a
 the = a
 some = a
 an = a
 
-every' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr nph vbph
+every'' :: FDBR -> FDBR -> FDBR
+every'' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr'' nph vbph
                 | otherwise = []
 
-every = liftM2 every'
+every' :: TF FDBR -> TF FDBR -> TF FDBR
+every' = liftA2 every''
+
+every :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
+every = pure every'
 
 {- TODO:
 no' nph vbph =
@@ -76,50 +99,57 @@ none' nph vbph =
 none = liftM2 none'
 -}
 
-one' nph vbph   | length (res) == 1 = res
+one'' :: FDBR -> FDBR -> FDBR
+one'' nph vbph   | length (res) == 1 = res
                 | otherwise = []
     where
-    res = intersect_fdbr  nph vbph
+      res = intersect_fdbr'' nph vbph
 
-one = liftM2 one'
+one' :: TF FDBR -> TF FDBR -> TF FDBR
+one' = liftA2 one''
 
-two' nph vbph   | length (res) == 2 = res
+one = pure one'
+
+two'' nph vbph   | length (res) == 2 = res
                 | otherwise = []
     where
-    res = intersect_fdbr  nph vbph
+      res = intersect_fdbr'' nph vbph
 
-two = liftM2 two'
+two = pure $ liftA2 two''
 
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
 
-which nph vbph = do
-    nph_ <- nph
-    vbph_ <- vbph
-    let result = T.unwords $ map fst $ intersect_fdbr nph_ vbph_
-    return $ if not $ T.null result then result else "none."
+which'' :: FDBR -> FDBR -> T.Text
+which'' nph vbph = if not $ T.null result then result else "none."
+  where
+  result = T.unwords $ map fst $ intersect_fdbr'' nph vbph
 
-how_many' nph vbph =
-    tshow $ List.length (intersect_fdbr nph vbph)
-how_many = liftM2 how_many'
+which :: SemFunc (TF FDBR -> TF FDBR -> TF T.Text)
+which = pure $ liftA2 which''
 
-who = which ((get_members dataStore "person") `nounor` (get_members dataStore "science_team"))
+how_many'' nph vbph = tshow $ List.length (intersect_fdbr'' nph vbph)
+how_many = pure $ liftA2 how_many''
+
+who = which <*> (nounor <*> (get_members "person") <*> (get_members "science_team"))
 
 --New
-what' nph = if not $ T.null result then result else "nothing."
+what'' nph = if not $ T.null result then result else "nothing."
     where result = T.unwords $ map fst nph
-what = liftM what'
+what = pure $ liftA what''
 
-with :: (IO FDBR -> IO FDBR) -> ([T.Text], IO FDBR -> IO FDBR)
+--TODO: prepositions
+with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with tmph = (["with_implement"], tmph)
 
 by tmph = (["subject"], tmph)
 
 at tmph = (["location"], tmph)
 
-make_pnoun :: T.Text -> (IO FDBR -> IO FDBR)
-make_pnoun noun = liftM $ make_pnoun' noun
-make_pnoun' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
+make_pnoun'' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
+
+make_pnoun :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
+make_pnoun noun = pure $ liftA $ make_pnoun'' noun
 
 in' tmph = (["location", "year"], make_pnoun $ tshow tmph)
 --New for new new semantics
@@ -127,18 +157,30 @@ in' tmph = (["location", "year"], make_pnoun $ tshow tmph)
 --Strategy: collect all events, get all triples of those evs with prop
 --use getts_fdbr_entevprop or similar to...
 
-make_prop_termphrase :: (TripleStore m) => m -> T.Text -> IO FDBR -> IO T.Text
+{-make_prop_termphrase :: (TripleStore m) => m -> T.Text -> TF FDBR -> TF T.Text
 make_prop_termphrase ev_data prop nph = do
   list <- nph
   let evs = List.nub $ List.concatMap snd list
   rtriples  <- getts_triples_entevprop ev_data [prop] evs
   let finalList = T.unwords $ List.nub $ map (\(x,y,z) -> z) rtriples
   return $ if not $ T.null finalList then finalList else "nothing."
+-}
 
-where' = make_prop_termphrase dataStore "location"
-when' = make_prop_termphrase dataStore "year"
-how' = make_prop_termphrase dataStore "with_implement"
-whatobj = make_prop_termphrase dataStore "object"
+make_prop_termphrase' :: T.Text -> TF FDBR -> TF T.Text
+make_prop_termphrase' prop nph triples = if not $ T.null finalList then finalList else "nothing."
+  where
+  evs = List.nub $ List.concatMap snd (nph triples)
+  rtriples = pure_getts_triples_entevprop triples [prop] evs
+  finalList = T.unwords $ List.nub $ map (\(x,y,z) -> z) rtriples
+
+--TODO: attach info!
+make_prop_termphrase :: T.Text -> SemFunc (TF FDBR -> TF T.Text)
+make_prop_termphrase prop = SemFunc { getSem = make_prop_termphrase' prop, getGetts = GettsNone }
+
+where' = make_prop_termphrase "location"
+when' = make_prop_termphrase "year"
+how' = make_prop_termphrase "with_implement"
+whatobj = make_prop_termphrase "object"
 
 --end of copied from gangster_v4
 
@@ -191,7 +233,7 @@ mars = make_pnoun "mars"
 refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 -}
 
-make_trans_active ev_type tmph = make_trans_active' dataStore ev_type [(["object"],tmph)]
+make_trans_active ev_type tmph = make_trans_active' ev_type [(["object"],tmph)]
 
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -216,7 +258,7 @@ filter_ev ev_data ((names,pred):list) ev = do
 --applies the preposition predicate to that, so that all data is available to the predicate rather than just the subset
 --given by a specific event
 --TODO: new filter_Ev
-{-filter_ev :: (TripleStore m) => m -> [([String], IO FDBR -> IO FDBR)] -> [Event] -> IO Bool
+{-filter_ev :: (TripleStore m) => m -> [([String], TF FDBR -> TF FDBR)] -> [Event] -> IO Bool
 filter_ev _ [] _ = return True
 filter_ev ev_data ((names,pred):list) evs = do
     relevant_list <- mapM (\name -> getts_fdbr_entevprop ev_data name evs) names
@@ -224,15 +266,16 @@ filter_ev ev_data ((names,pred):list) evs = do
     if res /= [] then filter_ev ev_data list evs else return False-}
 
 --new filter_ev: Handles prepositional phrases (IN TESTING)
-filter_ev :: [Triple] -> [([T.Text], IO FDBR -> IO FDBR)] -> [Event] -> IO [Event]
-filter_ev ev_data [] evs = return evs
-filter_ev ev_data ((names,pred):list) evs = do
-    let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) ev_data -- only get triples with our events
-    let relevant_list    = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names 
-    res <- pred $ return $ relevant_list
-    --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
-    let relevant_evs = List.nub $ concatMap snd res
-    if not $ List.null res then filter_ev ev_data list relevant_evs else return []
+filter_ev :: [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> [Event] -> TF [Event]
+filter_ev [] evs ev_data = evs
+filter_ev ((names,pred):list) evs triples
+  = if not $ List.null res then filter_ev list relevant_evs triples else []
+  where  
+  relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events
+  relevant_list = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names 
+  res = (getSem pred) (pure relevant_list) triples --TODO: prove correct
+  --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
+  relevant_evs = List.nub $ concatMap snd res
 
 {-make_trans_active' :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_active' ev_data rel tmph preps = do
@@ -245,13 +288,28 @@ make_trans_active' ev_data rel tmph preps = do
 prepProps :: [([T.Text], a)] -> [T.Text]
 prepProps = nub . concatMap fst
 
+prepGettsUnion :: [(a, SemFunc x)] -> GettsUnion
+prepGettsUnion = foldr iunion GettsNone . map (getGetts . snd)
+
 --Modified version of make_trans_active' to accomodate new filter_ev
-make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
+{-make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_active' ev_data rel preps = do
   triples <- getts_triples_entevprop_type ev_data ("subject":(prepProps preps)) rel
   let images = make_fdbr_with_prop triples "subject"
   fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
   filterM (return . not . List.null . snd) fdbrRelevantEvs
+-}
+
+make_trans_active'' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans_active'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
+  where
+  images = make_fdbr_with_prop rtriples "subject"
+  fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+
+--TODO: iunion--explict nesting?
+make_trans_active' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
+make_trans_active' rel preps
+  = SemFunc { getSem = make_trans_active'' rel preps, getGetts = prepGettsUnion preps `iunion` GettsTP ("subject" : prepProps preps) rel }
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -263,16 +321,27 @@ make_trans_passive' ev_data rel preps = do
         anyM pred lst = foldM (\x y -> pred y >>= \res -> return $ x || res) False lst -}
 
 --Modified version of make_trans_passive' to accomodate new filter_ev
-make_trans_passive' :: (TripleStore m) => m -> T.Text -> [([T.Text], IO FDBR -> IO FDBR)] -> IO FDBR
+{-make_trans_passive' :: (TripleStore m) => m -> T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_passive' ev_data rel preps = do
     triples <- getts_triples_entevprop_type ev_data ("object":(prepProps preps)) rel
     let images = make_fdbr_with_prop triples "object"
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
-    filterM (return . not . List.null . snd) fdbrRelevantEvs
+    filterM (return . not . List.null . snd) fdbrRelevantEvs-}
+
+make_trans_passive'' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans_passive'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
+  where
+  images = make_fdbr_with_prop rtriples "object"
+  fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+
+--TODO: iunion--explict nesting?
+make_trans_passive' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
+make_trans_passive' rel preps =
+  SemFunc {getSem = make_trans_passive'' rel preps, getGetts = prepGettsUnion preps `iunion` GettsTP ("object" : prepProps preps) rel}
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
-yesno = liftM yesno'
+yesno = pure $ liftA yesno'
 
 does = yesno
 did = yesno
@@ -283,10 +352,15 @@ were = yesno
 are = yesno
 
 --TODO: is this proper?
-sand s1 s2 = do
+{-sand s1 s2 = do
     r1 <- s1
     r2 <- s2
-    return $ if r1 /= [] && r2 /= [] then List.nub $ r1 ++ r2 else []
+    return $ if r1 /= [] && r2 /= [] then List.nub $ r1 ++ r2 else []-}
+
+sand'' s1 s2 =
+  if not (List.null s1) && not (List.null s2) then List.nub $ s1 ++ s2 else []
+
+sand = pure $ liftA2 sand''
 
 {-
 ||-----------------------------------------------------------------------------
@@ -449,7 +523,7 @@ detph
 ----------------------------------------------------------------------------------
 
 {-
- 	public <transvbph> = <transvb>
+  public <transvbph> = <transvb>
                         | <transvb> <preps>
                         | <transvb> <jointermph>
                         | <transvb> <jointermph> <preps>
@@ -601,7 +675,7 @@ two_sent
    )
 ------------------------------------------------------------------------------------
 {-
-	public <question> = <quest1> <sent>
+  public <question> = <quest1> <sent>
                         | <quest6> <quest1> <sent>
                         | <quest5> <quest1> <sent>
                         | <quest2> <joinvbph>
@@ -677,13 +751,13 @@ applyBiOp [e1,op,e2]
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
 intrsct1         [x, y]
- = \atts -> NOUNCLA_VAL (liftM2 intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> NOUNCLA_VAL (liftA2 intersect_fdbr' (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 intrsct2         [x, y]
- = \atts -> ADJ_VAL (liftM2 intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+ = \atts -> ADJ_VAL (liftA2 intersect_fdbr' (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
 applydet         [x, y]
- = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
+ = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) <*> (getAtts getAVALS atts y)
 
 --make_trans_vb is very similar to make_trans_active.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
@@ -693,28 +767,28 @@ applydet         [x, y]
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' dataStore reln ((["object"],predicate):preps)
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln ((["object"],predicate):preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' dataStore reln [(["object"],predicate)]
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln [(["object"],predicate)]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
 
-applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' dataStore reln preps
+applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln preps
     where
     reln = getAtts getBR atts x
     preps = getAtts getPREPVAL atts y
 
-applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' dataStore reln []
+applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln []
     where
     reln = getAtts getBR atts x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph $ make_trans_passive' dataStore reln preps
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <*> make_trans_passive' reln preps
     where
     linkingvb = getAtts getLINKVAL atts x2
     termph = getAtts getTVAL atts x3
@@ -744,19 +818,19 @@ applyvbph        [z]
  = \atts -> VERBPH_VAL (getAtts getAVALS atts z)
 
 appjoin1         [x, y, z]
- = \atts -> TERMPH_VAL $ (getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z)
+ = \atts -> TERMPH_VAL $ (getAtts getTJVAL atts y) <*> (getAtts getTVAL atts x) <*> (getAtts getTVAL atts z)
 
 appjoin2         [x, y, z]
- = \atts -> VERBPH_VAL ((getAtts getVJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+ = \atts -> VERBPH_VAL ((getAtts getVJVAL atts y) <*> (getAtts getAVALS atts x) <*> (getAtts getAVALS atts z))
 
 apply_middle1    [x, y, z]
- = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+ = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) <*> (getAtts getAVALS atts x) <*> (getAtts getAVALS atts z))
 
 apply_middle2    [x, y, z]
- = \atts -> NOUNCLA_VAL ((getAtts getNJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+ = \atts -> NOUNCLA_VAL ((getAtts getNJVAL atts y) <*> (getAtts getAVALS atts x) <*> (getAtts getAVALS atts z))
 
 apply_middle3    [x, y, z]
- = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+ = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) <*> (getAtts getAVALS atts x) <*> (getAtts getAVALS atts z))
 
 -- Think "a orbited by b" vs "b orbits a"
 {-drop3rd          [w, x, y, z]
@@ -766,7 +840,7 @@ apply_middle3    [x, y, z]
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' dataStore reln preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' reln preps
         where
         reln = getAtts getBR atts x
         preps = case xs of
@@ -775,27 +849,25 @@ drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' dataStore reln prep
 --END PREPOSITIONAL PHRASES
 
 apply_termphrase [x, y]
- = \atts -> SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y))
+ = \atts -> SENT_VAL ((getAtts getTVAL atts x) <*> (getAtts getAVALS atts y))
 
 sent_val_comp    [s1, f, s2]
- = \atts -> SENT_VAL ((getAtts getSJVAL atts f) (getAtts getSV atts s1) (getAtts getSV atts s2))
+ = \atts -> SENT_VAL ((getAtts getSJVAL atts f) <*> (getAtts getSV atts s1) <*> (getAtts getSV atts s2))
 
 ans1             [x, y]
- = \atts -> QUEST_VAL ((getAtts getQU1VAL atts x) (getAtts getSV atts y) )
+ = \atts -> QUEST_VAL ((getAtts getQU1VAL atts x) <*> (getAtts getSV atts y) )
 
 ans2             [x, y]
- = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getAVALS atts y))
+ = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) <*> (getAtts getAVALS atts y))
 
 ans3             [x, y, z]
- = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
+ = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) <*> (getAtts getAVALS atts y) <*> (getAtts getAVALS atts z))
 
 ans5             [x, y, z]
- = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getSV atts z))
+ = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) <*> (getAtts getSV atts z))
 
 truefalse        [x]
- = \atts -> QUEST_VAL $ do
-        bool <- (getAtts getSV atts x)
-        return $ if bool /= [] then "true." else "false."
+  = \atts -> QUEST_VAL $ fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") <$> (getAtts getSV atts x)
 
 {-
 ||-----------------------------------------------------------------------------
@@ -844,29 +916,29 @@ truefalse        [x]
 
 dictionary :: [(T.Text, MemoL, [AttValue])]
 dictionary = [
-    ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
-    ("things",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "thing"]),
-    ("planets",            Cnoun,     [NOUNCLA_VAL $ get_members dataStore "planet"]),
-    ("planet",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "planet"]),
-    ("person",             Cnoun,     [NOUNCLA_VAL $ get_members dataStore "person"]),
-    ("sun",                Cnoun,     [NOUNCLA_VAL $ get_members dataStore "sun"]),
-    ("moon",               Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
-    ("moons",              Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
-    ("satellite",          Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
-    ("satellites",         Cnoun,     [NOUNCLA_VAL $ get_members dataStore "moon"]),
-    ("atmospheric",        Adj,       [ADJ_VAL $ get_members dataStore "atmospheric"]),
-    ("blue",               Adj,       [ADJ_VAL $ get_members dataStore "blue"]),
-    ("solid",              Adj,       [ADJ_VAL $ get_members dataStore "solid"]),
-    ("brown",              Adj,       [ADJ_VAL $ get_members dataStore "brown"]),
-    ("gaseous",            Adj,       [ADJ_VAL $ get_members dataStore "gaseous"]),
-    ("green",              Adj,       [ADJ_VAL $ get_members dataStore "green"]),
-    ("red",                Adj,       [ADJ_VAL $ get_members dataStore "red"]),
-    ("ringed",             Adj,       [ADJ_VAL $ get_members dataStore "ringed"]),
-    ("vacuumous",          Adj,       [ADJ_VAL $ get_members dataStore "vacuumous"]),
-    ("exist",              Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
-    ("exists",             Intransvb, [VERBPH_VAL $ get_members dataStore "thing"]),
-    ("spin",               Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
-    ("spins",              Intransvb, [VERBPH_VAL $ get_members dataStore "spin"]),
+    ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
+    ("things",             Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
+    ("planets",            Cnoun,     [NOUNCLA_VAL $ get_members "planet"]),
+    ("planet",             Cnoun,     [NOUNCLA_VAL $ get_members "planet"]),
+    ("person",             Cnoun,     [NOUNCLA_VAL $ get_members "person"]),
+    ("sun",                Cnoun,     [NOUNCLA_VAL $ get_members "sun"]),
+    ("moon",               Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("moons",              Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("satellite",          Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("satellites",         Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("atmospheric",        Adj,       [ADJ_VAL $ get_members "atmospheric"]),
+    ("blue",               Adj,       [ADJ_VAL $ get_members "blue"]),
+    ("solid",              Adj,       [ADJ_VAL $ get_members "solid"]),
+    ("brown",              Adj,       [ADJ_VAL $ get_members "brown"]),
+    ("gaseous",            Adj,       [ADJ_VAL $ get_members "gaseous"]),
+    ("green",              Adj,       [ADJ_VAL $ get_members "green"]),
+    ("red",                Adj,       [ADJ_VAL $ get_members "red"]),
+    ("ringed",             Adj,       [ADJ_VAL $ get_members "ringed"]),
+    ("vacuumous",          Adj,       [ADJ_VAL $ get_members "vacuumous"]),
+    ("exist",              Intransvb, [VERBPH_VAL $ get_members "thing"]),
+    ("exists",             Intransvb, [VERBPH_VAL $ get_members "thing"]),
+    ("spin",               Intransvb, [VERBPH_VAL $ get_members "spin"]),
+    ("spins",              Intransvb, [VERBPH_VAL $ get_members "spin"]),
     ("the",                Det,       [DET_VAL $ the]),
     ("a",                  Det,       [DET_VAL $ a]),
     ("one",                Det,       [DET_VAL $ one]),
@@ -947,10 +1019,10 @@ dictionary = [
     ("orbit",              Transvb,   [VERB_VAL ("orbit_ev")]),
     ("orbited",            Transvb,   [VERB_VAL ("orbit_ev")]),
     ("orbits",             Transvb,   [VERB_VAL ("orbit_ev")]),
-    ("is",                 Linkingvb, [LINKINGVB_VAL  id]),
-    ("was",                Linkingvb, [LINKINGVB_VAL  id]),
-    ("are",                Linkingvb, [LINKINGVB_VAL  id]),
-    ("were",               Linkingvb, [LINKINGVB_VAL  id]),
+    ("is",                 Linkingvb, [LINKINGVB_VAL $ pure $ liftA id]),
+    ("was",                Linkingvb, [LINKINGVB_VAL $ pure $ liftA id]),
+    ("are",                Linkingvb, [LINKINGVB_VAL $ pure $ liftA id]),
+    ("were",               Linkingvb, [LINKINGVB_VAL $ pure $ liftA id]),
     ("that",               Relpron,   [RELPRON_VAL    $ that]),
     ("who",                Relpron,   [RELPRON_VAL    $ that]),
     ("which",              Relpron,   [RELPRON_VAL    $ that]),
@@ -979,12 +1051,12 @@ dictionary = [
     ("how",                Quest4a,   [QUEST3_VAL     $ how_many]),
     ("many",               Quest4b,   [QUEST3_VAL     $ how_many]),
     ("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
-    ("discoverer",  Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]),
-    ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type dataStore "discover_ev"]),
+    ("discoverer",  Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type "discover_ev"]),
+    ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type "discover_ev"]),
     ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla),
     ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
-    --("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
-    --("orbits",      Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type dataStore "orbit_ev"]),
+    --("orbit",       Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type "orbit_ev"]),
+    --("orbits",      Intransvb,        [VERBPH_VAL $ get_subjs_of_event_type "orbit_ev"]),
     ("anyone",      Indefpron,meaning_of detph   "a person" Detph),
     ("anything",    Indefpron,meaning_of detph   "a thing" Detph),
     ("anybody",     Indefpron,meaning_of detph   "a person" Detph),
@@ -1002,8 +1074,8 @@ dictionary = [
     ("at",          Prepn, [PREPN_VAL ["location"]]),
     ("by",          Prepn, [PREPN_VAL ["subject"]]),
     --Begin telescope stuff--
-    ("telescope",   Cnoun, [NOUNCLA_VAL $ get_members dataStore "telescope"]),
-    ("telescopes",  Cnoun, [NOUNCLA_VAL $ get_members dataStore "telescope"]),
+    ("telescope",   Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
+    ("telescopes",  Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
     ("cassegrain_telescope",            Pnoun,[TERMPH_VAL $ make_pnoun "cassegrain_telescope"]),
     ("hooker_telescope",                Pnoun,[TERMPH_VAL $ make_pnoun "hooker_telescope"]),
     ("schmidt_telescope",               Pnoun,[TERMPH_VAL $ make_pnoun "schmidt_telescope"]),
@@ -1029,8 +1101,8 @@ dictionary = [
     ("ground_based_telescope_3",        Pnoun,[TERMPH_VAL $ make_pnoun "ground_based_telescope_3"]),
     ("galilean_telescope_1",            Pnoun,[TERMPH_VAL $ make_pnoun "galilean_telescope_1"]),
     --Begin science team stuff
-    ("team",                            Cnoun, [NOUNCLA_VAL $ get_members dataStore "science_team"]),
-    ("teams",                           Cnoun, [NOUNCLA_VAL $ get_members dataStore "science_team"]),
+    ("team",                            Cnoun, [NOUNCLA_VAL $ get_members "science_team"]),
+    ("teams",                           Cnoun, [NOUNCLA_VAL $ get_members "science_team"]),
     ("voyager_science_team",            Pnoun,[TERMPH_VAL $ make_pnoun "voyager_science_team"]),
     ("cassini_imaging_science_team",    Pnoun,[TERMPH_VAL $ make_pnoun "cassini_imaging_science_team"]),
     ("science_team_1",                  Pnoun,[TERMPH_VAL $ make_pnoun "science_team_1"]),
@@ -1105,14 +1177,14 @@ dictionary = [
     ("soummer", Pnoun, [TERMPH_VAL $ make_pnoun "soummer"]),
     ("throop", Pnoun, [TERMPH_VAL $ make_pnoun "throop"]),
     --Begin new spacecraft stuff--
-    ("spacecraft",  Cnoun, [NOUNCLA_VAL $ get_members dataStore "spacecraft"]),
-    ("spacecrafts", Cnoun, [NOUNCLA_VAL $ get_members dataStore "spacecraft"]),
+    ("spacecraft",  Cnoun, [NOUNCLA_VAL $ get_members "spacecraft"]),
+    ("spacecrafts", Cnoun, [NOUNCLA_VAL $ get_members "spacecraft"]),
     ("voyager_1",   Pnoun, [TERMPH_VAL $ make_pnoun "voyager_1"]),
     ("voyager_2",   Pnoun, [TERMPH_VAL $ make_pnoun "voyager_2"]),
     ("cassini", Pnoun, [TERMPH_VAL $ make_pnoun "voyager_2"]),
     --Begin new places stuff--
-    ("place",   Cnoun, [NOUNCLA_VAL $ get_members dataStore "place"]),
-    ("places",  Cnoun, [NOUNCLA_VAL $ get_members dataStore "place"]),
+    ("place",   Cnoun, [NOUNCLA_VAL $ get_members "place"]),
+    ("places",  Cnoun, [NOUNCLA_VAL $ get_members "place"]),
     ("mt_hopkins", Pnoun, [TERMPH_VAL $ make_pnoun "mt_hopkins"]),
     ("fort_davis", Pnoun, [TERMPH_VAL $ make_pnoun "fort_davis"]),
     ("cerro_tololo", Pnoun, [TERMPH_VAL $ make_pnoun "cerro_tololo"]),
@@ -1277,7 +1349,7 @@ test p input = runState (p ((1,[]),input) ([],[])) []
 
 parse i = formatAttsFinalAlt Question  ((List.length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
 
-formatParseIO = mapM id . map showio . parse
+--formatParseIO = mapM id . map showio . parse
 
 findStart st ((s,ss):rest) | s == st   = [(s,ss)]
                            | otherwise = findStart st rest
