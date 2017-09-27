@@ -175,7 +175,7 @@ make_prop_termphrase' prop nph triples = if not $ T.null finalList then finalLis
 
 --TODO: attach info!
 make_prop_termphrase :: T.Text -> SemFunc (TF FDBR -> TF T.Text)
-make_prop_termphrase prop = SemFunc { getSem = make_prop_termphrase' prop, getGetts = GettsAttachP prop }
+make_prop_termphrase prop = make_prop_termphrase' prop >|< GettsAttachP prop
 
 where' = make_prop_termphrase "location"
 when' = make_prop_termphrase "year"
@@ -233,7 +233,6 @@ mars = make_pnoun "mars"
 refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 -}
 
-make_trans_active ev_type tmph = make_trans_active' ev_type <*> gatherPreps [(["object"],tmph)]
 
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -289,7 +288,7 @@ prepProps :: [([T.Text], a)] -> [T.Text]
 prepProps = nub . concatMap fst
 
 gatherPreps :: [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc [([T.Text], TF FDBR -> TF FDBR)]
-gatherPreps preps = SemFunc { getSem = peelGetts preps, getGetts = attachProps preps }
+gatherPreps preps = peelGetts preps >|< attachProps preps
   where
     peelGetts = map (\(propNames, sf) -> (propNames, getSem sf)) 
     extractGetts = foldr iunion GettsNone . map (\(propNames, sf) -> getGetts sf)
@@ -307,14 +306,17 @@ make_trans_active' ev_data rel preps = do
 
 --make_trans_active' "discover_ev" <*> (gatherPreps [at us_naval_observatory, in' 1877])
 
-make_trans_active' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active' rel = SemFunc { getSem = make_trans_active'' rel, getGetts = GettsT "subject" rel } 
-
 make_trans_active'' :: T.Text -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_active'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
   where
   images = make_fdbr_with_prop rtriples "subject"
   fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+
+make_trans_active' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active' rel =  make_trans_active'' rel >|< GettsT "subject" rel
+
+make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR)  -> TF FDBR)
+make_trans_active ev_type = (\tmph_sem -> make_trans_active'' ev_type [(["object"], tmph_sem)]) >|<  GettsT "subject" ev_type
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -340,8 +342,8 @@ make_trans_passive'' rel preps rtriples = filter (not . List.null . snd) fdbrRel
   fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
 
 make_trans_passive' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_passive' rel =
-  SemFunc {getSem = make_trans_passive'' rel , getGetts = GettsT "object" rel}
+make_trans_passive' rel = make_trans_passive'' rel >|< GettsT "object" rel
+
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"

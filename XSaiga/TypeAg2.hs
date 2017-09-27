@@ -20,6 +20,9 @@ data GettsUnion =
 
 data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsUnion }
 
+(>|<) :: a -> GettsUnion -> SemFunc a
+f >|< g = SemFunc f g
+
 --Reduce GettsUnion down to minimum number of queries that spans original
 --it is okay if they end up pulling in more data than needed
 gettsOptimize :: GettsUnion -> GettsUnion
