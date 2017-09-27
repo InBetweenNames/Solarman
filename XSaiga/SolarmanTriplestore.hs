@@ -175,7 +175,7 @@ make_prop_termphrase' prop nph triples = if not $ T.null finalList then finalLis
 
 --TODO: attach info!
 make_prop_termphrase :: T.Text -> SemFunc (TF FDBR -> TF T.Text)
-make_prop_termphrase prop = SemFunc { getSem = make_prop_termphrase' prop, getGetts = GettsNone }
+make_prop_termphrase prop = SemFunc { getSem = make_prop_termphrase' prop, getGetts = GettsAttachP prop }
 
 where' = make_prop_termphrase "location"
 when' = make_prop_termphrase "year"
@@ -233,7 +233,7 @@ mars = make_pnoun "mars"
 refractor_telescope_1 = make_pnoun "refractor_telescope_1"
 -}
 
-make_trans_active ev_type tmph = make_trans_active' ev_type [(["object"],tmph)]
+make_trans_active ev_type tmph = make_trans_active' ev_type <*> gatherPreps [(["object"],tmph)]
 
 {-make_inverted_relation :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> IO [String]
 make_inverted_relation ev_data rel tmph = do
@@ -266,14 +266,14 @@ filter_ev ev_data ((names,pred):list) evs = do
     if res /= [] then filter_ev ev_data list evs else return False-}
 
 --new filter_ev: Handles prepositional phrases (IN TESTING)
-filter_ev :: [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> [Event] -> TF [Event]
+filter_ev :: [([T.Text], TF FDBR -> TF FDBR)] -> [Event] -> TF [Event]
 filter_ev [] evs ev_data = evs
 filter_ev ((names,pred):list) evs triples
   = if not $ List.null res then filter_ev list relevant_evs triples else []
   where  
   relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events
   relevant_list = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names 
-  res = (getSem pred) (pure relevant_list) triples --TODO: prove correct
+  res = pred (pure relevant_list) triples --TODO: prove correct
   --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
   relevant_evs = List.nub $ concatMap snd res
 
@@ -288,8 +288,13 @@ make_trans_active' ev_data rel tmph preps = do
 prepProps :: [([T.Text], a)] -> [T.Text]
 prepProps = nub . concatMap fst
 
-prepGettsUnion :: [(a, SemFunc x)] -> GettsUnion
-prepGettsUnion = foldr iunion GettsNone . map (getGetts . snd)
+gatherPreps :: [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc [([T.Text], TF FDBR -> TF FDBR)]
+gatherPreps preps = SemFunc { getSem = peelGetts preps, getGetts = attachProps preps }
+  where
+    peelGetts = map (\(propNames, sf) -> (propNames, getSem sf)) 
+    extractGetts = foldr iunion GettsNone . map (\(propNames, sf) -> getGetts sf)
+    attachProps preps = GettsPreps (nub $ concatMap fst preps) (extractGetts preps) --Will contain AttachP info [propNames] and whatever else was in SemFunc(->)
+    
 
 --Modified version of make_trans_active' to accomodate new filter_ev
 {-make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
@@ -300,16 +305,16 @@ make_trans_active' ev_data rel preps = do
   filterM (return . not . List.null . snd) fdbrRelevantEvs
 -}
 
-make_trans_active'' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
+--make_trans_active' "discover_ev" <*> (gatherPreps [at us_naval_observatory, in' 1877])
+
+make_trans_active' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active' rel = SemFunc { getSem = make_trans_active'' rel, getGetts = GettsT "subject" rel } 
+
+make_trans_active'' :: T.Text -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_active'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
   where
   images = make_fdbr_with_prop rtriples "subject"
   fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
-
---TODO: iunion--explict nesting?
-make_trans_active' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
-make_trans_active' rel preps
-  = SemFunc { getSem = make_trans_active'' rel preps, getGetts = prepGettsUnion preps `iunion` GettsTP ("subject" : prepProps preps) rel }
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -328,16 +333,15 @@ make_trans_passive' ev_data rel preps = do
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs-}
 
-make_trans_passive'' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans_passive'' :: T.Text -> [([T.Text],  (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_passive'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
   where
   images = make_fdbr_with_prop rtriples "object"
   fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
 
---TODO: iunion--explict nesting?
-make_trans_passive' :: T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
-make_trans_passive' rel preps =
-  SemFunc {getSem = make_trans_passive'' rel preps, getGetts = prepGettsUnion preps `iunion` GettsTP ("object" : prepProps preps) rel}
+make_trans_passive' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_passive' rel =
+  SemFunc {getSem = make_trans_passive'' rel , getGetts = GettsT "object" rel}
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
@@ -767,28 +771,28 @@ applydet         [x, y]
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln ((["object"],predicate):preps)
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps ((["object"],predicate):preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln [(["object"],predicate)]
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps [(["object"],predicate)]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
 
-applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln preps
+applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps preps
     where
     reln = getAtts getBR atts x
     preps = getAtts getPREPVAL atts y
 
-applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln []
+applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps []
     where
     reln = getAtts getBR atts x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <*> make_trans_passive' reln preps
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <*> (make_trans_passive' reln <*> gatherPreps preps)
     where
     linkingvb = getAtts getLINKVAL atts x2
     termph = getAtts getTVAL atts x3
@@ -840,7 +844,7 @@ apply_middle3    [x, y, z]
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' reln preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' reln <*> gatherPreps preps
         where
         reln = getAtts getBR atts x
         preps = case xs of

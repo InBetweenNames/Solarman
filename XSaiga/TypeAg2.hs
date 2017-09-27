@@ -8,13 +8,38 @@ import XSaiga.ShowText
 import Control.Applicative
 
 type TF a = [Triple] -> a
-data GettsUnion = GettsTP [Text] Text | GettsMembers Text | GettsNone | GettsAttachP Text GettsUnion
+data GettsUnion =
+      GettsNone
+    | GettsTree [GettsUnion]
+    | GettsT Text Text
+    | GettsTP [Text] Text GettsUnion 
+    | GettsMembers Text
+    | GettsPreps [Text] GettsUnion
+    | GettsAttachP Text
+      deriving (Eq, Show)
+
 data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsUnion }
 
+--Reduce GettsUnion down to minimum number of queries that spans original
+--it is okay if they end up pulling in more data than needed
+gettsOptimize :: GettsUnion -> GettsUnion
+gettsOptimize u = u
+
+--This should be symmetrical
 iunion :: GettsUnion -> GettsUnion -> GettsUnion
 iunion GettsNone u = u
 iunion u GettsNone = u
-iunion u v = v --TODO
+iunion (GettsTree list1) (GettsTree list2) = GettsTree (list1 ++ list2)
+iunion (GettsTree list) x = GettsTree (x : list)
+iunion x (GettsTree list) = GettsTree (x : list)
+
+iunion (GettsT prop rel)  (GettsPreps list subQueries) = GettsTP (prop:list) rel (subQueries)
+iunion (GettsAttachP prop) (GettsTP props rel subQueries) = GettsTP (prop:props) rel subQueries 
+iunion (GettsMembers set1) (GettsMembers set2) = GettsTree [GettsMembers set1, GettsMembers set2]
+
+iunion u v = GettsTree [u, v]
+--iunion u v = v
+--iunion u v = GettsTree [u, v]
 
 --a <*> moon <*> spins... a 
 
@@ -33,7 +58,7 @@ get_members :: Text -> SemFunc (TF FDBR)
 get_members set = SemFunc { getSem = (\r -> pure_getts_members r set) , getGetts = GettsMembers set }
 
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = SemFunc { getSem = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject"), getGetts = GettsTP ["subject"] ev_type }
+get_subjs_of_event_type ev_type = SemFunc { getSem = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject"), getGetts = GettsT "subject" ev_type }
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
