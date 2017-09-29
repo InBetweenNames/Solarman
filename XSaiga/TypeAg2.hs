@@ -8,41 +8,73 @@ import XSaiga.ShowText
 import Control.Applicative
 
 type TF a = [Triple] -> a
-data GettsUnion =
-      GettsNone
-    | GettsTree [GettsUnion]
-    | GettsT Text Text
-    | GettsTP [Text] Text GettsUnion 
+data GettsTree =
+      GettsBranch [GettsTree]
+    | GettsPreps [Text] GettsTree
+    | GettsTP [Text] Text GettsTree
+    --"User" functions
+    | GettsNone
+    | GettsT [Text] Text
     | GettsMembers Text
-    | GettsPreps [Text] GettsUnion
+    | GettsPrep [Text]
     | GettsAttachP Text
       deriving (Eq, Show)
 
-data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsUnion }
+data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsTree }
 
-(>|<) :: a -> GettsUnion -> SemFunc a
+(>|<) :: a -> GettsTree -> SemFunc a
 f >|< g = SemFunc f g
 
---Reduce GettsUnion down to minimum number of queries that spans original
+--Reduce GettsTree down to minimum number of queries that spans original
 --it is okay if they end up pulling in more data than needed
-gettsOptimize :: GettsUnion -> GettsUnion
+gettsOptimize :: GettsTree -> GettsTree
 gettsOptimize u = u
 
---This should be symmetrical
-iunion :: GettsUnion -> GettsUnion -> GettsUnion
-iunion GettsNone u = u
-iunion u GettsNone = u
-iunion (GettsTree list1) (GettsTree list2) = GettsTree (list1 ++ list2)
-iunion (GettsTree list) x = GettsTree (x : list)
-iunion x (GettsTree list) = GettsTree (x : list)
+unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TODO: debugging
 
-iunion (GettsT prop rel)  (GettsPreps list subQueries) = GettsTP (prop:list) rel (subQueries)
-iunion (GettsAttachP prop) (GettsTP props rel subQueries) = GettsTP (prop:props) rel subQueries 
-iunion (GettsMembers set1) (GettsMembers set2) = GettsTree [GettsMembers set1, GettsMembers set2]
+--So basically, each type of Getts is actually a function that is applied to the
+--next thing in the applicative.  So to properly nest, we need to know where the
+--arguments "end" and the next "function" begins.  This is actually like parsing.
+--Example: GettsMembers set is a function of no arguments.  So it's union should not
+--attempt to apply anything to it.  GettsDepends is actually an application!
+  --Example: GettsPreps xs is a function that takes 1 argument.  The argument is all the subqueries
+--in the preposition.  For example, in by <*> (a <*> person), the argument is the GettsTree in a <*> person
+--However, the argument could be a GettsNone, like by <*> hall.  So in this case we omit passing in the argument
+--and it becomes just a GettsPreps [subject], not a GettsDepends (GettsPreps [subject]) (GettsNone).
+--We know when an argument is being applied based on the type of what is passed in: if it is not a GettsPrep,
+--then it must be an argument to the GettsPrep.  Otherwise, it is another preposition, and that means the current
+--GettsPrep is fully applied.  So that means the two prepositions can be merged.
+--Their "dependencies" a.k.a arguments are merged into a GettsBranch, which should be called GettsArguments
+--One problem with this approach is that you need a "marker" to denote when things are "done", so multiple "argument"
+--Getts* may not be possible to do.
+--This should be symmetrical?
 
-iunion u v = GettsTree [u, v]
---iunion u v = v
---iunion u v = GettsTree [u, v]
+--TODO: prove applicative properties!
+--must prove composition in particular:  watch out for hanging GettsNones
+iunion :: GettsTree -> GettsTree -> GettsTree
+iunion GettsNone x = x
+iunion x GettsNone = x
+
+iunion (GettsPrep props) (GettsPrep props') = GettsPrep (props ++ props')
+iunion (GettsPrep props) (GettsPreps props' sub) = GettsPreps (props ++ props') sub
+iunion (GettsPrep props) x = GettsPreps props x
+iunion (GettsPreps props sub) (GettsPrep props') = GettsPreps (props ++ props') sub
+iunion (GettsPreps props sub) (GettsPreps props' sub') = GettsPreps (props ++ props') (sub `iunion` sub') --TODO: optimize
+iunion (GettsPreps props sub) x = unionerr (GettsPreps props sub) x 
+
+iunion (GettsT props rel) (GettsPrep props') = GettsT (props ++ props') rel
+iunion (GettsT props rel) (GettsPreps props' sub) = GettsTP (props ++ props') rel sub
+iunion (GettsT props rel) x = unionerr (GettsT props rel) x 
+
+iunion (GettsAttachP prop) (GettsT props rel) = GettsT (prop:props) rel
+iunion (GettsAttachP prop) (GettsTP props rel sub) = GettsTP (prop:props) rel sub
+iunion (GettsAttachP prop) x = unionerr (GettsAttachP prop) x
+
+--this is where optimization can take place TODO
+iunion (GettsBranch x) (GettsBranch y) = GettsBranch (x ++ y)
+iunion x (GettsBranch y) = GettsBranch (x:y)
+iunion (GettsBranch x) y = GettsBranch (x ++ [y])
+iunion x y = GettsBranch [x, y]
 
 --a <*> moon <*> spins... a 
 
@@ -61,7 +93,7 @@ get_members :: Text -> SemFunc (TF FDBR)
 get_members set = SemFunc { getSem = (\r -> pure_getts_members r set) , getGetts = GettsMembers set }
 
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = SemFunc { getSem = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject"), getGetts = GettsT "subject" ev_type }
+get_subjs_of_event_type ev_type = SemFunc { getSem = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject"), getGetts = GettsT ["subject"] ev_type }
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -82,9 +114,9 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
           | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
-          | PREP_VAL        {getPREPVAL ::  ([([Text], SemFunc (TF FDBR -> TF FDBR))])} -- used in "hall discovered phobos with a telescope" as "with".  
+          | PREP_VAL        {getPREPVAL ::   SemFunc ([([Text], (TF FDBR -> TF FDBR))])} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
-          | PREPPH_VAL      {getPREPPHVAL :: ([Text], SemFunc (TF FDBR -> TF FDBR))}
+          | PREPPH_VAL      {getPREPPHVAL :: SemFunc ([Text], (TF FDBR -> TF FDBR))}
           | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
           | SENTJOIN_VAL    {getSJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | DOT_VAL         {getDOTVAL  ::   SemFunc (TF Text)}
