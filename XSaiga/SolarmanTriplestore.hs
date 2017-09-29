@@ -288,13 +288,8 @@ make_trans_active' ev_data rel tmph preps = do
         tmph $ liftM concat $ mapM (\ev -> getts_3 ev_data (ev, "object", "?")) filtEvents) images
     return $ map fst subPairs-}
 
-prepProps :: [([T.Text], a)] -> [T.Text]
-prepProps = nub . concatMap fst
-
---TODO: refactor this to TypeAG or Getts
---Since it is a list, the union is different--they are unrelated!
-gatherPreps :: [SemFunc a] -> SemFunc [a]
-gatherPreps sems = foldr (\x -> \y ->  ((getSem x):(getSem y)) >|< (getGetts x `iunion` getGetts y)) (pure []) sems
+{-prepProps :: [([T.Text], a)] -> [T.Text]
+prepProps = nub . concatMap fst-}
 
 {-gatherPreps :: [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc [([T.Text], TF FDBR -> TF FDBR)]
 gatherPreps preps = peelGetts preps >|< attachProps preps
@@ -797,34 +792,34 @@ applydet         [x, y]
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <*> liftA2 (:) ((\pred -> ((["object"],pred))) <$> predicate) preps
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps ((make_prep ["object"] <*> predicate) : preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <*> ((:[]) <$> ((\pred -> ((["object"],pred))) <$> predicate))
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps [make_prep ["object"] <*> predicate]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
 
-applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln <*> preps
+applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps preps
     where
     reln = getAtts getBR atts x
     preps = getAtts getPREPVAL atts y
 
-applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln <*> pure []
+applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln <*> gatherPreps []
     where
     reln = getAtts getBR atts x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <*> (make_trans_passive' reln <*> preps)
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <*> (make_trans_passive' reln <*> gatherPreps preps)
     where
     linkingvb = getAtts getLINKVAL atts x2
     termph = getAtts getTVAL atts x3
     reln = getAtts getBR atts x4
     preps = case xs of
-        [] -> pure []
+        [] -> []
         (x5:_) -> getAtts getPREPVAL atts x5
 
 applyprepph     [x, y]
@@ -834,13 +829,10 @@ applyprepph     [x, y]
             make_prep prep_names <*> termph
 
 applyprep   [x]
-  = \atts -> PREP_VAL $ (:[]) <$> (getAtts getPREPPHVAL atts x) --[(["with_implement"], a telescope)]
+  = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
 
---Use special "iunion" here to merge the Getts, because they are unrelated!
 applypreps      [x, y]
-  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x) `mergePreps` (getAtts getPREPVAL atts y)
-    where
-      mergePreps x xs = ((getSem x):(getSem xs)) >|< ((getGetts x) `iunion` (getGetts xs))
+  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x) : (getAtts getPREPVAL atts y)
 
 applyyear [x]
   = \atts -> TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
@@ -873,11 +865,11 @@ apply_middle3    [x, y, z]
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' reln <*> preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' reln <*> gatherPreps preps
         where
         reln = getAtts getBR atts x
         preps = case xs of
-                  [] -> pure []
+                  [] -> []
                   (p:_) -> getAtts getPREPVAL atts p
 --END PREPOSITIONAL PHRASES
 

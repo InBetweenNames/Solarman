@@ -49,18 +49,32 @@ unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TO
 --Getts* may not be possible to do.
 --This should be symmetrical?
 
+--This is specifically to merge preps, as this technically doesn't obey applicative laws (composition)
+--Since it is a list, the union is different--they are unrelated!
+gatherPreps :: [SemFunc a] -> SemFunc [a]
+gatherPreps sems = Prelude.foldr (\x -> \y ->  ((getSem x):(getSem y)) >|< (getGetts x `prepUnion` getGetts y)) (pure []) sems
+
+--Special iunion for preps only (need not satisfy applicative laws)
+prepUnion :: GettsTree -> GettsTree -> GettsTree
+prepUnion GettsNone x = x
+prepUnion x GettsNone = x
+prepUnion (GettsPrep props) (GettsPrep props') = GettsPrep (props ++ props')
+prepUnion (GettsPrep props) (GettsPreps props' sub) = GettsPreps (props ++ props') sub
+prepUnion (GettsPreps props sub) (GettsPrep props') = GettsPreps (props ++ props') sub
+prepUnion (GettsPreps props sub) (GettsPreps props' sub') = GettsPreps (props ++ props') (sub `iunion` sub') --TODO: optimize
+prepUnion (GettsPreps props sub) x = unionerr (GettsPreps props sub) x 
+
 --TODO: prove applicative properties!
 --must prove composition in particular:  watch out for hanging GettsNones
+--for composition, need to prove that iunion is ASSOCIATIVE
 iunion :: GettsTree -> GettsTree -> GettsTree
 iunion GettsNone x = x
 iunion x GettsNone = x
 
-iunion (GettsPrep props) (GettsPrep props') = GettsPrep (props ++ props')
-iunion (GettsPrep props) (GettsPreps props' sub) = GettsPreps (props ++ props') sub
+iunion (GettsPrep props) (GettsPrep props') = unionerr (GettsPrep props) (GettsPrep props')
 iunion (GettsPrep props) x = GettsPreps props x
-iunion (GettsPreps props sub) (GettsPrep props') = GettsPreps (props ++ props') sub
-iunion (GettsPreps props sub) (GettsPreps props' sub') = GettsPreps (props ++ props') (sub `iunion` sub') --TODO: optimize
-iunion (GettsPreps props sub) x = unionerr (GettsPreps props sub) x 
+
+iunion (GettsPreps props sub) x = unionerr (GettsPreps props sub) x
 
 iunion (GettsT props rel) (GettsPrep props') = GettsT (props ++ props') rel
 iunion (GettsT props rel) (GettsPreps props' sub) = GettsTP (props ++ props') rel sub
@@ -114,7 +128,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
           | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
-          | PREP_VAL        {getPREPVAL ::   SemFunc ([([Text], (TF FDBR -> TF FDBR))])} -- used in "hall discovered phobos with a telescope" as "with".  
+          | PREP_VAL        {getPREPVAL ::   [SemFunc ([Text], (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPPH_VAL      {getPREPPHVAL :: SemFunc ([Text], (TF FDBR -> TF FDBR))}
           | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
