@@ -5,6 +5,7 @@ module XSaiga.TypeAg2 where
 import XSaiga.Getts
 import Data.Text as T hiding (map)
 import XSaiga.ShowText
+import Control.Arrow
 import Control.Applicative
 
 type TF a = [Triple] -> a
@@ -20,10 +21,46 @@ data GettsTree =
     | GettsAttachP Text
       deriving (Eq, Show)
 
-data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsTree }
+--TODO: Abstract tree into separate datastructure as Foldable and Traversable
+--It seems to me there are five layers:
+{-
+
+User layer: GettsT, GettsPrep, GettsAttachP ... these are like semantic "words"
+Unparsed Tree layer: GettsSubQuery, GettsList, GettsNode ... this is like the parse tree of those "words"
+Semantic layer: Group SubQuery, List, Node, etc... into GettsTP, keeping tree
+Flattened layer: Only a list of GettsMembers and a list of GettsTP
+Optimization layer: Knowledge to reduce queries (subsets, GettsTP of same type)
+
+-}
+{-data GTree a = GPlain a | GList [a] | GSub a [a] | GNone
+
+superApply :: Getts -> Getts -> GTree Getts
+superApply (GettsPrep ts) x = GSub (GettsPrep ts) x
+
+sortofComp :: (GTree b -> GTree c) -> (GTree a -> GTree b) -> GTree a -> GTree c
+sortofComp f g | GPlain x <- f GNone, GPlain y <- g GNone = f . g
+sortofComp f g | GPlain x <- f GNone, GList ys GNone <- g = 
+
+sortofComp f g = f . g
+-}
+data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsTree -> GettsTree }
+
+type GettsFlat = ([GettsTree], [GettsTree])
+
+applyGetts x = getGetts x GettsNone
+
+--Unclean -- Foldable would help
+flattenGetts :: SemFunc a -> GettsFlat
+flattenGetts = flatten . applyGetts
+  where
+    concatFlat = Prelude.concat *** Prelude.concat
+    flatten (GettsBranch xs) = concatFlat $ unzip $ map flatten xs
+    flatten (GettsTP props rel xs) = let (ts, ms) = flatten xs in ((GettsT props rel):ts, ms)
+    flatten GettsNone = ([], [])
+    flatten (GettsMembers set) = ([], [GettsMembers set])
 
 (>|<) :: a -> GettsTree -> SemFunc a
-f >|< g = SemFunc f g
+f >|< g = SemFunc f (attach g)
 
 --Reduce GettsTree down to minimum number of queries that spans original
 --it is okay if they end up pulling in more data than needed
@@ -32,82 +69,64 @@ gettsOptimize u = u
 
 unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TODO: debugging
 
---So basically, each type of Getts is actually a function that is applied to the
---next thing in the applicative.  So to properly nest, we need to know where the
---arguments "end" and the next "function" begins.  This is actually like parsing.
---Example: GettsMembers set is a function of no arguments.  So it's union should not
---attempt to apply anything to it.  GettsDepends is actually an application!
-  --Example: GettsPreps xs is a function that takes 1 argument.  The argument is all the subqueries
---in the preposition.  For example, in by <*> (a <*> person), the argument is the GettsTree in a <*> person
---However, the argument could be a GettsNone, like by <*> hall.  So in this case we omit passing in the argument
---and it becomes just a GettsPreps [subject], not a GettsDepends (GettsPreps [subject]) (GettsNone).
---We know when an argument is being applied based on the type of what is passed in: if it is not a GettsPrep,
---then it must be an argument to the GettsPrep.  Otherwise, it is another preposition, and that means the current
---GettsPrep is fully applied.  So that means the two prepositions can be merged.
---Their "dependencies" a.k.a arguments are merged into a GettsBranch, which should be called GettsArguments
---One problem with this approach is that you need a "marker" to denote when things are "done", so multiple "argument"
---Getts* may not be possible to do.
---This should be symmetrical?
-
---This is specifically to merge preps, as this technically doesn't obey applicative laws (composition)
---Since it is a list, the union is different--they are unrelated!
+--cannot use sequenceA because it would look like
+--with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 gatherPreps :: [SemFunc a] -> SemFunc [a]
-gatherPreps sems = Prelude.foldr (\x -> \y ->  ((getSem x):(getSem y)) >|< (getGetts x `prepUnion` getGetts y)) (pure []) sems
+gatherPreps sems = Prelude.foldr (\x -> \y ->  ((getSem x):(getSem y)) >|< (getGetts x GettsNone `prepAttach` getGetts y GettsNone)) (pure []) sems
 
---Special iunion for preps only (need not satisfy applicative laws)
-prepUnion :: GettsTree -> GettsTree -> GettsTree
-prepUnion GettsNone x = x
-prepUnion x GettsNone = x
-prepUnion (GettsPrep props) (GettsPrep props') = GettsPrep (props ++ props')
-prepUnion (GettsPrep props) (GettsPreps props' sub) = GettsPreps (props ++ props') sub
-prepUnion (GettsPreps props sub) (GettsPrep props') = GettsPreps (props ++ props') sub
-prepUnion (GettsPreps props sub) (GettsPreps props' sub') = GettsPreps (props ++ props') (sub `iunion` sub') --TODO: optimize
-prepUnion (GettsPreps props sub) x = unionerr (GettsPreps props sub) x 
+--To be used for prepositional phrases ONLY
+--Regular attach can't be used due to function composition
+prepAttach :: GettsTree -> GettsTree -> GettsTree
+prepAttach GettsNone x = x
+prepAttach x GettsNone = x
+prepAttach (GettsPrep props) (GettsPrep props') = GettsPrep (props ++ props')
+prepAttach (GettsPrep props) (GettsPreps props' sub) = GettsPreps (props ++ props') sub
+prepAttach (GettsPreps props sub) (GettsPrep props') = GettsPreps (props ++ props') sub
+prepAttach (GettsPreps props sub) (GettsPreps props' sub') = GettsPreps (props ++ props') (sub `attach` sub') --TODO: optimize
+prepAttach (GettsPreps props sub) x = unionerr (GettsPreps props sub) x 
 
---TODO: prove applicative properties!
---must prove composition in particular:  watch out for hanging GettsNones
---for composition, need to prove that iunion is ASSOCIATIVE
-iunion :: GettsTree -> GettsTree -> GettsTree
-iunion GettsNone x = x
-iunion x GettsNone = x
+attach :: GettsTree -> GettsTree -> GettsTree
+attach GettsNone x = x
+attach x GettsNone = x
 
-iunion (GettsPrep props) (GettsPrep props') = unionerr (GettsPrep props) (GettsPrep props')
-iunion (GettsPrep props) x = GettsPreps props x
+attach x@(GettsPrep _) y@(GettsPrep _) = unionerr x y
+attach x@(GettsPrep _) y@(GettsPreps _ _) = unionerr x y
+attach (GettsPrep props) x = GettsPreps props x
 
-iunion (GettsPreps props sub) x = unionerr (GettsPreps props sub) x
+attach x@(GettsPreps _ _) y@(GettsPrep _) = unionerr x y
+attach x@(GettsPreps _ _) y@(GettsPreps _ _) = unionerr x y
 
-iunion (GettsT props rel) (GettsPrep props') = GettsT (props ++ props') rel
-iunion (GettsT props rel) (GettsPreps props' sub) = GettsTP (props ++ props') rel sub
-iunion (GettsT props rel) x = unionerr (GettsT props rel) x 
+attach (GettsT props rel) (GettsPrep props') = GettsT (props ++ props') rel
+attach (GettsT props rel) (GettsPreps props' sub) = GettsTP (props ++ props') rel sub
+attach (GettsT props rel) x = GettsTP props rel x --needed to support active trans without preps directly
 
-iunion (GettsAttachP prop) (GettsT props rel) = GettsT (prop:props) rel
-iunion (GettsAttachP prop) (GettsTP props rel sub) = GettsTP (prop:props) rel sub
-iunion (GettsAttachP prop) x = unionerr (GettsAttachP prop) x
+attach (GettsAttachP prop) (GettsT props' rel) = GettsT (prop:props') rel
+attach (GettsAttachP prop) (GettsTP props rel sub) = GettsTP (prop:props) rel sub
 
 --this is where optimization can take place TODO
-iunion (GettsBranch x) (GettsBranch y) = GettsBranch (x ++ y)
-iunion x (GettsBranch y) = GettsBranch (x:y)
-iunion (GettsBranch x) y = GettsBranch (x ++ [y])
-iunion x y = GettsBranch [x, y]
+attach (GettsBranch x) (GettsBranch y) = GettsBranch (x ++ y)
+attach x (GettsBranch y) = GettsBranch (x:y)
+attach (GettsBranch x) y = GettsBranch (x ++ [y])
+attach x y = GettsBranch [x, y]
 
---a <*> moon <*> spins... a 
+--a <*> moon <*> spins... 
 
 instance Functor SemFunc where
   fmap f (SemFunc sem iu) = SemFunc (f sem) iu
 
 instance Applicative SemFunc where
-  (SemFunc f iu1) <*> (SemFunc sem iu2) = SemFunc (f sem) (iu1 `iunion` iu2)
-  pure x = SemFunc x GettsNone
+  (SemFunc f iu1) <*> (SemFunc sem iu2) = SemFunc (f sem) (iu1 . iu2)
+  pure x = SemFunc x id
 
 --PUBLIC INTERFACE (TODO)
 --Get members of named set
 --get_members :: (TripleStore m) => m -> Text -> IO FDBR
 --get_members = getts_members
 get_members :: Text -> SemFunc (TF FDBR)
-get_members set = SemFunc { getSem = (\r -> pure_getts_members r set) , getGetts = GettsMembers set }
+get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
 
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = SemFunc { getSem = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject"), getGetts = GettsT ["subject"] ev_type }
+get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsT ["subject"] ev_type
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
