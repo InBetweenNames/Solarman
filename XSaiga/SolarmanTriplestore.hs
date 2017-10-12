@@ -1075,7 +1075,7 @@ dictionary = [
     --("was",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("are",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
-    ("what",               Quest2,    [QUEST2_VAL     $ what]), --TODO: ambiguity: "what" can mean what or whatobj in both "what discovered a thing that orbits" -- "what was discovered___"
+    ("what",               Quest2,    [QUEST2_VAL     $ what]), 
     ("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
     ("who",                Quest5,    [QUEST2_VAL     $ who]),
     ("where",              Quest5,    [QUEST2_VAL     $ where']),
