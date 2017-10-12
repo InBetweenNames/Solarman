@@ -413,7 +413,7 @@ quest3          =  memoize_terminals_from_dictionary Quest3
 quest4a         =  memoize_terminals_from_dictionary Quest4a
 quest4b         =  memoize_terminals_from_dictionary Quest4b
 quest5          =  memoize_terminals_from_dictionary Quest5
---quest6          =  memoize_terminals_from_dictionary Quest6
+quest6          =  memoize_terminals_from_dictionary Quest6
 
 --NEW FOR PREPOSITIONAL PHRASES
 prep            =  memoize_terminals_from_dictionary Prepn
@@ -713,15 +713,31 @@ question
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
                                               synthesized SENT_VAL    OF  S2]]
     <|>
+      --(how|when|where|who|whatobj) DID jointermph discover
     parser (nt quest5 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
                                               synthesized SENT_VAL    OF  S3]]
     <|>
+    parser (nt quest6 S1  *> nt quest1 S2  *>  nt sent S3 )
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
+                                              synthesized QUEST1_VAL OF S2,
+                                              synthesized SENT_VAL    OF  S3]]
+    <|>
+    {-parser (nt quest7 S1  *> nt quest1 S2  *>  nt sent S3 )
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
+                                              synthesized QUEST1_VAL OF S2,
+                                              synthesized SENT_VAL    OF  S3]]
+    <|>-}
+      --(whatsubj|who|how|when|where) [WAS] [tmph] discovered ...
     parser (nt quest2 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
                                               synthesized VERBPH_VAL    OF  S2]]
     <|>
+    {-parser (nt quest7 S1 *> nt joinvbph S2)
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
+                                              synthesized VERBPH_VAL    OF  S2]] 
+    <|> -}
     parser (nt quest5 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
                                               synthesized VERBPH_VAL    OF  S2]]
@@ -927,7 +943,7 @@ truefalse        [x]
 
 <Termphjoin> = and | or;
 
-<Quest6> = what;
+<Quest6> = whatobj;
 
 <Intransvb> = exist | exists | spin | spins;
 
@@ -1060,8 +1076,8 @@ dictionary = [
     --("are",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
     ("what",               Quest2,    [QUEST2_VAL     $ what]), --TODO: ambiguity: "what" can mean what or whatobj in both "what discovered a thing that orbits" -- "what was discovered___"
-    ("who",                Quest2,    [QUEST2_VAL     $ who]),
-    ("what",               Quest5,    [QUEST2_VAL     $ whatobj]),
+    ("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
+    ("who",                Quest5,    [QUEST2_VAL     $ who]),
     ("where",              Quest5,    [QUEST2_VAL     $ where']),
     ("when",               Quest5,    [QUEST2_VAL     $ when']),
     ("how",                Quest5,    [QUEST2_VAL     $ how']),
