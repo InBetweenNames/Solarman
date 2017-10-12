@@ -10,6 +10,17 @@ import Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy as BL
 import Data.Text.Encoding as E
+import qualified XSaiga.LocalData as Local
+import qualified XSaiga.Getts as Getts
+import qualified XSaiga.TypeAg2 as TypeAg2
+
+--change between remoteData and localData
+--dataStore = Local.localData
+dataStore = remoteData -- selects database
+
+endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
+namespace_uri = T.pack "http://solarman.richard.myweb.cs.uwindsor.ca#"
+remoteData = Getts.SPARQL endpoint_uri namespace_uri
 
 cgiMain :: CGI CGIResult
 cgiMain = do
@@ -126,12 +137,13 @@ interpret "who do you know" = "i only know three people. Judy, Monty, and Solarm
 
 interpret _ = "BLANKVALNOTUSED"
 
+--TODO: multiple interpretations!  need to optimize these!
 interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
-        output <- App.formatParseIO input
-        let formatted = T.concat $ List.intersperse " " output
+        let interpretations = List.map TypeAg2.getQUVAL $ App.parse input
+        outs <- mapM (\i -> TypeAg2.getReducedTriplestore remoteData (TypeAg2.flattenGetts i) >>= \rtriples -> return $ TypeAg2.getSem i rtriples) interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
+        let formatted = T.concat $ List.intersperse " ; " outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
-
 

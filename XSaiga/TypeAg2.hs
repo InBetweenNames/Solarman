@@ -27,8 +27,8 @@ data GettsTree =
 
 User layer: GettsT, GettsPrep, GettsAttachP ... these are like semantic "words"
 Unparsed Tree layer: GettsSubQuery, GettsList, GettsNode ... this is like the parse tree of those "words"
-Semantic layer: Group SubQuery, List, Node, etc... into GettsTP, keeping tree
-Flattened layer: Only a list of GettsMembers and a list of GettsTP
+Semantic (condensed) layer: Group SubQuery, List, Node, etc... into GettsTP, keeping tree
+Flattened layer: Only a list of GettsMembers and a list of GettsTP (flattened tree)
 Optimization layer: Knowledge to reduce queries (subsets, GettsTP of same type)
 
 -}
@@ -50,14 +50,17 @@ type GettsFlat = ([GettsTree], [GettsTree])
 applyGetts x = getGetts x GettsNone
 
 --Unclean -- Foldable would help
+--TODO: filter duplicates
 flattenGetts :: SemFunc a -> GettsFlat
 flattenGetts = flatten . applyGetts
   where
     concatFlat = Prelude.concat *** Prelude.concat
     flatten (GettsBranch xs) = concatFlat $ unzip $ map flatten xs
     flatten (GettsTP props rel xs) = let (ts, ms) = flatten xs in ((GettsT props rel):ts, ms)
+    flatten (GettsT props rel) = ([GettsT props rel], [])
     flatten GettsNone = ([], [])
     flatten (GettsMembers set) = ([], [GettsMembers set])
+    flatten x = error $ "dog: " ++ show x
 
 (>|<) :: a -> GettsTree -> SemFunc a
 f >|< g = SemFunc f (attach g)
@@ -66,6 +69,12 @@ f >|< g = SemFunc f (attach g)
 --it is okay if they end up pulling in more data than needed
 gettsOptimize :: GettsTree -> GettsTree
 gettsOptimize u = u
+
+getReducedTriplestore :: (TripleStore m) => m -> GettsFlat -> IO [Triple]
+getReducedTriplestore ev_data (trans, sets) = do
+  t1 <- mapM (\(GettsT props rel) -> getts_triples_entevprop_type ev_data props rel) trans
+  t2 <- mapM (\(GettsMembers set) -> getts_triples_members ev_data set) sets
+  return $ Prelude.concat $ t1 ++ t2
 
 unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TODO: debugging
 

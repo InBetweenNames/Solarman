@@ -36,9 +36,7 @@ class TripleStore m where
     
     getts_triples_entevprop :: m -> [Text] -> [Event] -> IO [Triple]
    
-    --getts_members returns the members of a given set as an FDBR
-    getts_members :: m -> Text -> IO FDBR
-                
+    getts_triples_members :: m -> Text -> IO [Triple]
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
 
@@ -49,22 +47,27 @@ make_fdbr_with_prop ev_data entity_type
 getts_1 ev_data ("?", b, c) = [x | (x,y,z) <- ev_data, b == y, c == z]
 getts_2 ev_data (a, "?", c) = [y | (x,y,z) <- ev_data, a == x, c == z]
 getts_3 ev_data (a, b, "?") = [z | (x,y,z) <- ev_data, a == x, b == y]
-    
---For the "In Program" triple store
+
+--TODO: needs serious refactoring... divergence big time
+
+--For the "In Program" triple store -- whole typeclass needs refactoring!
 instance TripleStore [Triple] where
     getts_triples_entevprop_type ev_data propNames ev_type = do
       let evs_with_type_ev_type = getts_1 ev_data ("?", "type", ev_type)
       getts_triples_entevprop ev_data propNames evs_with_type_ev_type
 
     getts_triples_entevprop ev_data propNames evs = do
-      return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` propNames) ev_data
+      return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` ("type":propNames)) ev_data
     
-    getts_members ev_data set = do
+    getts_triples_members ev_data set = do
       let evs_with_set_as_object = getts_1 ev_data ("?", "object", set)
       let evs_with_type_membership = getts_1 ev_data ("?", "type", "membership")
       let evs = intersect evs_with_set_as_object evs_with_type_membership
-      let setRel = [(z, x) | (x, y, z) <- ev_data, x `elem` evs, "subject" == y]
-      return $ collect $ setRel
+      --TODO: abstract triple filtering mechanism for events and ev_types
+      let triples = [(x, y, z) | (x, y, z) <- ev_data, x `elem` evs]
+      return $ triples
+
+--TODO: note, the pure versions do NOT need to include type information
 
 pure_getts_triples_entevprop_type ev_data propNames ev_type =
   pure_getts_triples_entevprop ev_data propNames evs_with_type_ev_type
@@ -138,9 +141,30 @@ instance TripleStore SPARQLBackend where
           filterExpr $ List.foldr1 (.||.) $ map ((ev .==.) . (sol .:. )) evs
           filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames
           selectVars [ev, prop, ent]
-    
+
+    getts_triples_members (SPARQL endpoint namespace_uri) set = do
+      resolvedEndpoint <- lookupEndpoint endpoint
+      m <- selectQuery resolvedEndpoint query
+      case m of
+        (Just res) -> return $ Prelude.concatMap (\[ev, ent] ->
+          [(removeUri namespace_uri $ deconstruct ev, "type", "membership"),
+          (removeUri namespace_uri $ deconstruct ev, "subject", removeUri namespace_uri $ deconstruct ent),
+          (removeUri namespace_uri $ deconstruct ev, "object", set)]) res
+        Nothing -> return []
+      where
+        query :: Query SelectQuery
+        query = do
+          sol <- prefix "sol" (iriRef namespace_uri)
+          ev <- var
+          ent <- var
+          triple ev (sol .:. "type") (sol .:. "membership")
+          triple ev (sol .:. "subject") ent
+          triple ev (sol .:. "object") (sol .:. set)
+          selectVars [ev, ent]
+
+    --Used to return FDBR directly
     --Efficient implementation of getts_members for SPARQL backend
-    getts_members = getts_members'
+    {-getts_members = getts_members'
         where
         getts_members' (SPARQL endpoint namespace_uri) set = do
             resolvedEndpoint <- lookupEndpoint endpoint
@@ -160,6 +184,7 @@ instance TripleStore SPARQLBackend where
                     orderNext subj
                     distinct
                     selectVars [subj, ev]
+    -}
 
 removeUri :: Text -> Text -> Text         
 removeUri namespace_uri = T.drop $ T.length namespace_uri

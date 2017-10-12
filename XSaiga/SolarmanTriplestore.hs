@@ -13,17 +13,9 @@ import XSaiga.AGParser2
 import XSaiga.TypeAg2
 import Control.Monad
 import Debug.Trace
-import qualified XSaiga.LocalData as Local
 import XSaiga.ShowText
 import Control.Monad.State.Lazy
 import Control.Applicative hiding ((*>), (<|>))
---change between remoteData and localData
---dataStore = Local.localData
-dataStore = remoteData -- selects database
-
-endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
-namespace_uri = T.pack "http://solarman.richard.myweb.cs.uwindsor.ca#"
-remoteData = SPARQL endpoint_uri namespace_uri
 
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
@@ -309,11 +301,12 @@ make_trans_active' ev_data rel preps = do
 -}
 
 --make_trans_active' "discover_ev" <*> (gatherPreps [at us_naval_observatory, in' 1877])
-
+--TODO: rtriples is used directly?? is this correct?
 make_trans_active'' :: T.Text -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_active'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
   where
-  images = make_fdbr_with_prop rtriples "subject"
+  filtRTriples = pure_getts_triples_entevprop_type rtriples ("subject":(nub $ concatMap fst $ preps)) rel
+  images = make_fdbr_with_prop filtRTriples "subject"
   fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
 
 make_trans_active' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
@@ -342,7 +335,8 @@ make_trans_passive' ev_data rel preps = do
 make_trans_passive'' :: T.Text -> [([T.Text],  (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans_passive'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
   where
-  images = make_fdbr_with_prop rtriples "object"
+  filtRTriples = pure_getts_triples_entevprop_type rtriples ("object":(nub $ concatMap fst $ preps)) rel
+  images = make_fdbr_with_prop filtRTriples "object"
   fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
 
 make_trans_passive' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
@@ -1065,7 +1059,7 @@ dictionary = [
     --("was",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("are",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
-    ("what",               Quest2,    [QUEST2_VAL     $ what]),
+    ("what",               Quest2,    [QUEST2_VAL     $ what]), --TODO: ambiguity: "what" can mean what or whatobj in both "what discovered a thing that orbits" -- "what was discovered___"
     ("who",                Quest2,    [QUEST2_VAL     $ who]),
     ("what",               Quest5,    [QUEST2_VAL     $ whatobj]),
     ("where",              Quest5,    [QUEST2_VAL     $ where']),
