@@ -111,12 +111,26 @@ attach (GettsT props rel) x = GettsTP props rel x --needed to support active tra
 
 attach (GettsAttachP prop) (GettsT props' rel) = GettsT (prop:props') rel
 attach (GettsAttachP prop) (GettsTP props rel sub) = GettsTP (prop:props) rel sub
+attach (GettsAttachP prop) (GettsBranch br) = GettsBranch (attachLast (GettsAttachP prop) br) 
 
 --this is where optimization can take place TODO
 attach (GettsBranch x) (GettsBranch y) = GettsBranch (x ++ y)
 attach x (GettsBranch y) = GettsBranch (x:y)
 attach (GettsBranch x) y = GettsBranch (x ++ [y])
 attach x y = GettsBranch [x, y]
+
+--TODO:
+--Hack to work around AttachP problem with branches
+--Relies on the fact that the "top level" transitive verb will be at the end
+--Example: how was a moon that orbits mars discovered with a telescope that was used by hall
+--parsed as: [GettsT "orbit", GettsTP "discover" (GettsT "with_implement")]
+--note the prepositional phrases are nested below their associated verb (thank god I did that)
+--
+--but this is not really a general solution!
+--A more theoretical/fundamental fix may be necessary!
+attachLast :: GettsTree -> [GettsTree] -> [GettsTree]
+attachLast g [x] = [attach g x]
+attachLast g (x:xs) = x : attachLast g xs
 
 --a <*> moon <*> spins... 
 

@@ -110,7 +110,7 @@ instance TripleStore SPARQLBackend where
       resolvedEndpoint <- lookupEndpoint endpoint
       m <- selectQuery resolvedEndpoint query
       case m of
-        (Just res) -> return $ map (\[x, y, z] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)) res
+        (Just res) -> return $ List.concatMap (\[x, y, z] -> [(removeUri namespace_uri $ deconstruct x, "type", ev_type), (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)]) res
         Nothing -> return []
       where
         query :: Query SelectQuery
@@ -121,7 +121,7 @@ instance TripleStore SPARQLBackend where
           ent <- var
           triple ev prop ent
           triple ev (sol .:. "type") (sol .:. ev_type)
-          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames
+          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) (propNames) --type required here as this is not an FDBR
           selectVars [ev, prop, ent]
 
     getts_triples_entevprop (SPARQL endpoint namespace_uri) propNames evs = do
