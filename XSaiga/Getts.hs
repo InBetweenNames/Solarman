@@ -40,6 +40,7 @@ class TripleStore m where
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
 
+--TODO: This is DANGEROUS.  Needs refactoring.
 make_fdbr_with_prop :: [Triple] -> Text -> FDBR
 make_fdbr_with_prop ev_data entity_type 
   = collect $ map (\(x, _, z) -> (z, x)) $ List.filter (\(x, y, z) -> y == entity_type) ev_data

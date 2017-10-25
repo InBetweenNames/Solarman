@@ -1,25 +1,47 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module XSaiga.TypeAg2 where
 
 import XSaiga.Getts
 import Data.Text as T hiding (map)
 import XSaiga.ShowText
 import Control.Arrow
-import Control.Applicative
+import Data.Bifunctor
+import Data.Biapplicative
+import Data.List (nub)
+--import Control.Applicative
 
 type TF a = [Triple] -> a
 data GettsTree =
-      GettsBranch [GettsTree]
-    | GettsPreps [Text] GettsTree
-    | GettsTP [Text] Text GettsTree
-    --"User" functions
-    | GettsNone
-    | GettsT [Text] Text
+      GettsNone
     | GettsMembers Text
-    | GettsPrep [Text]
-    | GettsAttachP Text
-      deriving (Eq, Show)
+    | GettsTP [Text] Text [GettsTree]
+    | GettsPreps [Text] [GettsTree]
+    | GettsIntersect GettsTree GettsTree --representing result of intersect_fdbr (only evs from 2nd tree are kept)
+    | GettsUnion GettsTree GettsTree --representing result of "union" of fdbrs.  Keeps everything.
+    deriving (Eq, Show)
+
+data GettsFlatTypes =
+    FGettsMembers Text
+  | FGettsT [Text] Text
+
+type FGettsMembers = Text
+type FGettsT = ([Text], Text)
+
+type GettsFlat = ([FGettsMembers], [FGettsT])
+
+--Convert a function signature to a Getts style function
+--Keeps same kind, same arity
+type family Treeify x where
+  --Treeify ((TF a -> b) -> c) = Treeify (TF a -> b) -> Treeify c
+  --Treeify (TF a -> b) = GettsTree -> Treeify b
+  Treeify (TF a) = GettsTree
+  Treeify (a -> b) = Treeify a -> Treeify b
+  Treeify a = GettsTree
+  --Treeify _ = GettsTree<Paste>
 
 --TODO: Abstract tree into separate datastructure as Foldable and Traversable
 --It seems to me there are five layers:
@@ -31,39 +53,47 @@ Semantic (condensed) layer: Group SubQuery, List, Node, etc... into GettsTP, kee
 Flattened layer: Only a list of GettsMembers and a list of GettsTP (flattened tree)
 Optimization layer: Knowledge to reduce queries (subsets, GettsTP of same type)
 
+Semantic tree layer
+Flattened layer
+
 -}
-{-data GTree a = GPlain a | GList [a] | GSub a [a] | GNone
 
-superApply :: Getts -> Getts -> GTree Getts
-superApply (GettsPrep ts) x = GSub (GettsPrep ts) x
+--A SemFunc is really just a tuple of two functions
+type SemFunc a = (a, Treeify a)
+getGetts = snd
+getSem = fst
 
-sortofComp :: (GTree b -> GTree c) -> (GTree a -> GTree b) -> GTree a -> GTree c
-sortofComp f g | GPlain x <- f GNone, GPlain y <- g GNone = f . g
-sortofComp f g | GPlain x <- f GNone, GList ys GNone <- g = 
+--TODO: restrict arity of b (same kind as a)
+semFunc :: a -> Treeify a -> SemFunc a
+semFunc = bipure
 
-sortofComp f g = f . g
--}
-data SemFunc a = SemFunc { getSem :: a, getGetts :: GettsTree -> GettsTree }
+--Just for presentation purposes
+instance Show (TF FDBR) where
+  show x = "TF FDBR"
 
-type GettsFlat = ([GettsTree], [GettsTree])
+instance Show (TF Text) where
+  show x = "TF Text"
 
-applyGetts x = getGetts x GettsNone
+
 
 --Unclean -- Foldable would help
 --TODO: filter duplicates
-flattenGetts :: SemFunc a -> GettsFlat
-flattenGetts = flatten . applyGetts
-  where
-    concatFlat = Prelude.concat *** Prelude.concat
-    flatten (GettsBranch xs) = concatFlat $ unzip $ map flatten xs
-    flatten (GettsTP props rel xs) = let (ts, ms) = flatten xs in ((GettsT props rel):ts, ms)
-    flatten (GettsT props rel) = ([GettsT props rel], [])
-    flatten GettsNone = ([], [])
-    flatten (GettsMembers set) = ([], [GettsMembers set])
-    flatten x = error $ "dog: " ++ show x
+--TODO: make [SemFunc a] not used with gatherPreps, apply directly to verb?
+--Would avoid GettsPreps situation
 
-(>|<) :: a -> GettsTree -> SemFunc a
-f >|< g = SemFunc f (attach g)
+flattenGetts :: GettsTree -> GettsFlat
+flattenGetts GettsNone = ([],[])
+flattenGetts (GettsMembers set) = ([set], [])
+flattenGetts (GettsTP props rel sub) = merge ([], [(props, rel)]) (Prelude.concat *** Prelude.concat $ unzip $ map flattenGetts sub)
+flattenGetts (GettsPreps props sub) = error "Cannot flatten preps"
+flattenGetts (GettsIntersect i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
+flattenGetts (GettsUnion i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
+
+merge :: GettsFlat -> GettsFlat -> GettsFlat
+merge (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
+
+(>|<) :: a -> Treeify a -> SemFunc a
+f >|< g = bipure f g
 
 --Reduce GettsTree down to minimum number of queries that spans original
 --it is okay if they end up pulling in more data than needed
@@ -71,77 +101,40 @@ gettsOptimize :: GettsTree -> GettsTree
 gettsOptimize u = u
 
 getReducedTriplestore :: (TripleStore m) => m -> GettsFlat -> IO [Triple]
-getReducedTriplestore ev_data (trans, sets) = do
-  t1 <- mapM (\(GettsT props rel) -> getts_triples_entevprop_type ev_data props rel) trans
-  t2 <- mapM (\(GettsMembers set) -> getts_triples_members ev_data set) sets
+getReducedTriplestore ev_data (sets, trans) = do
+  t1 <- mapM (\set -> getts_triples_members ev_data set) sets
+  t2 <- mapM (\(props, rel) -> getts_triples_entevprop_type ev_data props rel) trans
   return $ Prelude.concat $ t1 ++ t2
 
 unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TODO: debugging
 
+gettsIdentity f GettsNone y = y
+gettsIdentity f x GettsNone = x
+gettsIdentity f x y = f x y
+
+gettsIntersect = gettsIdentity GettsIntersect
+
+gettsApply g = g GettsNone
+
+--TODO: make this a proper union
+gettsUnion = gettsIdentity GettsUnion
+
+--apply over the intersect_entevimages, remember evs of im2 are preserved and im1 are discarded
+gettsAttachP :: T.Text -> GettsTree -> GettsTree
+gettsAttachP prop (GettsIntersect x y) = GettsIntersect x (gettsAttachP prop y)
+gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
+
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
-gatherPreps :: [SemFunc a] -> SemFunc [a]
-gatherPreps sems = Prelude.foldr (\x -> \y ->  ((getSem x):(getSem y)) >|< (getGetts x GettsNone `prepAttach` getGetts y GettsNone)) (pure []) sems
+gatherPreps :: [SemFunc ([T.Text], t)] -> SemFunc [([T.Text], t)]
+gatherPreps preps = bipure preps_tf (GettsPreps prepNames (map snd preps))
+  where
+    prepNames = nub $ Prelude.concatMap fst preps_tf
+    preps_tf = map fst preps
 
---To be used for prepositional phrases ONLY
---Regular attach can't be used due to function composition
-prepAttach :: GettsTree -> GettsTree -> GettsTree
-prepAttach GettsNone x = x
-prepAttach x GettsNone = x
-prepAttach (GettsPrep props) (GettsPrep props') = GettsPrep (props ++ props')
-prepAttach (GettsPrep props) (GettsPreps props' sub) = GettsPreps (props ++ props') sub
-prepAttach (GettsPreps props sub) (GettsPrep props') = GettsPreps (props ++ props') sub
-prepAttach (GettsPreps props sub) (GettsPreps props' sub') = GettsPreps (props ++ props') (sub `attach` sub') --TODO: optimize
-prepAttach (GettsPreps props sub) x = unionerr (GettsPreps props sub) x 
-
-attach :: GettsTree -> GettsTree -> GettsTree
-attach GettsNone x = x
-attach x GettsNone = x
-
-attach x@(GettsPrep _) y@(GettsPrep _) = unionerr x y
-attach x@(GettsPrep _) y@(GettsPreps _ _) = unionerr x y
-attach (GettsPrep props) x = GettsPreps props x
-
-attach x@(GettsPreps _ _) y@(GettsPrep _) = unionerr x y
-attach x@(GettsPreps _ _) y@(GettsPreps _ _) = unionerr x y
-
-attach (GettsT props rel) (GettsPrep props') = GettsT (props ++ props') rel
-attach (GettsT props rel) (GettsPreps props' sub) = GettsTP (props ++ props') rel sub
-attach (GettsT props rel) x = GettsTP props rel x --needed to support active trans without preps directly
-
-attach (GettsAttachP prop) (GettsT props' rel) = GettsT (prop:props') rel
-attach (GettsAttachP prop) (GettsTP props rel sub) = GettsTP (prop:props) rel sub
-attach (GettsAttachP prop) (GettsBranch br) = GettsBranch (attachLast (GettsAttachP prop) br) 
-
---this is where optimization can take place TODO
-attach (GettsBranch x) (GettsBranch y) = GettsBranch (x ++ y)
-attach x (GettsBranch y) = GettsBranch (x:y)
-attach (GettsBranch x) y = GettsBranch (x ++ [y])
-attach x y = GettsBranch [x, y]
-
---TODO:
---Hack to work around AttachP problem with branches
---Relies on the fact that the "top level" transitive verb will be at the end
---Example: how was a moon that orbits mars discovered with a telescope that was used by hall
---parsed as: [GettsT "orbit", GettsTP "discover" (GettsT "with_implement")]
---note the prepositional phrases are nested below their associated verb (thank god I did that)
---
---but this is not really a general solution!
---A more theoretical/fundamental fix may be necessary!
-attachLast :: GettsTree -> [GettsTree] -> [GettsTree]
-attachLast g [x] = [attach g x]
-attachLast g (x:xs) = x : attachLast g xs
-
---a <*> moon <*> spins... 
-
-instance Functor SemFunc where
-  fmap f (SemFunc sem iu) = SemFunc (f sem) iu
-
-instance Applicative SemFunc where
-  (SemFunc f iu1) <*> (SemFunc sem iu2) = SemFunc (f sem) (iu1 . iu2)
-  pure x = SemFunc x id
-
+--a <<*>> moon <<*>> spins... 
 --PUBLIC INTERFACE (TODO)
+--TODO: make_fdbr_with_prop is DANGEROUS
 --Get members of named set
 --get_members :: (TripleStore m) => m -> Text -> IO FDBR
 --get_members = getts_members
@@ -149,7 +142,7 @@ get_members :: Text -> SemFunc (TF FDBR)
 get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
 
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsT ["subject"] ev_type
+get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP ["subject"] ev_type []
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -158,11 +151,11 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)} 
               | U_OP            {getU_OP    ::   (Int -> Int)} 
-              | SENT_VAL        {getSV      ::   SemFunc (TF FDBR)}
+              | SENT_VAL        {getSV      ::   SemFunc (TF FDBR) }
               | ErrorVal        {getEVAL    ::   Text}    
-              | NOUNCLA_VAL     {getAVALS   ::   SemFunc (TF FDBR)} 
-              | VERBPH_VAL      {getAVALS   ::   SemFunc (TF FDBR)}  
-              | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR)} 
+              | NOUNCLA_VAL     {getAVALS   ::   SemFunc (TF FDBR) } 
+              | VERBPH_VAL      {getAVALS   ::   SemFunc (TF FDBR) }  
+              | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR) } 
               | TERMPH_VAL      {getTVAL    ::   SemFunc (TF FDBR -> TF FDBR)}     
               | DET_VAL         {getDVAL    ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)} 
           | VERB_VAL        {getBR      ::   Relation}      
