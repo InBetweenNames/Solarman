@@ -6,6 +6,7 @@ module XSaiga.Interactive where
 import XSaiga.SolarmanTriplestore
 import XSaiga.Getts
 import XSaiga.TypeAg2
+import XSaiga.CGI
 import Data.Functor
 import Data.Biapplicative
 import Control.Monad

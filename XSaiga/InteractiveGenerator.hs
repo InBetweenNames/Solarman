@@ -85,6 +85,7 @@ main = do
     hPutStrLn file "import XSaiga.SolarmanTriplestore"
     hPutStrLn file "import XSaiga.Getts"
     hPutStrLn file "import XSaiga.TypeAg2"
+    hPutStrLn file "import XSaiga.CGI"
     hPutStrLn file "import Data.Functor"
     hPutStrLn file "import Data.Biapplicative"
     hPutStrLn file "import Control.Monad"

@@ -153,7 +153,7 @@ make_pnoun noun = bipure (liftA $ make_pnoun'' noun) id
 
 --TODO: ugly hack to work around parser problem
 in'' tmph = (["location", "year"], liftA $ make_pnoun'' (tshow tmph))
-in' = bipure in'' id 
+in' = bipure in'' id
 
 --New for new new semantics
 
@@ -345,11 +345,11 @@ make_trans_active ev_type = (\tmph_sem -> f [(["object"], tmph_sem)]) >|< (\gett
     (f, g) = make_trans_active' ev_type
 
 make_trans_active'' :: T.Text -> SemFunc ((TF FDBR -> TF FDBR) -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active'' ev_type = (\tmph_sem -> \preps -> f ((["object"], tmph_sem):preps)) >|< (addPrep "object")
+make_trans_active'' ev_type = (\tmph_sem -> \preps -> f ((["object"], tmph_sem):preps)) >|< (\getts -> \preps -> g (addPrep "object" getts preps))
   where
     (f, g) = make_trans_active' ev_type
     addPrep :: T.Text -> (GettsTree -> GettsTree) -> GettsTree -> GettsTree
-    addPrep prop g (GettsPreps props subs) = GettsPreps (prop:props) ((gettsApply g):subs)
+    addPrep prop getts (GettsPreps props subs) = GettsPreps (prop:props) ((gettsApply getts):subs)
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -1417,6 +1417,8 @@ list_of_years = map (\n -> (tshow n, Year, [YEAR_VAL n])) $ List.concat [[1000 +
 test p input = runState (p ((1,[]),input) ([],[])) []
 
 parse i = formatAttsFinalAlt Question  ((List.length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
+
+headParse = getQUVAL . head . parse
 
 --formatParseIO = mapM id . map showio . parse
 

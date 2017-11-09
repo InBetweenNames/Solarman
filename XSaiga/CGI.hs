@@ -2,7 +2,7 @@
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
+module XSaiga.CGI where
 import qualified XSaiga.SolarmanTriplestore as App
 import Network.CGI
 import qualified Data.List as List
@@ -10,7 +10,7 @@ import Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy as BL
 import Data.Text.Encoding as E
-import qualified XSaiga.LocalData as Local
+--import qualified XSaiga.LocalData as Local
 import qualified XSaiga.Getts as Getts
 import qualified XSaiga.TypeAg2 as TypeAg2
 
@@ -144,8 +144,11 @@ interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
         let interpretations = List.map TypeAg2.getQUVAL $ App.parse input
-        outs <- mapM (\(sem, getts) -> TypeAg2.getReducedTriplestore remoteData (TypeAg2.flattenGetts getts) >>= \rtriples -> return $ sem rtriples) interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
+        outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
         let formatted = T.concat $ List.intersperse " ; " outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
 
+evaluate (sem, getts) = do
+  rtriples <- TypeAg2.getReducedTriplestore remoteData (TypeAg2.flattenGetts getts)
+  return $ sem rtriples
