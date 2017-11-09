@@ -314,21 +314,42 @@ make_trans_active' ev_data rel preps = do
 gettsTP :: T.Text -> T.Text -> GettsTree -> GettsTree
 gettsTP prop rel (GettsPreps props' sub) = GettsTP (prop:props') rel sub
 
+make_trans'' :: T.Text -> T.Text -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans'' prop rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
+  where
+    filtRTriples = pure_getts_triples_entevprop_type rtriples (prop:(nub $ concatMap fst $ preps)) rel
+    images = make_fdbr_with_prop filtRTriples prop
+    fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+
 --make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?
-make_trans_active'' :: T.Text -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
-make_trans_active'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
-  where
-  filtRTriples = pure_getts_triples_entevprop_type rtriples ("subject":(nub $ concatMap fst $ preps)) rel
-  images = make_fdbr_with_prop filtRTriples "subject"
-  fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+--TODO: refactor to take into account active tmph
+--TODO: refactor both passive and active into same function (active version may involve more)
+make_trans_active_ = make_trans'' "subject"
+
+--SCHEME
+--empty denotes tmph
+--' denotes preps
+--'' denotes tmph followed by preps
 
 make_trans_active' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active' rel =  make_trans_active'' rel >|< gettsTP "subject" rel
+make_trans_active' rel =  make_trans_active_ rel >|< gettsTP "subject" rel
 
---TODO: make this defined in terms of active'.  Also, bug in solarman3 semantics here with only "subject" in GettsTP
-make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR)  -> TF FDBR)
-make_trans_active ev_type = (\tmph_sem -> make_trans_active'' ev_type [(["object"], tmph_sem)]) >|< (\g -> GettsTP ["subject", "object"] ev_type [gettsApply g])
+--TODO: Bug in solarman3 semantics here with only "subject" in GettsTP
+--make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR)  -> TF FDBR)
+--make_trans_active ev_type = (\tmph_sem -> make_trans_active'' ev_type [(["object"], tmph_sem)]) >|< (\g -> GettsTP ["subject", "object"] ev_type [gettsApply g])
+
+make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR) -> TF FDBR)
+make_trans_active ev_type = (\tmph_sem -> f [(["object"], tmph_sem)]) >|< (\getts -> g $ GettsPreps ["object"] [gettsApply getts])
+  where
+    (f, g) = make_trans_active' ev_type
+
+make_trans_active'' :: T.Text -> SemFunc ((TF FDBR -> TF FDBR) -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active'' ev_type = (\tmph_sem -> \preps -> f ((["object"], tmph_sem):preps)) >|< (addPrep "object")
+  where
+    (f, g) = make_trans_active' ev_type
+    addPrep :: T.Text -> (GettsTree -> GettsTree) -> GettsTree -> GettsTree
+    addPrep prop g (GettsPreps props subs) = GettsPreps (prop:props) ((gettsApply g):subs)
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -347,15 +368,11 @@ make_trans_passive' ev_data rel preps = do
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs-}
 
-make_trans_passive'' :: T.Text -> [([T.Text],  (TF FDBR -> TF FDBR))] -> TF FDBR
-make_trans_passive'' rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
-  where
-  filtRTriples = pure_getts_triples_entevprop_type rtriples ("object":(nub $ concatMap fst $ preps)) rel
-  images = make_fdbr_with_prop filtRTriples "object"
-  fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+make_trans_passive' :: T.Text -> [([T.Text],  (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans_passive' = make_trans'' "object"
 
-make_trans_passive' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_passive' rel = make_trans_passive'' rel >|< gettsTP "object" rel
+make_trans_passive :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_passive rel = make_trans_passive' rel >|< gettsTP "object" rel
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
@@ -381,12 +398,14 @@ sand'' s1 s2 =
 sand = bipure (liftA2 sand'') gettsUnion
 
 --TODO: testing
+{-
 moon = get_members "moon"
 phobos = make_pnoun "phobos"
 hall = make_pnoun "hall"
 discover = make_trans_active "discover_ev"
 discover' = make_trans_active' "discover_ev"
-discover_ = make_trans_passive' "discover_ev"
+discover'' = make_trans_active'' "discover_ev"
+discover_ = make_trans_passive "discover_ev"
 telescope = get_members "telescope"
 person = get_members "person"
 planet = get_members "planet"
@@ -394,6 +413,7 @@ discoverer = get_subjs_of_event_type "discover_ev"
 orbits = make_trans_active "orbit_ev"
 orbits' = make_trans_active' "orbit_ev"
 spins = get_members "spin"
+-}
 
 {-
 ||-----------------------------------------------------------------------------
@@ -837,7 +857,7 @@ applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gathe
     reln = getAtts getBR atts x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make_trans_passive' reln <<*>> gatherPreps preps)
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make_trans_passive reln <<*>> gatherPreps preps)
     where
     linkingvb = getAtts getLINKVAL atts x2
     termph = getAtts getTVAL atts x3
@@ -889,7 +909,7 @@ apply_middle3    [x, y, z]
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive' reln <<*>> gatherPreps preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive reln <<*>> gatherPreps preps
         where
         reln = getAtts getBR atts x
         preps = case xs of

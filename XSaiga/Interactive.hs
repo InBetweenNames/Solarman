@@ -5,6 +5,7 @@ module XSaiga.Interactive where
 
 import XSaiga.SolarmanTriplestore
 import XSaiga.Getts
+import XSaiga.TypeAg2
 import Control.Monad
 
 a $ b = a b
