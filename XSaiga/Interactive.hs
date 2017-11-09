@@ -6,6 +6,8 @@ module XSaiga.Interactive where
 import XSaiga.SolarmanTriplestore
 import XSaiga.Getts
 import XSaiga.TypeAg2
+import Data.Functor
+import Data.Biapplicative
 import Control.Monad
 
 a $ b = a b
@@ -13,41 +15,47 @@ infixr 0 $
 a . b = \x -> a (b (x))
 infixr 9 .
 
-discover tmph = make_trans_active' "discover_ev" [(["object"],tmph)]
-discover' tmph preps = make_trans_active' "discover_ev" $ (["object"], tmph):preps
-discover_ = make_trans_passive' "discover_ev"
+discover = make_trans_active "discover_ev"
+discover' = make_trans_active' "discover_ev"
+discover'' = make_trans_active'' "discover_ev"
+discover_ = make_trans_passive "discover_ev"
 
-discovers tmph = make_trans_active' "discover_ev" [(["object"],tmph)]
-discovers' tmph preps = make_trans_active' "discover_ev" $ (["object"], tmph):preps
-discovers_ = make_trans_passive' "discover_ev"
+discovers = make_trans_active "discover_ev"
+discovers' = make_trans_active' "discover_ev"
+discovers'' = make_trans_active'' "discover_ev"
+discovers_ = make_trans_passive "discover_ev"
 
-discovered tmph = make_trans_active' "discover_ev" [(["object"],tmph)]
-discovered' tmph preps = make_trans_active' "discover_ev" $ (["object"], tmph):preps
-discovered_ = make_trans_passive' "discover_ev"
+discovered = make_trans_active "discover_ev"
+discovered' = make_trans_active' "discover_ev"
+discovered'' = make_trans_active'' "discover_ev"
+discovered_ = make_trans_passive "discover_ev"
 
-orbit tmph = make_trans_active' "orbit_ev" [(["object"],tmph)]
-orbit' tmph preps = make_trans_active' "orbit_ev" $ (["object"], tmph):preps
-orbit_ = make_trans_passive' "orbit_ev"
+orbit = make_trans_active "orbit_ev"
+orbit' = make_trans_active' "orbit_ev"
+orbit'' = make_trans_active'' "orbit_ev"
+orbit_ = make_trans_passive "orbit_ev"
 
-orbits tmph = make_trans_active' "orbit_ev" [(["object"],tmph)]
-orbits' tmph preps = make_trans_active' "orbit_ev" $ (["object"], tmph):preps
-orbits_ = make_trans_passive' "orbit_ev"
+orbits = make_trans_active "orbit_ev"
+orbits' = make_trans_active' "orbit_ev"
+orbits'' = make_trans_active'' "orbit_ev"
+orbits_ = make_trans_passive "orbit_ev"
 
-orbited tmph = make_trans_active' "orbit_ev" [(["object"],tmph)]
-orbited' tmph preps = make_trans_active' "orbit_ev" $ (["object"], tmph):preps
-orbited_ = make_trans_passive' "orbit_ev"
+orbited = make_trans_active "orbit_ev"
+orbited' = make_trans_active' "orbit_ev"
+orbited'' = make_trans_active'' "orbit_ev"
+orbited_ = make_trans_passive "orbit_ev"
 
 discoverer = get_subjs_of_event_type "discover_ev"
 discoverers = get_subjs_of_event_type "discover_ev"
-anyone = a person
-anything = a thing
-anybody = a person
-someone = a person
-something = a thing
-somebody = a person
-everyone = every person
-everything = every thing
-everybody = every person
+anyone = a <<*>> person
+anything = a <<*>> thing
+anybody = a <<*>> person
+someone = a <<*>> person
+something = a <<*>> thing
+somebody = a <<*>> person
+everyone = every <<*>> person
+everything = every <<*>> thing
+everybody = every <<*>> person
 telescopes = telescope
 places = place
 thing = get_members "thing"

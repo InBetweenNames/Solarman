@@ -144,7 +144,7 @@ interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
         let interpretations = List.map TypeAg2.getQUVAL $ App.parse input
-        outs <- mapM (\(sem, getts) -> TypeAg2.getReducedTriplestore Local.localData (TypeAg2.flattenGetts getts) >>= \rtriples -> return $ sem rtriples) interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
+        outs <- mapM (\(sem, getts) -> TypeAg2.getReducedTriplestore remoteData (TypeAg2.flattenGetts getts) >>= \rtriples -> return $ sem rtriples) interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
         let formatted = T.concat $ List.intersperse " ; " outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
