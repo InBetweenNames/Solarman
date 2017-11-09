@@ -152,8 +152,9 @@ make_pnoun :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
 make_pnoun noun = bipure (liftA $ make_pnoun'' noun) id
 
 --TODO: ugly hack to work around parser problem
-in'' tmph = (["location", "year"], liftA $ make_pnoun'' (tshow tmph))
-in' = bipure in'' id
+make_year = make_pnoun . tshow
+
+in' = make_prep ["location", "year"]
 
 --New for new new semantics
 
