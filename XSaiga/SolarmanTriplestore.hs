@@ -139,6 +139,9 @@ what = bipure (liftA what'') id
 
 --TODO: prepositions
 make_prep props = bipure (\tmph -> (props, tmph)) (gettsApply)
+
+make_prep_nph props = bipure (\nph -> (props, intersect_fdbr' nph)) (id)
+
 --with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with = make_prep ["with_implement"]
 
@@ -155,6 +158,10 @@ make_pnoun noun = bipure (liftA $ make_pnoun'' noun) id
 make_year = make_pnoun . tshow
 
 in' = make_prep ["location", "year"]
+
+--TODO: verify "subject" and identity here.  should not be introducing more info...
+--to = bipure (\nph -> (["subject"], intersect_fdbr' nph)) (id)
+to = make_prep_nph ["subject"]
 
 --New for new new semantics
 
@@ -452,6 +459,7 @@ quest6          =  memoize_terminals_from_dictionary Quest6
 
 --NEW FOR PREPOSITIONAL PHRASES
 prep            =  memoize_terminals_from_dictionary Prepn
+prepnph         =  memoize_terminals_from_dictionary Prepnph
 year            =  memoize_terminals_from_dictionary Year
 
 memoize_terminals_from_dictionary key
@@ -644,6 +652,10 @@ prepph
     (parser (nt prep S1 *> nt jointermph S2)
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
                                                      synthesized TERMPH_VAL OF S2]]
+     <|>
+     parser (nt prepnph S1 *> nt verbph S2)
+     [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_nph [synthesized PREPNPH_VAL OF S1,
+                                                         synthesized VERBPH_VAL OF S2]] 
     )
 
 ----------------------------------------------------------------------------------
@@ -872,6 +884,12 @@ applyprepph     [x, y]
         let prep_names = getAtts getPREPNVAL atts x
             termph = getAtts getTVAL atts y in
             make_prep prep_names <<*>> termph
+
+applyprepph_nph [x, y]
+ = \atts -> PREPPH_VAL $
+        let prep_names = getAtts getPREPNPHVAL atts x
+            nph = getAtts getAVALS atts y in
+            make_prep_nph prep_names <<*>> nph
 
 applyprep   [x]
   = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
@@ -1143,6 +1161,7 @@ dictionary = [
     ("in",          Prepn, [PREPN_VAL ["location","year"]]),
     ("at",          Prepn, [PREPN_VAL ["location"]]),
     ("by",          Prepn, [PREPN_VAL ["subject"]]),
+    ("to",          Prepnph, [PREPNPH_VAL ["subject"]]),
     --Begin telescope stuff--
     ("telescope",   Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
     ("telescopes",  Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),

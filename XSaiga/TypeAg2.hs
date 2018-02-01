@@ -165,6 +165,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
           | PREP_VAL        {getPREPVAL ::   [SemFunc ([Text], (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
+          | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
           | PREPPH_VAL      {getPREPPHVAL :: SemFunc ([Text], (TF FDBR -> TF FDBR))}
           | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
           | SENTJOIN_VAL    {getSJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
@@ -179,7 +180,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 --            | RESULT [sys_message]
 --Also called a "NodeName"
 data MemoL    = Start | Tree | Num | Emp | ALeaf Text | Expr | Op  | ET
-              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
+              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Prepnph|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6
                 deriving (Eq,Ord,Show)
 
@@ -204,37 +205,6 @@ type Relation = Text
 data DisplayTree = B [DisplayTree]
                  | N Int
                    deriving (Show, Eq)
-
-{-showio :: AttValue -> IO Text
-showio (VAL  j)     = return $ "VAL " `T.append` tshow j
-showio (MaxVal j)   = return $ "MaxVal " `T.append` tshow j
-showio (SubVal j)   = return $ "SubVal " `T.append` tshow j
-showio (RepVal j)   = return $ "RepVal " `T.append` tshow j
-showio (Res j)      = return $ "Tree: "  `T.append` tshow j
-showio (B_OP j)     = return $ "B_OP"
-showio (U_OP j)     = return $ "U_OP"
-showio (SENT_VAL j) = j >>= return . tshow 
-showio (ErrorVal j) = return j
-showio (NOUNCLA_VAL j) = j >>= return . T.append ( "NOUNCLA_VAL ") . T.unwords . map fst
-showio (VERBPH_VAL j)  = j >>= return . T.append ( "VERBPH_VAL ") . T.unwords . map fst
-showio (ADJ_VAL    j)  = j >>= return . T.append ( "ADJ_VAL ") . T.unwords . map fst
-showio (TERMPH_VAL j)  = return $ "TERMPH_VAL "      
-showio (DET_VAL j)     = return $ "DET_VAL " 
-showio (VERB_VAL j)    = return $ T.append "VERB_VAL"  j
-showio (RELPRON_VAL j)  = return $ "RELPRON_VAL "
-showio (NOUNJOIN_VAL j)  = return $ "NOUNJOIN_VAL "
-showio (VBPHJOIN_VAL j)  = return $ "VBPHJOIN_VAL "
-showio (TERMPHJOIN_VAL j)  = return $ "TERMPHJOIN_VAL "
-showio (PREP_VAL j)  = return $ "PREP_VAL "
-showio (LINKINGVB_VAL j)  = return $ "LINKINGVB_VAL "
-showio (SENTJOIN_VAL j)  = return $ "SENTJOIN_VAL "
-showio (DOT_VAL j) = j 
-showio (QM_VAL j) = j 
-showio (QUEST_VAL j) = j 
-showio (QUEST1_VAL j)  = return $ "QUEST1_VAL"
-showio (QUEST2_VAL j)  = return $ "QUEST2_VAL"
-showio (QUEST3_VAL j)  = return $ "SENTJOIN_VAL"-}
-
 
 {-instance Show AttValue where
     show (VAL  j)     = "VAL "    ++ show j
@@ -295,6 +265,7 @@ instance Eq AttValue where
     (QUEST3_VAL j)     == (QUEST3_VAL j') = True
     (PREP_VAL s1)      == (PREP_VAL s) = True
     (PREPN_VAL s1)     == (PREPN_VAL s) = True
+    (PREPNPH_VAL s1)   == (PREPNPH_VAL s) = True
     (PREPPH_VAL s1)    == (PREPPH_VAL s) = True
     (YEAR_VAL s1)      == (YEAR_VAL s) = True
     _                  == _              = False
@@ -347,10 +318,9 @@ setAtt (QUEST3_VAL  s1)   (QUEST3_VAL  s)     = [QUEST3_VAL s]
 
 setAtt (PREP_VAL s1) (PREP_VAL s) = [PREP_VAL s]
 setAtt (PREPN_VAL s1) (PREPN_VAL s) = [PREPN_VAL s]
+setAtt (PREPNPH_VAL s1) (PREPNPH_VAL s) = [PREPNPH_VAL s]
 setAtt (PREPPH_VAL s1) (PREPPH_VAL s) = [PREPPH_VAL s]
 setAtt (YEAR_VAL s1) (YEAR_VAL s) = [YEAR_VAL s]
-
-
 --------- *********************** --------------
 
 
