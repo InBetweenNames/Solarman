@@ -43,10 +43,10 @@ v_discoverers_cnoun = "discoverers = get_subjs_of_event_type \"discover_ev\""
 
 v_make_intrans = v_make_cnoun
 
-v_make_transvb name ev = makeFriendlyName name `T.append` " = make_trans_active \"" `T.append` ev `T.append` "\""
-v_make_transvb_filt name ev = makeFriendlyName name `T.append` "' = make_trans_active' \"" `T.append` ev `T.append`"\""
-v_make_transvb_tmph_filt name ev = makeFriendlyName name `T.append` "'' = make_trans_active'' \"" `T.append` ev `T.append`"\""
-v_make_transvb_inverted name ev = makeFriendlyName name `T.append` "_ = make_trans_passive \"" `T.append` ev `T.append` "\""
+v_make_transvb name ev = makeFriendlyName name `T.append` " = make_trans_active " `T.append` ev
+v_make_transvb_filt name ev = makeFriendlyName name `T.append` "' = make_trans_active' " `T.append` ev
+v_make_transvb_tmph_filt name ev = makeFriendlyName name `T.append` "'' = make_trans_active'' " `T.append` ev
+v_make_transvb_inverted name ev = makeFriendlyName name `T.append` "_ = make_trans_passive " `T.append` ev
 --v_make_transvb_inverted_filt name ev = makeFriendlyName name `T.append` "_' tmph preps = make_trans_passive' \"" `T.append` ev `T.append` "\" $ ([\"object\"],tmph):preps"
 
 typeActionMap = Map.fromList 
@@ -95,8 +95,9 @@ main = do
     hPutStrLn file "a . b = \\x -> a (b (x))"
     hPutStrLn file "infixr 9 ."
     hPutStrLn file ""
-    verbForm file ["discover", "discovers", "discovered"] "discover_ev"
-    verbForm file ["orbit", "orbits", "orbited"] "orbit_ev"
+    verbForm file ["discover", "discovers", "discovered"] ("discover_rel")
+    verbForm file ["orbit", "orbits", "orbited"] ("orbit_rel")
+    verbForm file ["use", "uses", "used"] ("use_rel")
     hPutStrLn file v_discoverer_cnoun
     hPutStrLn file v_discoverers_cnoun
     hPutStrLn file "anyone = a <<*>> person"

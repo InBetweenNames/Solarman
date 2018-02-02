@@ -16,35 +16,50 @@ infixr 0 $
 a . b = \x -> a (b (x))
 infixr 9 .
 
-discover = make_trans_active "discover_ev"
-discover' = make_trans_active' "discover_ev"
-discover'' = make_trans_active'' "discover_ev"
-discover_ = make_trans_passive "discover_ev"
+discover = make_trans_active discover_rel
+discover' = make_trans_active' discover_rel
+discover'' = make_trans_active'' discover_rel
+discover_ = make_trans_passive discover_rel
 
-discovers = make_trans_active "discover_ev"
-discovers' = make_trans_active' "discover_ev"
-discovers'' = make_trans_active'' "discover_ev"
-discovers_ = make_trans_passive "discover_ev"
+discovers = make_trans_active discover_rel
+discovers' = make_trans_active' discover_rel
+discovers'' = make_trans_active'' discover_rel
+discovers_ = make_trans_passive discover_rel
 
-discovered = make_trans_active "discover_ev"
-discovered' = make_trans_active' "discover_ev"
-discovered'' = make_trans_active'' "discover_ev"
-discovered_ = make_trans_passive "discover_ev"
+discovered = make_trans_active discover_rel
+discovered' = make_trans_active' discover_rel
+discovered'' = make_trans_active'' discover_rel
+discovered_ = make_trans_passive discover_rel
 
-orbit = make_trans_active "orbit_ev"
-orbit' = make_trans_active' "orbit_ev"
-orbit'' = make_trans_active'' "orbit_ev"
-orbit_ = make_trans_passive "orbit_ev"
+orbit = make_trans_active orbit_rel
+orbit' = make_trans_active' orbit_rel
+orbit'' = make_trans_active'' orbit_rel
+orbit_ = make_trans_passive orbit_rel
 
-orbits = make_trans_active "orbit_ev"
-orbits' = make_trans_active' "orbit_ev"
-orbits'' = make_trans_active'' "orbit_ev"
-orbits_ = make_trans_passive "orbit_ev"
+orbits = make_trans_active orbit_rel
+orbits' = make_trans_active' orbit_rel
+orbits'' = make_trans_active'' orbit_rel
+orbits_ = make_trans_passive orbit_rel
 
-orbited = make_trans_active "orbit_ev"
-orbited' = make_trans_active' "orbit_ev"
-orbited'' = make_trans_active'' "orbit_ev"
-orbited_ = make_trans_passive "orbit_ev"
+orbited = make_trans_active orbit_rel
+orbited' = make_trans_active' orbit_rel
+orbited'' = make_trans_active'' orbit_rel
+orbited_ = make_trans_passive orbit_rel
+
+use = make_trans_active use_rel
+use' = make_trans_active' use_rel
+use'' = make_trans_active'' use_rel
+use_ = make_trans_passive use_rel
+
+uses = make_trans_active use_rel
+uses' = make_trans_active' use_rel
+uses'' = make_trans_active'' use_rel
+uses_ = make_trans_passive use_rel
+
+used = make_trans_active use_rel
+used' = make_trans_active' use_rel
+used'' = make_trans_active'' use_rel
+used_ = make_trans_passive use_rel
 
 discoverer = get_subjs_of_event_type "discover_ev"
 discoverers = get_subjs_of_event_type "discover_ev"

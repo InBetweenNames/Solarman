@@ -771,12 +771,12 @@ question
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans1 [synthesized QUEST1_VAL  OF  S1,
                                               synthesized SENT_VAL    OF  S2]]
     <|>
-      --(how|when|where|who|whatobj) DID jointermph discover
+      --(how|when|where|who) DID jointermph discover
     parser (nt quest5 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
                                               synthesized SENT_VAL    OF  S3]]
-    <|>
+    <|> --whatobj case -- special because needs lookup in AST
     parser (nt quest6 S1  *> nt quest1 S2  *>  nt sent S3 )
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans6 [synthesized QUEST6_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
@@ -1020,6 +1020,10 @@ truefalse        [x]
 
 -}
 
+discover_rel = ("discover_ev","subject","object")
+orbit_rel = ("orbit_ev", "subject", "object")
+use_rel = ("discover_ev", "subject", "with_implement")
+
 dictionary :: [(T.Text, MemoL, [AttValue])]
 dictionary = [
     ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
@@ -1119,15 +1123,15 @@ dictionary = [
     ("umbriel",            Pnoun,     [TERMPH_VAL $ make_pnoun "umbriel"]),
     ("uranus",             Pnoun,     [TERMPH_VAL $ make_pnoun "uranus"]),
     ("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
-    ("discover",           Transvb,   [VERB_VAL ("discover_ev","subject","object")]),
-    ("discovers",          Transvb,   [VERB_VAL ("discover_ev","subject","object")]),
-    ("discovered",         Transvb,   [VERB_VAL ("discover_ev","subject","object")]),
-    ("orbit",              Transvb,   [VERB_VAL ("orbit_ev","subject","object")]),
-    ("orbited",            Transvb,   [VERB_VAL ("orbit_ev","subject","object")]),
-    ("orbits",             Transvb,   [VERB_VAL ("orbit_ev","subject","object")]),
-    ("use",                Transvb,   [VERB_VAL ("discover_ev","subject","with_implement")]),
-    ("used",               Transvb,   [VERB_VAL ("discover_ev","subject","with_implement")]),
-    ("uses",               Transvb,   [VERB_VAL ("discover_ev","subject","with_implement")]),
+    ("discover",           Transvb,   [VERB_VAL discover_rel]),
+    ("discovers",          Transvb,   [VERB_VAL discover_rel]),
+    ("discovered",         Transvb,   [VERB_VAL discover_rel]),
+    ("orbit",              Transvb,   [VERB_VAL orbit_rel]),
+    ("orbited",            Transvb,   [VERB_VAL orbit_rel]),
+    ("orbits",             Transvb,   [VERB_VAL orbit_rel]),
+    ("use",                Transvb,   [VERB_VAL use_rel]),
+    ("used",               Transvb,   [VERB_VAL use_rel]),
+    ("uses",               Transvb,   [VERB_VAL use_rel]),
     ("is",                 Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
     ("was",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
     ("are",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
