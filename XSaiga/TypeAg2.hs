@@ -18,7 +18,7 @@ type TF a = [Triple] -> a
 data GettsTree =
       GettsNone
     | GettsMembers Text
-    | GettsTP [Text] Text [GettsTree]
+    | GettsTP [Text] Relation [GettsTree]
     | GettsPreps [Text] [GettsTree]
     | GettsIntersect GettsTree GettsTree --representing result of intersect_fdbr (only evs from 2nd tree are kept)
     | GettsUnion GettsTree GettsTree --representing result of "union" of fdbrs.  Keeps everything.
@@ -84,7 +84,7 @@ instance Show (TF Text) where
 flattenGetts :: GettsTree -> GettsFlat
 flattenGetts GettsNone = ([],[])
 flattenGetts (GettsMembers set) = ([set], [])
-flattenGetts (GettsTP props rel sub) = merge ([], [(props, rel)]) (Prelude.concat *** Prelude.concat $ unzip $ map flattenGetts sub)
+flattenGetts (GettsTP props (rel,_,_) sub) = merge ([], [(props, rel)]) (Prelude.concat *** Prelude.concat $ unzip $ map flattenGetts sub)
 flattenGetts (GettsPreps props sub) = error "Cannot flatten preps"
 flattenGetts (GettsIntersect i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
 flattenGetts (GettsUnion i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
@@ -99,6 +99,16 @@ f >|< g = bipure f g
 --it is okay if they end up pulling in more data than needed
 gettsOptimize :: GettsTree -> GettsTree
 gettsOptimize u = u
+
+{-flatOptimize :: GettsFlat -> GettsFlat
+flatOptimize (members, gettsTPs) = (nub members, dedupTP)
+  where
+
+    dedupTP = Prelude.foldr f [] gettsTPs
+    f (proto, orelname) list = (nub $ proto ++ props, relname) 
+      
+      Prelude.foldr (\(props, relname) -> \b -> if relname == orelname then (nub $ proto ++ props, relname):b else (props, relname):b) [(nub proto, orelname)] list
+-}
 
 getReducedTriplestore :: (TripleStore m) => m -> GettsFlat -> IO [Triple]
 getReducedTriplestore ev_data (sets, trans) = do
@@ -141,8 +151,9 @@ gatherPreps preps = bipure preps_tf (GettsPreps prepNames (map snd preps))
 get_members :: Text -> SemFunc (TF FDBR)
 get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
 
+--TODO: revise this for new transitive verb definition.  should not assume these fields in general.
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP ["subject"] ev_type []
+get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP ["subject"] (ev_type, "subject", "object") []
 
 data AttValue = VAL             {getAVAL    ::   Int} 
               | MaxVal          {getAVAL    ::   Int} 
@@ -158,7 +169,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR) } 
               | TERMPH_VAL      {getTVAL    ::   SemFunc (TF FDBR -> TF FDBR)}     
               | DET_VAL         {getDVAL    ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)} 
-          | VERB_VAL        {getBR      ::   Relation}      
+              | VERB_VAL        {getBR      ::   Relation } --stores relation, "subject" and "object". TODO: need to expand on later for "used"      
           | RELPRON_VAL     {getRELVAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
           | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
@@ -174,6 +185,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | QUEST_VAL       {getQUVAL   ::   SemFunc (TF Text)}
           | QUEST1_VAL      {getQU1VAL  ::   SemFunc (TF FDBR -> TF Text)}
           | QUEST2_VAL      {getQU2VAL  ::   SemFunc (TF FDBR -> TF Text)}
+          | QUEST6_VAL      {getQU6VAL  ::   SemFunc (TF FDBR) -> SemFunc(TF Text)}
           | QUEST3_VAL      {getQU3VAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF Text)}
           | YEAR_VAL        {getYEARVAL ::   Int}
 
@@ -200,7 +212,7 @@ attFunc
 type Entity         =  Text  
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
 --type Relation     = (ES -> Bool) -> FDBR
-type Relation = Text
+type Relation = (Text, Text, Text)
 
 data DisplayTree = B [DisplayTree]
                  | N Int
@@ -263,6 +275,7 @@ instance Eq AttValue where
     (QUEST1_VAL j)     == (QUEST1_VAL j') = True
     (QUEST2_VAL j)     == (QUEST2_VAL j') = True
     (QUEST3_VAL j)     == (QUEST3_VAL j') = True
+    (QUEST6_VAL j)     == (QUEST6_VAL j') = True
     (PREP_VAL s1)      == (PREP_VAL s) = True
     (PREPN_VAL s1)     == (PREPN_VAL s) = True
     (PREPNPH_VAL s1)   == (PREPNPH_VAL s) = True
@@ -315,6 +328,7 @@ setAtt (QUEST_VAL  s1)   (QUEST_VAL  s)     = [QUEST_VAL s]
 setAtt (QUEST1_VAL  s1)   (QUEST1_VAL  s)     = [QUEST1_VAL s]
 setAtt (QUEST2_VAL  s1)   (QUEST2_VAL  s)     = [QUEST2_VAL s]
 setAtt (QUEST3_VAL  s1)   (QUEST3_VAL  s)     = [QUEST3_VAL s]
+setAtt (QUEST6_VAL  s1)   (QUEST6_VAL  s)     = [QUEST6_VAL s]
 
 setAtt (PREP_VAL s1) (PREP_VAL s) = [PREP_VAL s]
 setAtt (PREPN_VAL s1) (PREPN_VAL s) = [PREPN_VAL s]

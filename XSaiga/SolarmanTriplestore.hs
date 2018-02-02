@@ -187,15 +187,19 @@ make_prop_termphrase' prop nph triples = if not $ T.null finalList then finalLis
 --TODO: attach info!
 make_prop_termphrase :: T.Text -> SemFunc (TF FDBR -> TF T.Text)
 make_prop_termphrase prop = make_prop_termphrase' prop >|< gettsAttachP prop
-  where
-    --apply over the intersect_fdbr, remember evs of im2 are preserved and im1 are discarded
-    gettsAttachP prop (GettsIntersect x y) = GettsIntersect x (gettsAttachP prop y)
-    gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
 
 where' = make_prop_termphrase "location"
 when' = make_prop_termphrase "year"
 how' = make_prop_termphrase "with_implement"
-whatobj = make_prop_termphrase "object"
+
+--needs special handling due to semantics requiring info from getts
+whatobj :: SemFunc (TF FDBR) -> SemFunc (TF T.Text)
+whatobj  (fdbr, getts) = make_prop_termphrase' (findFirstObj getts) fdbr >|< gettsAttachPO getts
+  where
+    findFirstObj (GettsIntersect _ y) = findFirstObj y
+    findFirstObj (GettsTP _ (_,_,object) _) = object
+    gettsAttachPO (GettsIntersect x y) = GettsIntersect x (gettsAttachPO y)
+    gettsAttachPO (GettsTP props (rel, subject, object) sub) = GettsTP (object:props) (rel, subject, object) sub
 
 --end of copied from gangster_v4
 
@@ -319,43 +323,53 @@ make_trans_active' ev_data rel preps = do
   filterM (return . not . List.null . snd) fdbrRelevantEvs
 -}
 
-gettsTP :: T.Text -> T.Text -> GettsTree -> GettsTree
-gettsTP prop rel (GettsPreps props' sub) = GettsTP (prop:props') rel sub
+data Voice = ActiveVoice | PassiveVoice
+getVoiceProps ActiveVoice (_, prop1, prop2) = (prop1, prop2)
+getVoiceProps PassiveVoice (_, prop1, prop2) = (prop2, prop1)
 
-make_trans'' :: T.Text -> T.Text -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
-make_trans'' prop rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
+gettsTP :: Voice -> Relation -> GettsTree -> GettsTree
+gettsTP voice rel (GettsPreps props' sub) = GettsTP (subject:props') rel sub
   where
-    filtRTriples = pure_getts_triples_entevprop_type rtriples (prop:(nub $ concatMap fst $ preps)) rel
-    images = make_fdbr_with_prop filtRTriples prop
+    (subject,_) = getVoiceProps voice rel
+
+relname (a, _, _) = a
+
+make_trans'' :: Voice -> Relation -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans'' voice rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
+  where
+    (subjectProp,_) = getVoiceProps voice rel
+    filtRTriples = pure_getts_triples_entevprop_type rtriples (subjectProp:(nub $ concatMap fst $ preps)) (relname rel)
+    images = make_fdbr_with_prop filtRTriples subjectProp
     fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
 
 --make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?
 --TODO: refactor to take into account active tmph
 --TODO: refactor both passive and active into same function (active version may involve more)
-make_trans_active_ = make_trans'' "subject"
 
 --SCHEME
 --empty denotes tmph
 --' denotes preps
 --'' denotes tmph followed by preps
 
-make_trans_active' :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active' rel =  make_trans_active_ rel >|< gettsTP "subject" rel
+make_trans_active' :: Relation -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active' rel =  make_trans'' ActiveVoice rel >|< gettsTP ActiveVoice rel
 
 --TODO: Bug in solarman3 semantics here with only "subject" in GettsTP
 --make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR)  -> TF FDBR)
 --make_trans_active ev_type = (\tmph_sem -> make_trans_active'' ev_type [(["object"], tmph_sem)]) >|< (\g -> GettsTP ["subject", "object"] ev_type [gettsApply g])
 
-make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR) -> TF FDBR)
-make_trans_active ev_type = (\tmph_sem -> f [(["object"], tmph_sem)]) >|< (\getts -> g $ GettsPreps ["object"] [gettsApply getts])
+make_trans_active :: Relation -> SemFunc ((TF FDBR -> TF FDBR) -> TF FDBR)
+make_trans_active rel = (\tmph_sem -> f [([object], tmph_sem)]) >|< (\getts -> g $ GettsPreps [object] [gettsApply getts])
   where
-    (f, g) = make_trans_active' ev_type
+    (_, object) = getVoiceProps ActiveVoice rel
+    (f, g) = make_trans_active' rel
 
-make_trans_active'' :: T.Text -> SemFunc ((TF FDBR -> TF FDBR) -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active'' ev_type = (\tmph_sem -> \preps -> f ((["object"], tmph_sem):preps)) >|< (\getts -> \preps -> g (addPrep "object" getts preps))
+make_trans_active'' :: Relation -> SemFunc ((TF FDBR -> TF FDBR) -> [([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active'' rel = (\tmph_sem -> \preps -> f (([object], tmph_sem):preps)) >|< (\getts -> \preps -> g (addPrep object getts preps))
   where
-    (f, g) = make_trans_active' ev_type
+    (subject, object) = getVoiceProps ActiveVoice rel
+    (f, g) = make_trans_active' rel
     addPrep :: T.Text -> (GettsTree -> GettsTree) -> GettsTree -> GettsTree
     addPrep prop getts (GettsPreps props subs) = GettsPreps (prop:props) ((gettsApply getts):subs)
 
@@ -376,11 +390,8 @@ make_trans_passive' ev_data rel preps = do
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs-}
 
-make_trans_passive' :: T.Text -> [([T.Text],  (TF FDBR -> TF FDBR))] -> TF FDBR
-make_trans_passive' = make_trans'' "object"
-
-make_trans_passive :: T.Text -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_passive rel = make_trans_passive' rel >|< gettsTP "object" rel
+make_trans_passive :: Relation -> SemFunc ([([T.Text], (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_passive rel = make_trans'' PassiveVoice rel >|< gettsTP PassiveVoice rel
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
@@ -767,7 +778,7 @@ question
                                               synthesized SENT_VAL    OF  S3]]
     <|>
     parser (nt quest6 S1  *> nt quest1 S2  *>  nt sent S3 )
-    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans5 [synthesized QUEST2_VAL  OF  S1,
+    [rule_s QUEST_VAL  OF LHS ISEQUALTO ans6 [synthesized QUEST6_VAL  OF  S1,
                                               synthesized QUEST1_VAL OF S2,
                                               synthesized SENT_VAL    OF  S3]]
     <|>
@@ -849,16 +860,18 @@ applydet         [x, y]
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep ["object"] <<*>> predicate) : preps)
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep [object] <<*>> predicate) : preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
+    (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep ["object"] <<*>> predicate]
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep [object] <<*>> predicate]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
+    (_, object) = getVoiceProps ActiveVoice reln
 
 applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps preps
     where
@@ -953,6 +966,11 @@ ans3             [x, y, z]
 
 ans5             [x, y, z]
  = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getSV atts z))
+
+ans6             [x, y, z]
+ = \atts -> QUEST_VAL ((getAtts getQU6VAL atts x) (getAtts getSV atts z))
+
+
 
 truefalse        [x]
   = \atts -> QUEST_VAL $ fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") `first` (getAtts getSV atts x)
@@ -1101,12 +1119,15 @@ dictionary = [
     ("umbriel",            Pnoun,     [TERMPH_VAL $ make_pnoun "umbriel"]),
     ("uranus",             Pnoun,     [TERMPH_VAL $ make_pnoun "uranus"]),
     ("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
-    ("discover",           Transvb,   [VERB_VAL ("discover_ev")]),
-    ("discovers",          Transvb,   [VERB_VAL ("discover_ev")]),
-    ("discovered",         Transvb,   [VERB_VAL ("discover_ev")]),
-    ("orbit",              Transvb,   [VERB_VAL ("orbit_ev")]),
-    ("orbited",            Transvb,   [VERB_VAL ("orbit_ev")]),
-    ("orbits",             Transvb,   [VERB_VAL ("orbit_ev")]),
+    ("discover",           Transvb,   [VERB_VAL ("discover_ev","subject","object")]),
+    ("discovers",          Transvb,   [VERB_VAL ("discover_ev","subject","object")]),
+    ("discovered",         Transvb,   [VERB_VAL ("discover_ev","subject","object")]),
+    ("orbit",              Transvb,   [VERB_VAL ("orbit_ev","subject","object")]),
+    ("orbited",            Transvb,   [VERB_VAL ("orbit_ev","subject","object")]),
+    ("orbits",             Transvb,   [VERB_VAL ("orbit_ev","subject","object")]),
+    ("use",                Transvb,   [VERB_VAL ("discover_ev","subject","with_implement")]),
+    ("used",               Transvb,   [VERB_VAL ("discover_ev","subject","with_implement")]),
+    ("uses",               Transvb,   [VERB_VAL ("discover_ev","subject","with_implement")]),
     ("is",                 Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
     ("was",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
     ("are",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
@@ -1129,7 +1150,7 @@ dictionary = [
     --("are",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
     ("what",               Quest2,    [QUEST2_VAL     $ what]), 
-    ("what",               Quest6,    [QUEST2_VAL     $ whatobj]),
+    ("what",               Quest6,    [QUEST6_VAL     $ whatobj]),
     ("who",                Quest5,    [QUEST2_VAL     $ who]),
     ("where",              Quest5,    [QUEST2_VAL     $ where']),
     ("when",               Quest5,    [QUEST2_VAL     $ when']),
@@ -1158,6 +1179,7 @@ dictionary = [
     --("noone",       Indefpron,meaning_of detph   "no person" Detph),
     --Begin prepositional stuff--
     ("with",        Prepn, [PREPN_VAL ["with_implement"]]),
+    ("using",       Prepn, [PREPN_VAL ["with_implement"]]),
     ("in",          Prepn, [PREPN_VAL ["location","year"]]),
     ("at",          Prepn, [PREPN_VAL ["location"]]),
     ("by",          Prepn, [PREPN_VAL ["subject"]]),
