@@ -150,5 +150,5 @@ interpret' input = do
     else return firstpass
 
 evaluate (sem, getts) = do
-  rtriples <- TypeAg2.getReducedTriplestore remoteData (TypeAg2.flattenGetts getts)
+  rtriples <- TypeAg2.getReducedTriplestore remoteData (TypeAg2.flatOptimize $ TypeAg2.flattenGetts getts)
   return $ sem rtriples

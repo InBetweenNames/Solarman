@@ -100,15 +100,12 @@ f >|< g = bipure f g
 gettsOptimize :: GettsTree -> GettsTree
 gettsOptimize u = u
 
-{-flatOptimize :: GettsFlat -> GettsFlat
+flatOptimize :: GettsFlat -> GettsFlat
 flatOptimize (members, gettsTPs) = (nub members, dedupTP)
   where
-
-    dedupTP = Prelude.foldr f [] gettsTPs
-    f (proto, orelname) list = (nub $ proto ++ props, relname) 
-      
-      Prelude.foldr (\(props, relname) -> \b -> if relname == orelname then (nub $ proto ++ props, relname):b else (props, relname):b) [(nub proto, orelname)] list
--}
+    dedupTP = Prelude.foldr (\(props, rel) -> \optlist -> if Prelude.any (\(_, r) -> r == rel) optlist
+                                                             then map (\(p, r) -> if r == rel then (nub $ props ++ p, rel) else (p, r)) optlist
+                                                             else (props,rel):optlist) [] gettsTPs
 
 getReducedTriplestore :: (TripleStore m) => m -> GettsFlat -> IO [Triple]
 getReducedTriplestore ev_data (sets, trans) = do
