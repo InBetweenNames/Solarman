@@ -18,27 +18,20 @@ import Control.Monad.State.Lazy
 import Control.Applicative hiding ((*>), (<|>))
 import Data.Biapplicative
 import Data.Bifunctor
+import qualified Data.Map as Map
 
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
 
 --TODO: MERGE IMAGES PROPER
 termor' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
-termor' tmph1 tmph2 ents = List.nub <$> ((++) <$> tmph1 ents <*> tmph2 ents)
+termor' tmph1 tmph2 ents = union_fdbr' (tmph1 ents) (tmph2 ents)
 
 --copied from gangster_v4: combinators
 termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
 termor = bipure termor' (\g1 -> \g2 -> \g3 -> gettsUnion (gettsApply g1) (gettsApply g2))
 
 termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
-{-termand' tmph1 tmph2 ents r =
-  if not (List.null applied_tmph1) && not (List.null applied_tmph2)
-  then List.nub $ applied_tmph1 ++ applied_tmph2
-  else []
-  where
-    applied_tmph1 = tmph1 ents r :: FDBR
-    applied_tmph2 = tmph2 ents r :: FDBR
--}
 termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.null $ tmph2 ents r) then termor' tmph1 tmph2 ents r else []
 
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
@@ -46,8 +39,16 @@ termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.nul
 termand = bipure termand' (\g1 -> \g2 -> \g3 -> gettsUnion (gettsApply g1) (gettsApply g2))
 
 --TODO: FDBRs are sorted.  Use that to improve this.
-intersect_fdbr'' eei1  eei2
- = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]
+intersect_fdbr'' _ [] = []
+intersect_fdbr'' [] _ = []
+intersect_fdbr'' fdbr1@((e1, evs1):eei1)  fdbr2@((e2, evs2):eei2)
+  = case compare e1 e2 of
+      LT -> intersect_fdbr'' eei1 fdbr2
+      EQ -> (e2, evs2):(intersect_fdbr'' eei1 eei2) 
+      GT -> intersect_fdbr'' fdbr1 eei2
+
+{-intersect_fdbr'' eei1 eei2
+  = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]-}
 
 intersect_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
 intersect_fdbr' = liftA2 intersect_fdbr'' --intersect_fdbr'' <$> tf1 <*> tf2
@@ -55,15 +56,22 @@ intersect_fdbr' = liftA2 intersect_fdbr'' --intersect_fdbr'' <$> tf1 <*> tf2
 intersect_fdbr :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 intersect_fdbr = bipure intersect_fdbr' gettsIntersect
 
+union_fdbr'' :: FDBR -> FDBR -> FDBR
+union_fdbr'' fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
+
+union_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
+union_fdbr' = liftA2 union_fdbr''
+
+union_fdbr :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
+union_fdbr = bipure union_fdbr' gettsUnion
+
 nounand = intersect_fdbr
 
 that = nounand
 
---TODO: MERGE IMAGES PROPER
+--TODO: MERGE IMAGES PROPER (verify)
 
-nounor' :: TF FDBR -> TF FDBR -> TF FDBR
-nounor' s t = List.nub <$> ((++) <$> s <*> t)
-nounor = bipure nounor' gettsUnion
+nounor = union_fdbr
 
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
@@ -411,8 +419,8 @@ are = yesno
     r2 <- s2
     return $ if r1 /= [] && r2 /= [] then List.nub $ r1 ++ r2 else []-}
 
-sand'' s1 s2 =
-  if not (List.null s1) && not (List.null s2) then List.nub $ s1 ++ s2 else []
+--TODO: MERGE IMAGES PROPER (verify new impl)
+sand'' = union_fdbr''
 
 sand = bipure (liftA2 sand'') gettsUnion
 
