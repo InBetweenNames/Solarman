@@ -5,7 +5,7 @@ name:                XSaiga
 version:             1.6.0.0
 synopsis:            An implementation of a polynomial-time top-down parser suitable for NLP
 -- description:
-homepage:            http://hafiz.myweb.cs.uwindsor.ca/proHome.html
+homepage:            http://speechweb2.cs.uwindsor.ca/solarman4/demo_sparql.html
 license:             BSD3
 license-file:        LICENSE
 author:              Dr. Rahmatullah Hafiz, Dr. Richard Frost (rfrost@cogeco.ca), Shane Peelar, Paul Callaghan, and Eric Matthews
@@ -26,24 +26,22 @@ description:
 		to a semantic-web style RDF triplestore with approximately 3,000 facts about the solar system has been built
 		as an executable specification of an attribute grammar. Solarman is included in this archive.
 		Solarman computes answers to queries using an event-based denotational semantics which is based on Montague and Davidsonian semantics.
-		A web site [4] has been created so that readers can enter queries and find out more about Solarman.
+		A web site [3] has been created so that readers can enter queries and find out more about Solarman.
 		.
 		\[1] <http://cs.uwindsor.ca/~richard/PUBLICATIONS/PADL_08.pdf>
 		.
 		\[2] <http://cs.uwindsor.ca/~richard/PUBLICATIONS/PADL_10.pdf>
 		.
-		\[3] <http://cs.uwindsor.ca/~richard/PUBLICATIONS/ESWC_DEMO.pdf>
-		.
-		\[4] <http://speechweb2.cs.uwindsor.ca/solarman/demo_sparql.html>
+		\[3] <http://speechweb2.cs.uwindsor.ca/solarman4/demo_sparql.html>
 
 Library
-  build-depends: base >=4.6 && < 5, pretty, hsparql >=0.2, rdf4h, text, containers, network
-  exposed-modules: XSaiga.Getts, XSaiga.AGParser2, XSaiga.TypeAg2, XSaiga.SolarmanTriplestore, XSaiga.Interactive, XSaiga.LocalData
+  build-depends: base >=4.6 && < 5, pretty, hsparql >=0.2, rdf4h, text, containers, network, bifunctors, mtl, bytestring, cgi
+  exposed-modules: XSaiga.Getts, XSaiga.AGParser2, XSaiga.TypeAg2, XSaiga.SolarmanTriplestore, XSaiga.Interactive, XSaiga.LocalData, XSaiga.CGI
   other-modules: XSaiga.ShowText
   extensions: OverloadedStrings,FlexibleInstances,NoMonomorphismRestriction
 
 Executable Solarman
   main-is:Main.hs
-  other-modules:XSaiga.AGParser2 XSaiga.Getts XSaiga.LocalData XSaiga.SolarmanTriplestore XSaiga.TypeAg2 XSaiga.ShowText
-  build-depends:  base >=4.6 && < 5, containers >=0.5, pretty >=1.1, cgi, rdf4h >=1.2, hsparql >=0.2, text >=0.11, network, bytestring
+  other-modules:XSaiga.AGParser2 XSaiga.Getts XSaiga.LocalData XSaiga.SolarmanTriplestore XSaiga.TypeAg2 XSaiga.ShowText XSaiga.CGI
+  build-depends:  base >=4.6 && < 5, containers >=0.5, pretty >=1.1, cgi, rdf4h >=1.2, hsparql >=0.2, text >=0.11, network, bytestring, bifunctors, mtl
   extensions: DoAndIfThenElse,FlexibleInstances,NoMonomorphismRestriction,OverloadedStrings
