@@ -29,14 +29,14 @@ termor' tmph1 tmph2 ents = union_fdbr' (tmph1 ents) (tmph2 ents)
 
 --copied from gangster_v4: combinators
 termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
-termor = bipure termor' (\g1 -> \g2 -> \g3 -> gettsUnion (gettsApply g1) (gettsApply g2))
+termor = bipure termor' (\g1 -> \g2 -> \g3 -> gettsIntersect (gettsUnion (gettsApply g1) (gettsApply g2)) g3)
 
 termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
 termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.null $ tmph2 ents r) then termor' tmph1 tmph2 ents r else []
 
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
 --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
-termand = bipure termand' (\g1 -> \g2 -> \g3 -> gettsUnion (gettsApply g1) (gettsApply g2))
+termand = bipure termand' (\g1 -> \g2 -> \g3 -> gettsIntersect (gettsUnion (gettsApply g1) (gettsApply g2)) g3)
 
 --TODO: FDBRs are sorted.  Use that to improve this.
 intersect_fdbr'' _ [] = []
