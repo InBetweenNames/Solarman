@@ -7,7 +7,6 @@ import qualified XSaiga.SolarmanTriplestore as App
 import Network.CGI
 import qualified Data.List as List
 import Data.Text as T
-import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy as BL
 import Data.Text.Encoding as E
 --import qualified XSaiga.LocalData as Local
@@ -19,16 +18,18 @@ import qualified XSaiga.TypeAg2 as TypeAg2
 dataStore = remoteData -- selects database
 
 endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
-namespace_uri = T.pack "http://solarman.richard.myweb.cs.uwindsor.ca#"
+namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
 remoteData = Getts.SPARQL endpoint_uri namespace_uri
 
 cgiMain :: CGI CGIResult
 cgiMain = do
-    (Just input) <- getInputFPS "query"
-    out <- liftIO $ interpret' $ E.decodeUtf8 $ BL.toStrict input
-    setHeader "Content-type" "text/plain; charset=utf-8"
-    outputFPS $ BL.fromStrict $ E.encodeUtf8 $ out
-
+    query <- getInputFPS "query"
+    case query of
+      Nothing -> outputFPS $ BL.fromStrict $ E.encodeUtf8 $ "error"
+      Just input -> do
+        out <- liftIO $ interpret' $ E.decodeUtf8 $ BL.toStrict input
+        setHeader "Content-type" "text/plain; charset=utf-8"
+        outputFPS $ BL.fromStrict $ E.encodeUtf8 out
 
 main :: IO ()
 main = runCGI (handleErrors cgiMain)
