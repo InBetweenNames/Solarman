@@ -420,7 +420,9 @@ are = yesno
     return $ if r1 /= [] && r2 /= [] then List.nub $ r1 ++ r2 else []-}
 
 --TODO: MERGE IMAGES PROPER (verify new impl)
-sand'' = union_fdbr''
+sand'' [] _ = []
+sand'' _ [] = []
+sand'' fdbr1 fdbr2 = union_fdbr'' fdbr1 fdbr2
 
 sand = bipure (liftA2 sand'') gettsUnion
 
