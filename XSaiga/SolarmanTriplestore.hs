@@ -31,12 +31,13 @@ termor' tmph1 tmph2 ents = union_fdbr' (tmph1 ents) (tmph2 ents)
 termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
 termor = bipure termor' (\g1 -> \g2 -> \g3 -> gettsIntersect (gettsUnion (gettsApply g1) (gettsApply g2)) g3)
 
+--see MSc thesis for explanation of why termand is in terms of termor
 termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
 termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.null $ tmph2 ents r) then termor' tmph1 tmph2 ents r else []
 
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
 --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
-termand = bipure termand' (\g1 -> \g2 -> \g3 -> gettsIntersect (gettsUnion (gettsApply g1) (gettsApply g2)) g3)
+termand = bipure termand' $ snd termor 
 
 --TODO: FDBRs are sorted.  Use that to improve this.
 intersect_fdbr'' _ [] = []
@@ -90,6 +91,18 @@ every' = liftA2 every''
 
 every :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 every = bipure every' gettsIntersect
+
+most'' :: FDBR -> FDBR -> FDBR
+most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
+  where
+    nph_v = intersect_fdbr'' nph vbph
+    n_nph = fromIntegral $ length nph
+    n_nph_v = fromIntegral $ length nph_v
+
+most':: TF FDBR -> TF FDBR -> TF FDBR
+most' = liftA2 most''
+
+most = bipure most' gettsIntersect
 
 {- TODO:
 no' nph vbph =
@@ -1069,6 +1082,7 @@ dictionary = [
     ("every",              Det,       [DET_VAL $ every]),
     ("all",                Det,       [DET_VAL $ every]),
     ("two",                Det,       [DET_VAL $ two]),
+    ("most",               Det,       [DET_VAL $ most]),
     ("bernard",            Pnoun,     [TERMPH_VAL $ make_pnoun "bernard"]),
     ("bond",               Pnoun,     [TERMPH_VAL $ make_pnoun "bond"]),
     ("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),

@@ -13,7 +13,7 @@ import Debug.Trace
 import qualified Data.Map.Strict as Map
 
 --For endpoint query
-import Data.RDF hiding (triple, Triple)
+import Data.RDF.Types hiding (triple, Triple)
 import Database.HSparql.Connection
 import Database.HSparql.QueryGenerator
 
