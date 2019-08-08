@@ -117,7 +117,7 @@ none = liftM2 none'
 -}
 
 one'' :: FDBR -> FDBR -> FDBR
-one'' nph vbph   | length (res) == 1 = res
+one'' nph vbph   | length res == 1 = res
                 | otherwise = []
     where
       res = intersect_fdbr'' nph vbph
@@ -127,7 +127,7 @@ one' = liftA2 one''
 
 one = bipure one' gettsIntersect
 
-two'' nph vbph   | length (res) == 2 = res
+two'' nph vbph   | length res == 2 = res
                 | otherwise = []
     where
       res = intersect_fdbr'' nph vbph
@@ -159,9 +159,9 @@ what'' nph = if not $ T.null result then result else "nothing."
 what = bipure (liftA what'') id
 
 --TODO: prepositions
-make_prep props = bipure (\tmph -> (props, tmph)) (gettsApply)
+make_prep props = bipure (\tmph -> (props, tmph)) gettsApply
 
-make_prep_nph props = bipure (\nph -> (props, intersect_fdbr' nph)) (id)
+make_prep_nph props = bipure (\nph -> (props, intersect_fdbr' nph)) id
 
 --with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with = make_prep ["with_implement"]
@@ -866,14 +866,11 @@ applyBiOp [e1,op,e2]
 -- getAtts f (y,i) x = f (head (x y i))
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
-intrsct1         [x, y]
- = \atts -> NOUNCLA_VAL (intersect_fdbr <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts y))
+intrsct1 [x, y] atts = NOUNCLA_VAL (intersect_fdbr <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts y))
 
-intrsct2         [x, y]
- = \atts -> ADJ_VAL (intersect_fdbr <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts y))
+intrsct2 [x, y] atts = ADJ_VAL (intersect_fdbr <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts y))
 
-applydet         [x, y]
- = \atts -> TERMPH_VAL $ (getAtts getDVAL atts x) <<*>> (getAtts getAVALS atts y)
+applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) <<*>> (getAtts getAVALS atts y)
 
 --make_trans_vb is very similar to make_trans_active.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
@@ -915,46 +912,35 @@ apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make
         [] -> []
         (x5:_) -> getAtts getPREPVAL atts x5
 
-applyprepph     [x, y]
- = \atts -> PREPPH_VAL $
+applyprepph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             termph = getAtts getTVAL atts y in
             make_prep prep_names <<*>> termph
 
-applyprepph_nph [x, y]
- = \atts -> PREPPH_VAL $
+applyprepph_nph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNPHVAL atts x
             nph = getAtts getAVALS atts y in
             make_prep_nph prep_names <<*>> nph
 
-applyprep   [x]
-  = \atts -> PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
+applyprep [x] atts = PREP_VAL $ [(getAtts getPREPPHVAL atts x)] --[(["with_implement"], a telescope)]
 
-applypreps      [x, y]
-  = \atts -> PREP_VAL $ (getAtts getPREPPHVAL atts x) : (getAtts getPREPVAL atts y)
+applypreps [x, y] atts = PREP_VAL $ (getAtts getPREPPHVAL atts x) : (getAtts getPREPVAL atts y)
 
-applyyear [x]
-  = \atts -> TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
+applyyear [x] atts = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
 
 --END PREPOSITIONAL PHRASES
 
-applyvbph        [z]
- = \atts -> VERBPH_VAL (getAtts getAVALS atts z)
+applyvbph [z] atts = VERBPH_VAL (getAtts getAVALS atts z)
 
-appjoin1         [x, y, z]
- = \atts -> TERMPH_VAL $ (getAtts getTJVAL atts y) <<*>> (getAtts getTVAL atts x) <<*>> (getAtts getTVAL atts z)
+appjoin1 [x, y, z] atts = TERMPH_VAL $ (getAtts getTJVAL atts y) <<*>> (getAtts getTVAL atts x) <<*>> (getAtts getTVAL atts z)
 
-appjoin2         [x, y, z]
- = \atts -> VERBPH_VAL ((getAtts getVJVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+appjoin2 [x, y, z] atts = VERBPH_VAL ((getAtts getVJVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
 
-apply_middle1    [x, y, z]
- = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+apply_middle1 [x, y, z] atts = NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
 
-apply_middle2    [x, y, z]
- = \atts -> NOUNCLA_VAL ((getAtts getNJVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+apply_middle2 [x, y, z] atts = NOUNCLA_VAL ((getAtts getNJVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
 
-apply_middle3    [x, y, z]
- = \atts -> NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+apply_middle3 [x, y, z] atts =  NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
 
 -- Think "a orbited by b" vs "b orbits a"
 {-drop3rd          [w, x, y, z]
@@ -972,31 +958,21 @@ drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive reln <<*>> gatherPre
                   (p:_) -> getAtts getPREPVAL atts p
 --END PREPOSITIONAL PHRASES
 
-apply_termphrase [x, y]
- = \atts -> SENT_VAL ((getAtts getTVAL atts x) <<*>> (getAtts getAVALS atts y))
+apply_termphrase [x, y] atts = SENT_VAL ((getAtts getTVAL atts x) <<*>> (getAtts getAVALS atts y))
 
-sent_val_comp    [s1, f, s2]
- = \atts -> SENT_VAL ((getAtts getSJVAL atts f) <<*>> (getAtts getSV atts s1) <<*>> (getAtts getSV atts s2))
+sent_val_comp [s1, f, s2] atts = SENT_VAL ((getAtts getSJVAL atts f) <<*>> (getAtts getSV atts s1) <<*>> (getAtts getSV atts s2))
 
-ans1             [x, y]
- = \atts -> QUEST_VAL ((getAtts getQU1VAL atts x) <<*>> (getAtts getSV atts y) )
+ans1 [x, y] atts = QUEST_VAL ((getAtts getQU1VAL atts x) <<*>> (getAtts getSV atts y) )
 
-ans2             [x, y]
- = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getAVALS atts y))
+ans2 [x, y] atts = QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getAVALS atts y))
 
-ans3             [x, y, z]
- = \atts -> QUEST_VAL ((getAtts getQU3VAL atts x) <<*>> (getAtts getAVALS atts y) <<*>> (getAtts getAVALS atts z))
+ans3 [x, y, z] atts = QUEST_VAL ((getAtts getQU3VAL atts x) <<*>> (getAtts getAVALS atts y) <<*>> (getAtts getAVALS atts z))
 
-ans5             [x, y, z]
- = \atts -> QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getSV atts z))
+ans5 [x, y, z] atts = QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getSV atts z))
 
-ans6             [x, y, z]
- = \atts -> QUEST_VAL ((getAtts getQU6VAL atts x) (getAtts getSV atts z))
+ans6 [x, y, z] atts = QUEST_VAL ((getAtts getQU6VAL atts x) (getAtts getSV atts z))
 
-
-
-truefalse        [x]
-  = \atts -> QUEST_VAL $ fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") `first` (getAtts getSV atts x)
+truefalse [x] atts = QUEST_VAL $ fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") `first` (getAtts getSV atts x)
 
 {-
 ||-----------------------------------------------------------------------------

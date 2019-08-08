@@ -13,7 +13,7 @@ import Control.Monad
 
 a $ b = a b
 infixr 0 $
-a . b = \x -> a (b (x))
+a . b = \x -> a (b x)
 infixr 9 .
 
 discover = make_trans_active discover_rel

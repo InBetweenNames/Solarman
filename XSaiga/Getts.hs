@@ -57,7 +57,7 @@ instance TripleStore [Triple] where
       let evs_with_type_ev_type = getts_1 ev_data ("?", "type", ev_type)
       getts_triples_entevprop ev_data propNames evs_with_type_ev_type
 
-    getts_triples_entevprop ev_data propNames evs = do
+    getts_triples_entevprop ev_data propNames evs = 
       return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` ("type":propNames)) ev_data
     
     getts_triples_members ev_data set = do
@@ -95,7 +95,7 @@ endpointTable = unsafeDupablePerformIO $ newIORef M.empty
 lookupEndpoint :: String -> IO String
 lookupEndpoint url = do
   m <- readIORef endpointTable
-  case M.lookup (url) m of
+  case M.lookup url m of
     Nothing -> Net.getAddrInfo Nothing (Just $ getServer url) (Just "http") >>=
       \x -> (writeIORef endpointTable (M.insert url (newURL (showAddress x) (getURLPath url)) m) >> return (newURL (showAddress x) (getURLPath url)))
     Just res -> return res
@@ -122,7 +122,7 @@ instance TripleStore SPARQLBackend where
           ent <- var
           triple ev prop ent
           triple ev (sol .:. "type") (sol .:. ev_type)
-          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) (propNames) --type required here as this is not an FDBR
+          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames --type required here as this is not an FDBR
           selectVars [ev, prop, ent]
 
     getts_triples_entevprop (SPARQL endpoint namespace_uri) propNames evs = do

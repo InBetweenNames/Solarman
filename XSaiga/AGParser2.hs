@@ -5,6 +5,7 @@
 module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
 import Data.List
+import Data.Maybe
 import qualified Data.Text as T
 import XSaiga.TypeAg2
 import Control.Monad
@@ -175,9 +176,9 @@ replaceSnd key def f list
     replaceFirst ((a, b):nc) = (a, f b):nc                           
 
 --TODO: Should this return all matches?  why return a list?
-findContext inp = maybe [] (:[]) . findWithFst inp
+findContext inp = maybeToList . findWithFst inp
 
-funccount list inp name = maybe 0 id $ do
+funccount list inp name = fromMaybe 0 $ do
   (_, funcp) <- findWithFst inp list
   (_, fc)    <- findWithFst name funcp
   return fc
@@ -222,7 +223,7 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Ju
   checkUsability_ Nothing  _       _       = Nothing         -- if cc at j is empty then don't re-use
   checkUsability_ (Just ccs) (Just scs) scres  | and $ condCheck ccs scs = Just scres
                                                | otherwise = Nothing
-  condCheck ccs scs = map (condCheck_ ccs) scs
+  condCheck ccs = map (condCheck_ ccs)
   condCheck_ ccs (n1, cs1) = maybe False (\(_, cs) -> cs >= cs1) $ findWithFst n1 ccs 
 
 {-nub (dA ++ dAtts)-}
@@ -250,8 +251,8 @@ my_merge (inp,ndAtts) res (((i,dA), es):rest)
 
 --                               atts          iatts      Context was "l"
 terminal :: T.Text -> Atts -> Id -> InsAttVals -> M
-terminal str semRules id _ ((i,a),inp) c  
- = (term str) ((i,[]),inp) c
+terminal str semRules id _ ((i,a),inp)
+ = (term str) ((i,[]),inp)
     where
     inst = (S, id)
     atts = [(inst,semRules)]
@@ -360,35 +361,31 @@ apply_ y i x   = getB_OP (x y i)
 apply__ :: InsAttVals -> Id -> (InsAttVals -> Id -> AttValue) -> DisplayTree
 apply__ y i x  = getRVAL (x y i)
 
-applyMax  y i x   = getAVAL (foldr (getMax) (MaxVal 0) (x y i))
+applyMax  y i x   = getAVAL (foldr getMax (MaxVal 0) (x y i))
 getMax    x   y   = MaxVal  (max (getAVAL x) (getAVAL y))
 
-findMax      spec  = \(atts,i) -> 
-                       MaxVal (foldr (max) 0 (map (applyMax atts i) spec))
-convertRep   spec  = \(atts,i) -> 
-                       RepVal (foldr (max) 0 (map (applyMax atts i) spec))
+findMax spec (atts,i) = MaxVal (foldr max 0 (map (applyMax atts i) spec))
 
-makeTree  (x:xs)     = \(atts,i) -> Res (B           (map (apply__ atts i) (x:xs)))
+convertRep spec (atts,i) = RepVal (foldr max 0 (map (applyMax atts i) spec))
+
+makeTree (x:xs) (atts,i) = Res (B (map (apply__ atts i) (x:xs)))
 
 mt [a,b,c] = (B [a,b,c]) 
 mt [a]     = (B [a])
 
 ----------- for arithmetic expr -----------------  
-applyBiOp [e1,op,e2] 
- = \atts ->  VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
-getAtts f (y,i) x 
- = f (head (x y i))
+applyBiOp [e1,op,e2] atts = VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
+getAtts f (y,i) x = f (head (x y i))
 
 ----------- general copy ------------------------
-copy      [b]     
- = \(atts,i) -> head (b atts i)
+copy [b] (atts,i) = head (b atts i)
 getTypVal ((a,b):abs) t | a undefined == t = b t
                         | otherwise        = getTypVal abs t
 
 
 ----------- for arithmetic expr -----------------  
 
-toTree    [b]        = \(atts,i) -> Res (N ((map (apply atts i) [b])!!0))
+toTree [b] (atts,i) = Res (N ((map (apply atts i) [b])!!0))
 
                       
 
@@ -468,7 +465,7 @@ op   = memoize Op
     terminal "+" [B_OP (+)] <|> 
     terminal "-" [B_OP (-)] <|>  
     terminal "*" [B_OP (*)] <|>   
-    terminal "/" [B_OP (div)]    
+    terminal "/" [B_OP div]    
        )
  
 --The nastiest list comprehension I have ever seen in my life     

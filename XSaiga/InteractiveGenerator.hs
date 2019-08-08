@@ -1,5 +1,6 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 
 import qualified XSaiga.SolarmanTriplestore as App
 import qualified XSaiga.TypeAg2 as TypeAg
@@ -55,7 +56,7 @@ typeActionMap = Map.fromList
     (TypeAg.Intransvb, v_make_intrans),
     (TypeAg.Adj, v_make_adj)]
 
-removeUnwanted = filter (\(x,y,z) -> not $ x `elem` ["discoverer", "discoverers", "telescopes", "places"]) 
+removeUnwanted = filter (\(x,y,z) -> notElem x ["discoverer", "discoverers", "telescopes", "places"]) 
 
 genVariables = foldr var [] (removeUnwanted App.dictionary)
     where
@@ -92,12 +93,12 @@ main = do
     hPutStrLn file ""
     hPutStrLn file "a $ b = a b"
     hPutStrLn file "infixr 0 $"
-    hPutStrLn file "a . b = \\x -> a (b (x))"
+    hPutStrLn file "a . b = \\x -> a (b x)"
     hPutStrLn file "infixr 9 ."
     hPutStrLn file ""
-    verbForm file ["discover", "discovers", "discovered"] ("discover_rel")
-    verbForm file ["orbit", "orbits", "orbited"] ("orbit_rel")
-    verbForm file ["use", "uses", "used"] ("use_rel")
+    verbForm file ["discover", "discovers", "discovered"] "discover_rel"
+    verbForm file ["orbit", "orbits", "orbited"] "orbit_rel"
+    verbForm file ["use", "uses", "used"] "use_rel"
     hPutStrLn file v_discoverer_cnoun
     hPutStrLn file v_discoverers_cnoun
     hPutStrLn file "anyone = a <<*>> person"
