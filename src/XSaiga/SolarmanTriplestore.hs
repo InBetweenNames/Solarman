@@ -156,7 +156,7 @@ who = which <<*>> (nounor <<*>> (get_members "person") <<*>> (get_members "scien
 what'' nph = if not $ T.null result then result else "nothing."
     where result = T.unwords $ map fst nph
 
-what = bipure (liftA what'') id
+what = bipure (fmap what'') id
 
 --TODO: prepositions
 make_prep props = bipure (\tmph -> (props, tmph)) gettsApply
@@ -173,7 +173,7 @@ at = make_prep ["location"]
 make_pnoun'' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 
 make_pnoun :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
-make_pnoun noun = bipure (liftA $ make_pnoun'' noun) id
+make_pnoun noun = bipure (fmap $ make_pnoun'' noun) id
 
 --TODO: ugly hack to work around parser problem
 make_year = make_pnoun . tshow
@@ -416,7 +416,7 @@ make_trans_passive rel = make_trans'' PassiveVoice rel >|< gettsTP PassiveVoice 
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
-yesno = bipure (liftA yesno') id
+yesno = bipure (fmap yesno') id
 
 does = yesno
 did = yesno

@@ -11,7 +11,7 @@ import System.Environment
 import Data.Foldable
 import qualified Data.List as List
 
-wale_collect ls = (Map.toList . Map.fromListWith (++) . map (\ (x,y) -> (x,[y]))) ls
+wale_collect = Map.toList . Map.fromListWith (++) . map (\ (x,y) -> (x,[y]))
 
 solarman_collect = Getts.collect
 
