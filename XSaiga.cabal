@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0320a3157aebf77ebfc85c2d12879369d7c9d73ddeee6e43ef4a2f82cb156fe5
+-- hash: d093d087008a351f27db3e99b1fa197d14f54890123f84bb8984feeafb593a87
 
 name:           XSaiga
 version:        1.6.1.0
@@ -27,11 +27,16 @@ description:    This package contains a Haskell implementation of the X-SAIGA pr
                 \[3] <http://speechweb2.cs.uwindsor.ca/solarman4/demo_sparql.html>
 category:       Parsing, Natural Language Processing, Memoization, Parser Combinators, Attribute Grammars, Text
 homepage:       http://speechweb2.cs.uwindsor.ca/solarman4/demo_sparql.html
+bug-reports:    https://github.com/InBetweenNames/Solarman/issues
 author:         Dr. Rahmatullah Hafiz, Dr. Richard Frost <rfrost@cogeco.ca>, Shane Peelar, Paul Callaghan, Eric Matthews
 maintainer:     Shane Peelar <peelar@uwindsor.ca>
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/InBetweenNames/Solarman
 
 library
   exposed-modules:

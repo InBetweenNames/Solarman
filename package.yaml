@@ -7,6 +7,7 @@ license-file: LICENSE
 author: Dr. Rahmatullah Hafiz, Dr. Richard Frost <rfrost@cogeco.ca>, Shane Peelar, Paul Callaghan, Eric Matthews
 maintainer: Shane Peelar <peelar@uwindsor.ca>
 category: Parsing, Natural Language Processing, Memoization, Parser Combinators, Attribute Grammars, Text
+github: InBetweenNames/Solarman
 
 build-type: Simple
 
