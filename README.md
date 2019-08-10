@@ -58,3 +58,13 @@ ghci util/Interactive.hs -package XSaiga -XSafe -e ":t discover"
 Disabling the implicit prelude and enabling XSafe ensures that no System.IO* functions are available to the query.
 
 To use Interactive.hs, you should install this package and move it to a different directory.
+
+Building
+===
+
+To build, use `cabal v2-build` or alternatively use `stack build`.
+
+If you want to use `Interactive.hs`, make sure you have `write-ghc-environment-files: always` set in your
+`cabal.project.local` before building.
+
+Note that the `Interactive.hs` instructions will change once the previously mentioned GHC bug is fixed in a release.
