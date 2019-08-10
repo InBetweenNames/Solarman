@@ -56,7 +56,7 @@ library:
     - XSaiga.AGParser2
     - XSaiga.TypeAg2
     - XSaiga.SolarmanTriplestore
-    - XSaiga.Interactive
+    #- XSaiga.Interactive
     - XSaiga.LocalData
     - XSaiga.CGI
 

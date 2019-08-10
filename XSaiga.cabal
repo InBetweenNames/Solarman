@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d093d087008a351f27db3e99b1fa197d14f54890123f84bb8984feeafb593a87
+-- hash: 2018962374d01cbdb61ce709895c21f51024afbb6d3a63a71088d47858139bd3
 
 name:           XSaiga
 version:        1.6.1.0
@@ -44,7 +44,6 @@ library
       XSaiga.AGParser2
       XSaiga.TypeAg2
       XSaiga.SolarmanTriplestore
-      XSaiga.Interactive
       XSaiga.LocalData
       XSaiga.CGI
   other-modules:
