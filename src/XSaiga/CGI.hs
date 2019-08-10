@@ -1,4 +1,3 @@
-{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE OverloadedStrings #-}
 

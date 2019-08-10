@@ -1,5 +1,4 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module XSaiga.SolarmanTriplestore where

@@ -1,4 +1,3 @@
-{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 

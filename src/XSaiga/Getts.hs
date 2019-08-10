@@ -1,4 +1,3 @@
-{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
