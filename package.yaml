@@ -60,7 +60,7 @@ library:
     - XSaiga.CGI
 
 executables:
-  Solarman:
+  solarman.cgi:
    source-dirs: driver
    main: Main.hs
    dependencies: XSaiga

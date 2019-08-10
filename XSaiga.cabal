@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cd5d8e6fac32db6a4c782e1d34d9544686d3558272d36121b4cb533edd691fd4
+-- hash: 0320a3157aebf77ebfc85c2d12879369d7c9d73ddeee6e43ef4a2f82cb156fe5
 
 name:           XSaiga
 version:        1.6.1.0
@@ -63,7 +63,7 @@ library
     , text >=0.11
   default-language: Haskell2010
 
-executable Solarman
+executable solarman.cgi
   main-is: Main.hs
   other-modules:
       Paths_XSaiga

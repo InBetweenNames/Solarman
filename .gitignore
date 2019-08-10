@@ -1,0 +1,4 @@
+*.o
+*.hi
+*.ghc.environment.*
+stack.yaml.lock
