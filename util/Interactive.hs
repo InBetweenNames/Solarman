@@ -1,7 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-module XSaiga.Interactive where
+module Interactive where
 
 import XSaiga.SolarmanTriplestore
 import XSaiga.Getts

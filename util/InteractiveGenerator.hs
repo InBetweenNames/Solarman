@@ -81,7 +81,7 @@ main = do
     hPutStrLn file "{-# LANGUAGE NoMonomorphismRestriction #-}"
     hPutStrLn file "{-# LANGUAGE NoImplicitPrelude #-}"
     hPutStrLn file "{-# LANGUAGE OverloadedStrings #-}"
-    hPutStrLn file "module XSaiga.Interactive where"
+    hPutStrLn file "module Interactive where"
     hPutStrLn file ""
     hPutStrLn file "import XSaiga.SolarmanTriplestore"
     hPutStrLn file "import XSaiga.Getts"
