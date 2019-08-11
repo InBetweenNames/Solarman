@@ -1,4 +1,4 @@
-# Solarman with Triple Store Backend
+# Solarman with Semantic Web Triplestore Backend
 
 Files:
 ====
@@ -42,10 +42,29 @@ To use the natural language frontend, a CGI version is provided in Main.hs which
 
 To do web queries directly with the combinators, Interactive.hs can be used.  Interactive.hs allows for direct queries to be performed using "-e" and has convenient variables for each thing in the dictionary. For instance, the following is possible:
 
-ghc Interactive.hs -e "discover $ a $ moon `that` orbits mars" -XSafe -XNoImplicitPrelude
+~~~
+ghci util/Interactive.hs -package XSaiga -e ":set -XSafe" -e ":t discover"
+~~~
 
 This module uses SafeHaskell to export only "safe" functions suitable for use in a web query.  That is, to our best knowledge, Interactive.hs cannot be used to execute arbitrary code on a server.  Only the provided combinators may be used, and in addition the ($) and (.) operators.
+
+Note that a workaround is in place until [this commit](https://gitlab.haskell.org/ghc/ghc/commit/7cdcd3e12a5c3a337e36fa80c64bd72e5ef79b24) lands
+into a proper GHC release.  Once that is done, it should be possible to directly do:
+
+~~~
+ghci util/Interactive.hs -package XSaiga -XSafe -e ":t discover"
+~~~
 
 Disabling the implicit prelude and enabling XSafe ensures that no System.IO* functions are available to the query.
 
 To use Interactive.hs, you should install this package and move it to a different directory.
+
+Building
+===
+
+To build, use `cabal v2-build` or alternatively use `stack build`.
+
+If you want to use `Interactive.hs`, make sure you have `write-ghc-environment-files: always` set in your
+`cabal.project.local` before building.
+
+Note that the `Interactive.hs` instructions will change once the previously mentioned GHC bug is fixed in a release.

@@ -1,4 +1,3 @@
-{-# LANGUAGE Safe #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module XSaiga.LocalData where
