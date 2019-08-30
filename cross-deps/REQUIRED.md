@@ -13,3 +13,7 @@ multipart
 regex-base
 regex-posix
 socks
+
+The following packages need to be modified for cross compilation to change their cabal setup type from Custom to Simple:
+comonad
+distributive

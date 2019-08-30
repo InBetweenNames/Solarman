@@ -1,2 +1,3 @@
 packages: .
-optional-packages: deps/*/*.cabal
+optional-packages:
+  cross-deps/{comonad,distributive}
