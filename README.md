@@ -68,3 +68,10 @@ If you want to use `Interactive.hs`, make sure you have `write-ghc-environment-f
 `cabal.project.local` before building.
 
 Note that the `Interactive.hs` instructions will change once the previously mentioned GHC bug is fixed in a release.
+
+For cross-compilation, see `CROSSBUILD.md`.
+
+Note that for GHC 8.8.1, you will need to use `--allow-newer` and use patched versions of dependencies that have
+instances for `MonadFail` where needed, as `fail` inside `Monad` was officially removed with this release.
+This is not a bug with XSaiga or Solarman, it's just something the Haskell ecosystem will have to work through
+until it's all fixed.
