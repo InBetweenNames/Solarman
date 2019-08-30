@@ -3,7 +3,7 @@
 
 module XSaiga.CGI where
 import qualified XSaiga.SolarmanTriplestore as App
-import Network.CGI
+import Network.FastCGI
 import qualified Data.List as List
 import Data.Text as T
 import qualified Data.ByteString.Lazy as BL
@@ -31,7 +31,7 @@ cgiMain = do
         outputFPS $ BL.fromStrict $ E.encodeUtf8 out
 
 main :: IO ()
-main = runCGI (handleErrors cgiMain)
+main = runFastCGIorCGI (handleErrors cgiMain)
 
 interpret "ask them to be quiet" 
      = "Hello. Quiet please. My "

@@ -41,6 +41,7 @@ dependencies:
   - mtl
   - bytestring
   - cgi
+  - fastcgi
   - random
 
 default-extensions:
