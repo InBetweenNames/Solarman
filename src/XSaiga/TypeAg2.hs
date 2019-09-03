@@ -132,10 +132,11 @@ gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
 
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
-gatherPreps :: [SemFunc ([T.Text], t)] -> SemFunc [([T.Text], t)]
+--TODO: augment with superlative
+gatherPreps :: [SemFunc ([T.Text], Maybe Ordering, t)] -> SemFunc [([T.Text], Maybe Ordering, t)]
 gatherPreps preps = bipure preps_tf (GettsPreps prepNames (map snd preps))
   where
-    prepNames = nub $ Prelude.concatMap fst preps_tf
+    prepNames = nub $ Prelude.concatMap (\(a, _, _) -> a) preps_tf
     preps_tf = map fst preps
 
 --a <<*>> moon <<*>> spins... 
@@ -151,29 +152,32 @@ get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
 get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP ["subject"] (ev_type, "subject", "object") []
 
-data AttValue = VAL             {getAVAL    ::   Int} 
-              | MaxVal          {getAVAL    ::   Int} 
+data AttValue = VAL             {getAVAL    ::   Int}
+              | MaxVal          {getAVAL    ::   Int}
               | SubVal          {getAVAL    ::   Int}
               | RepVal          {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
-              | B_OP            {getB_OP    ::   (Int -> Int -> Int)} 
-              | U_OP            {getU_OP    ::   (Int -> Int)} 
+              | B_OP            {getB_OP    ::   (Int -> Int -> Int)}
+              | U_OP            {getU_OP    ::   (Int -> Int)}
               | SENT_VAL        {getSV      ::   SemFunc (TF FDBR) }
-              | ErrorVal        {getEVAL    ::   Text}    
-              | NOUNCLA_VAL     {getAVALS   ::   SemFunc (TF FDBR) } 
-              | VERBPH_VAL      {getAVALS   ::   SemFunc (TF FDBR) }  
-              | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR) } 
-              | TERMPH_VAL      {getTVAL    ::   SemFunc (TF FDBR -> TF FDBR)}     
-              | DET_VAL         {getDVAL    ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)} 
+              | ErrorVal        {getEVAL    ::   Text}
+              | NOUNCLA_VAL     {getAVALS   ::   SemFunc (TF FDBR) }
+              | VERBPH_VAL      {getAVALS   ::   SemFunc (TF FDBR) }
+              | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR) }
+              | TERMPH_VAL      {getTVAL    ::   SemFunc (TF FDBR -> TF FDBR)}
+              | DET_VAL         {getDVAL    ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
               | VERB_VAL        {getBR      ::   Relation } --stores relation, "subject" and "object". TODO: need to expand on later for "used"      
-          | RELPRON_VAL     {getRELVAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
+          | RELPRON_VAL     {getRELVAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
-          | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}    
+          | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
-          | PREP_VAL        {getPREPVAL ::   [SemFunc ([Text], (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
+          | SUPERPHSTART_VAL  {getSUPERPHSTARTVAL :: ()}
+          | SUPER_VAL       {getSUPERVAL ::  Ordering}
+          | SUPERPH_VAL     {getSUPERPHVAL :: SemFunc (Ordering, TF FDBR -> TF FDBR)}
+          | PREP_VAL       {getPREPVAL ::   [SemFunc ([Text], Maybe Ordering, (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
-          | PREPPH_VAL      {getPREPPHVAL :: SemFunc ([Text], (TF FDBR -> TF FDBR))}
+          | PREPPH_VAL      {getPREPPHVAL :: SemFunc ([Text], Maybe Ordering, (TF FDBR -> TF FDBR))}
           | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
           | SENTJOIN_VAL    {getSJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | DOT_VAL         {getDOTVAL  ::   SemFunc (TF Text)}
@@ -188,7 +192,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 --            | RESULT [sys_message]
 --Also called a "NodeName"
 data MemoL    = Start | Tree | Num | Emp | ALeaf Text | Expr | Op  | ET
-              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Prepn|Prepnph|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
+              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Super|Superph|SuperphStart|Prepn|Prepnph|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6
                 deriving (Eq,Ord,Show)
 
@@ -205,7 +209,7 @@ attFunc
     (QUEST2_VAL,getQU2VAL),(QUEST3_VAL,getQU3VAL)   
    ]
 -}
-type Entity         =  Text  
+type Entity         =  Text
 --type Bin_Rel        =  [(Entity,Entity)] -- [(Int, Int)]
 --type Relation     = (ES -> Bool) -> FDBR
 type Relation = (Text, Text, Text)
@@ -286,40 +290,40 @@ instance Eq AttValue where
 
 --------- *********************** --------------
 -- needs to be simplified --
-setAtt (MaxVal s1)   (MaxVal s)       = [MaxVal s] 
-setAtt (MaxVal s1)   (SubVal s)       = [MaxVal s] 
-setAtt (MaxVal s1)   (RepVal s)       = [MaxVal s] 
-setAtt (MaxVal s1)   (VAL s)          = [MaxVal s] 
-setAtt (MaxVal s1)   (ErrorVal s)     = [ErrorVal s] 
+setAtt (MaxVal s1)   (MaxVal s)       = [MaxVal s]
+setAtt (MaxVal s1)   (SubVal s)       = [MaxVal s]
+setAtt (MaxVal s1)   (RepVal s)       = [MaxVal s]
+setAtt (MaxVal s1)   (VAL s)          = [MaxVal s]
+setAtt (MaxVal s1)   (ErrorVal s)     = [ErrorVal s]
 
-setAtt (SubVal s1)   (MaxVal s)       = [SubVal s] 
-setAtt (SubVal s1)   (SubVal s)       = [SubVal s] 
+setAtt (SubVal s1)   (MaxVal s)       = [SubVal s]
+setAtt (SubVal s1)   (SubVal s)       = [SubVal s]
 setAtt (SubVal s1)   (RepVal s)       = [SubVal s]
 setAtt (SubVal s1)   (VAL s)          = [SubVal s]
-setAtt (SubVal s1)   (ErrorVal s)     = [ErrorVal s] 
+setAtt (SubVal s1)   (ErrorVal s)     = [ErrorVal s]
 
-setAtt (RepVal s1)   (MaxVal s)       = [RepVal s] 
-setAtt (RepVal s1)   (SubVal s)       = [RepVal s] 
+setAtt (RepVal s1)   (MaxVal s)       = [RepVal s]
+setAtt (RepVal s1)   (SubVal s)       = [RepVal s]
 setAtt (RepVal s1)   (RepVal s)       = [RepVal s]
 setAtt (RepVal s1)   (VAL s)          = [RepVal s]
-setAtt (RepVal s1)   (ErrorVal s)     = [ErrorVal s] 
+setAtt (RepVal s1)   (ErrorVal s)     = [ErrorVal s]
 
-setAtt (VAL s1)   (VAL s)          = [VAL s] 
-setAtt (VAL s1)   (MaxVal s)       = [VAL s] 
-setAtt (VAL s1)   (SubVal s)       = [VAL s] 
-setAtt (VAL s1)   (RepVal s)       = [VAL s] 
-setAtt (VAL s1)   (ErrorVal s)     = [ErrorVal s] 
+setAtt (VAL s1)   (VAL s)          = [VAL s]
+setAtt (VAL s1)   (MaxVal s)       = [VAL s]
+setAtt (VAL s1)   (SubVal s)       = [VAL s]
+setAtt (VAL s1)   (RepVal s)       = [VAL s]
+setAtt (VAL s1)   (ErrorVal s)     = [ErrorVal s]
 
 
-setAtt (Res s1)      (Res s)        = [Res s] 
-setAtt (Res s1)      (ErrorVal s)   = [ErrorVal s] 
-setAtt (ErrorVal s1) (ErrorVal s)   = [ErrorVal s] 
+setAtt (Res s1)      (Res s)        = [Res s]
+setAtt (Res s1)      (ErrorVal s)   = [ErrorVal s]
+setAtt (ErrorVal s1) (ErrorVal s)   = [ErrorVal s]
 
-setAtt (NOUNCLA_VAL s1)  (NOUNCLA_VAL s)    = [NOUNCLA_VAL s] 
-setAtt (ADJ_VAL s1)      (ADJ_VAL s)        = [ADJ_VAL s] 
-setAtt (TERMPH_VAL s1)   (TERMPH_VAL s)     = [TERMPH_VAL s] 
-setAtt (VERBPH_VAL s1)   (VERBPH_VAL s)     = [VERBPH_VAL s] 
-setAtt (SENT_VAL   s1)   (SENT_VAL   s)     = [SENT_VAL s] 
+setAtt (NOUNCLA_VAL s1)  (NOUNCLA_VAL s)    = [NOUNCLA_VAL s]
+setAtt (ADJ_VAL s1)      (ADJ_VAL s)        = [ADJ_VAL s]
+setAtt (TERMPH_VAL s1)   (TERMPH_VAL s)     = [TERMPH_VAL s]
+setAtt (VERBPH_VAL s1)   (VERBPH_VAL s)     = [VERBPH_VAL s]
+setAtt (SENT_VAL   s1)   (SENT_VAL   s)     = [SENT_VAL s]
 setAtt (QUEST_VAL  s1)   (QUEST_VAL  s)     = [QUEST_VAL s]
 setAtt (QUEST1_VAL  s1)   (QUEST1_VAL  s)     = [QUEST1_VAL s]
 setAtt (QUEST2_VAL  s1)   (QUEST2_VAL  s)     = [QUEST2_VAL s]
