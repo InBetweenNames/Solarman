@@ -162,6 +162,8 @@ make_prep props = bipure (\tmph -> (props, Nothing, tmph)) gettsApply
 
 make_prep_nph props = bipure (\nph -> (props, Nothing, intersect_fdbr' nph)) id
 
+make_prep_superph props = bipure (\(ord, tmph) -> (props, Just ord, tmph)) id
+
 --with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with = make_prep ["with_implement"]
 
@@ -646,6 +648,15 @@ transvbph
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep [synthesized VERB_VAL OF S1,
                                                           synthesized TERMPH_VAL OF S2,
                                                           synthesized PREP_VAL OF S3]]
+    <|> --NEW FOR SUPERLATIVES "discovered the most moons"
+    parser (nt transvb S1 *> nt superph S2)
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbsuper [synthesized VERB_VAL OF S1,
+                                                           synthesized SUPERPH_VAL OF S2]]
+    <|> --NEW FOR SUPERLATIVES "discovered the most moons in 1877 using the least telescopes..."
+    parser (nt transvb S1 *> nt superph S2 *> nt preps S3)
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbsuper [synthesized VERB_VAL OF S1,
+                                                           synthesized SUPERPH_VAL OF S2,
+                                                           synthesized PREP_VAL OF S3]]
     <|>
     parser (nt linkingvb S1 *> nt transvb S2) --"was discovered"
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
@@ -673,9 +684,9 @@ transvbph
 superph
  = memoize Superph
   (parser (nt superph_start S1 *> nt super S2 *> nt nouncla S3)
-   [rule_s DET_VAL OF LHS ISEQUALTO applysuperph  [synthesized SUPERPHSTART_VAL OF S1,
-                                                   synthesized SUPER_VAL OF S2,
-                                                   synthesized NOUNCLA_VAL OF S3]]
+   [rule_s SUPERPH_VAL OF LHS ISEQUALTO applysuperph [synthesized SUPERPHSTART_VAL OF S1,
+                                                      synthesized SUPER_VAL OF S2,
+                                                      synthesized NOUNCLA_VAL OF S3]]
   )
 
 ----------------------------------------------------------------------------------
@@ -699,9 +710,13 @@ prepph
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
                                                      synthesized TERMPH_VAL OF S2]]
      <|>
-     parser (nt prepnph S1 *> nt verbph S2)
+     parser (nt prepnph S1 *> nt verbph S2) -- "to discover phobos"
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_nph [synthesized PREPNPH_VAL OF S1,
                                                          synthesized VERBPH_VAL OF S2]] 
+     <|>
+     parser (nt prep S1 *> nt superph S2)
+     [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_super [synthesized PREPN_VAL OF S1,
+                                                            synthesized SUPERPH_VAL OF S2]]
     )
 
 ----------------------------------------------------------------------------------
@@ -905,6 +920,19 @@ applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherP
     predicate = getAtts getTVAL atts y
     (_, object) = getVoiceProps ActiveVoice reln
 
+applytransvbsuper [x, y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep_superph [object] <<*>> superpred]
+    where
+    reln = getAtts getBR atts x 
+    superpred = getAtts getSUPERPHVAL atts y
+    (_, object) = getVoiceProps ActiveVoice reln
+
+applytransvbsuper [x, y, z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep_superph [object] <<*>> superpred) : preps)
+    where
+    reln = getAtts getBR atts x 
+    superpred = getAtts getSUPERPHVAL atts y
+    preps = getAtts getPREPVAL atts z
+    (_, object) = getVoiceProps ActiveVoice reln
+
 applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps preps
     where
     reln = getAtts getBR atts x
@@ -927,12 +955,17 @@ apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make
 applyprepph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             termph = getAtts getTVAL atts y in
-            make_prep prep_names <<*>> termph
+                make_prep prep_names <<*>> termph
 
 applyprepph_nph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNPHVAL atts x
             nph = getAtts getAVALS atts y in
-            make_prep_nph prep_names <<*>> nph
+                make_prep_nph prep_names <<*>> nph
+
+applyprepph_super [x, y] atts = PREPPH_VAL $
+        let prep_names = getAtts getPREPNVAL atts x
+            superph = getAtts getSUPERPHVAL atts y in
+                make_prep_superph prep_names <<*>> superph
 
 applyprep [x] atts = PREP_VAL $ [getAtts getPREPPHVAL atts x]--[(["with_implement"], a telescope)]
 

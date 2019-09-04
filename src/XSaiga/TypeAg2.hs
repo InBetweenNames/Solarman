@@ -281,6 +281,9 @@ instance Eq AttValue where
     (PREPNPH_VAL s1)   == (PREPNPH_VAL s) = True
     (PREPPH_VAL s1)    == (PREPPH_VAL s) = True
     (YEAR_VAL s1)      == (YEAR_VAL s) = True
+    (SUPERPHSTART_VAL s1) == (SUPERPHSTART_VAL s) = True
+    (SUPER_VAL s1)     == (SUPER_VAL s) = True
+    (SUPERPH_VAL s1)   == (SUPERPH_VAL s) = True
     _                  == _              = False
 
 
@@ -335,6 +338,10 @@ setAtt (PREPN_VAL s1) (PREPN_VAL s) = [PREPN_VAL s]
 setAtt (PREPNPH_VAL s1) (PREPNPH_VAL s) = [PREPNPH_VAL s]
 setAtt (PREPPH_VAL s1) (PREPPH_VAL s) = [PREPPH_VAL s]
 setAtt (YEAR_VAL s1) (YEAR_VAL s) = [YEAR_VAL s]
+
+setAtt (SUPERPHSTART_VAL s1) (SUPERPHSTART_VAL s) = [SUPERPHSTART_VAL s]
+setAtt (SUPER_VAL s1) (SUPER_VAL s) = [SUPER_VAL s]
+setAtt (SUPERPH_VAL s1) (SUPERPH_VAL s) = [SUPERPH_VAL s]
 --------- *********************** --------------
 
 
