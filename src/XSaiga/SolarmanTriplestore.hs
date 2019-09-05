@@ -19,6 +19,7 @@ import Data.Biapplicative
 import Data.Bifunctor
 import qualified Data.Map as Map
 import qualified Data.Ord as Ord
+import qualified Data.Maybe as Maybe
 
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
@@ -345,8 +346,10 @@ filter_super preps fdbr_start rtriples = foldr filt fdbr_start preps
         filt (props, Just ord, _) fdbr = --here we do the actual ordering requirments for the superlative (termphrase is ignored because it has already been applied previously)
             let gfdbr = make_gfdbr props fdbr rtriples
                 sorted_parts = make_partition ord gfdbr
-                top_gfdbr = head sorted_parts in
-                    condense_gfdbr top_gfdbr
+                maybe_top_gfdbr = Maybe.listToMaybe sorted_parts in
+                    case maybe_top_gfdbr of
+                        Just top_gfdbr -> condense_gfdbr top_gfdbr
+                        Nothing -> []
 
 {-make_trans_active' :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_active' ev_data rel tmph preps = do
