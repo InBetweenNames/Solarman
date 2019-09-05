@@ -18,6 +18,7 @@ import Control.Applicative hiding ((*>), (<|>))
 import Data.Biapplicative
 import Data.Bifunctor
 import qualified Data.Map as Map
+import qualified Data.Ord as Ord
 
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
@@ -318,6 +319,35 @@ filter_ev ((names,_,pred):list) evs triples
   --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
   relevant_evs = List.nub $ concatMap snd res
 
+make_gfdbr :: [T.Text] -> FDBR -> TF GFDBR
+make_gfdbr props fdbr triples = gfdbr
+    where
+        --fdbr = fdbr_func triples
+        relevant_triples triples evs = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events TODO OPTIMIZE -- this is done TWICE! (this sure looks like filter_ev)
+        expand_evs triples evs = concatMap (\prop -> make_fdbr_with_prop (relevant_triples triples evs) prop) props
+        gfdbr = map (\(ent, evs) -> (ent, expand_evs triples evs)) fdbr
+
+make_partition :: Ordering -> GFDBR -> [GFDBR]
+make_partition ord gfdbr = map (map (\(_, ent, fdbr) -> (ent, fdbr))) $ groupBy equal $ sortBy (comparison ord) $ map (\(ent, fdbr) -> (length fdbr, ent, fdbr)) gfdbr
+    where
+        comparison EQ = error "EQ selected but has no associated meaning"
+        comparison LT = Ord.comparing (\(len, _, _) -> len)
+        comparison GT = flip (comparison LT)
+        equal (len1, _, _) (len2, _, _) = len1 == len2
+
+condense_gfdbr :: GFDBR -> FDBR
+condense_gfdbr = map (\(ent, fdbr) -> (ent, concatMap snd fdbr))
+
+filter_super :: [([T.Text], Maybe Ordering, TF FDBR -> TF FDBR)] -> FDBR -> TF FDBR
+filter_super preps fdbr_start rtriples = foldr filt fdbr_start preps
+    where
+        filt (_, Nothing, _) fdbr = fdbr --do nothing if no ordering is required (e.g, ``in 1877'')
+        filt (props, Just ord, _) fdbr = --here we do the actual ordering requirments for the superlative (termphrase is ignored because it has already been applied previously)
+            let gfdbr = make_gfdbr props fdbr rtriples
+                sorted_parts = make_partition ord gfdbr
+                top_gfdbr = head sorted_parts in
+                    condense_gfdbr top_gfdbr
+
 {-make_trans_active' :: (TripleStore m) => m -> String -> (IO [String] -> IO Bool) -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_active' ev_data rel tmph preps = do
     images <- make_fdbr ev_data rel "subject"
@@ -357,13 +387,17 @@ gettsTP voice rel (GettsPreps props' sub) = GettsTP (subject:props') rel sub
 
 relname (a, _, _) = a
 
+--TODO: need to modify this to actually use the ordering
 make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR
-make_trans'' voice rel preps rtriples = filter (not . List.null . snd) fdbrRelevantEvs
+make_trans'' voice rel preps rtriples = ord_fdbr
   where
     (subjectProp,_) = getVoiceProps voice rel
     filtRTriples = pure_getts_triples_entevprop_type rtriples (subjectProp:(nub $ concatMap (\(a,_,_) -> a) $ preps)) (relname rel)
     images = make_fdbr_with_prop filtRTriples subjectProp
     fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
+    fdbr = filter (not . List.null . snd) fdbrRelevantEvs
+    --Now for superlatives.  All termphrases are applied first, and ordering happens after.
+    ord_fdbr = filter_super preps fdbr rtriples
 
 --make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?

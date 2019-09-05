@@ -28,6 +28,7 @@ addUri namespace_uri = (T.append namespace_uri)
 type Event = Text
 type Triple = (Event, Text, Text)
 type FDBR = [(Text,[Event])]
+type GFDBR = [(Text, FDBR)]
 
 --getts returns all triples in the triple store that match the given parameters
 class TripleStore m where

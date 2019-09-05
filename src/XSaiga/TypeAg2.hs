@@ -70,6 +70,9 @@ semFunc = bipure
 instance Show (TF FDBR) where
   show x = "TF FDBR"
 
+instance Show (TF GFDBR) where
+  show x = "TF GFDBR"
+
 instance Show (TF Text) where
   show x = "TF Text"
 
