@@ -398,7 +398,7 @@ make_trans'' voice rel preps rtriples = ord_fdbr
     filtRTriples = pure_getts_triples_entevprop_type rtriples (subjectProp:(nub $ concatMap (\(a,_,_) -> a) $ preps)) (relname rel)
     images = make_fdbr_with_prop filtRTriples subjectProp
     fdbrRelevantEvs = map (\(subj, evs) -> (subj, filter_ev preps evs rtriples)) images
-    fdbr = filter (not . List.null . snd) fdbrRelevantEvs
+    fdbr = filter (not . List.null . snd) fdbrRelevantEvs --TODO: this will make it so sets of events with a cardinality of 0 are not counted, leading to wrong "the least" behaviour
     --Now for superlatives.  All termphrases are applied first, and ordering happens after.
     ord_fdbr = filter_super preps fdbr rtriples
 
@@ -1153,7 +1153,7 @@ dictionary = [
     ("most",               Det,       [DET_VAL $ most]),
     ("the",                SuperphStart,       [SUPERPHSTART_VAL $ ()]),
     ("most",               Super,     [SUPER_VAL $ GT]),
-    ("least",              Super,     [SUPER_VAL $ LT]),
+    --("least",              Super,     [SUPER_VAL $ LT]), --TODO: problem with least is 0-cardinality and negation
     ("bernard",            Pnoun,     [TERMPH_VAL $ make_pnoun "bernard"]),
     ("bond",               Pnoun,     [TERMPH_VAL $ make_pnoun "bond"]),
     ("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
