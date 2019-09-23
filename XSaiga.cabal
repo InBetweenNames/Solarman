@@ -46,6 +46,7 @@ library
       XSaiga.SolarmanTriplestore
       XSaiga.LocalData
       XSaiga.CGI
+      XSaiga.Interactive
   other-modules:
       XSaiga.ShowText
       Paths_XSaiga

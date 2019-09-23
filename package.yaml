@@ -37,7 +37,6 @@ dependencies:
   - text >= 0.11
   - containers >= 0.5
   - network
-  - bifunctors
   - mtl
   - bytestring
   - cgi
@@ -57,7 +56,7 @@ library:
     - XSaiga.AGParser2
     - XSaiga.TypeAg2
     - XSaiga.SolarmanTriplestore
-    #- XSaiga.Interactive
+    - XSaiga.Interactive
     - XSaiga.LocalData
     - XSaiga.CGI
 

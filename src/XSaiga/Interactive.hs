@@ -1,14 +1,17 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Interactive where
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+module XSaiga.Interactive where
 
 import XSaiga.SolarmanTriplestore
 import XSaiga.Getts
 import XSaiga.TypeAg2
 import XSaiga.CGI
 import Data.Functor
-import Data.Biapplicative
 import Control.Monad
 
 a $ b = a b
@@ -63,15 +66,15 @@ used_ = make_trans_passive use_rel
 
 discoverer = get_subjs_of_event_type "discover_ev"
 discoverers = get_subjs_of_event_type "discover_ev"
-anyone = a <<*>> person
-anything = a <<*>> thing
-anybody = a <<*>> person
-someone = a <<*>> person
-something = a <<*>> thing
-somebody = a <<*>> person
-everyone = every <<*>> person
-everything = every <<*>> thing
-everybody = every <<*>> person
+anyone = a person
+anything = a thing
+anybody = a person
+someone = a person
+something = a thing
+somebody = a person
+everyone = every person
+everything = every thing
+everybody = every person
 telescopes = telescope
 places = place
 thing = get_members "thing"

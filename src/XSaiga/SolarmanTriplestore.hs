@@ -1,5 +1,8 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module XSaiga.SolarmanTriplestore where
 
@@ -15,32 +18,57 @@ import Debug.Trace
 import XSaiga.ShowText
 import Control.Monad.State.Lazy
 import Control.Applicative hiding ((*>), (<|>))
-import Data.Biapplicative
-import Data.Bifunctor
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import qualified Data.Ord as Ord
 import qualified Data.Maybe as Maybe
 
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
 
+--Just liftA2 really
+termor'' :: (FDBR -> FDBR) -> (FDBR -> FDBR) -> FDBR -> FDBR
+termor'' tmph1 tmph2 ents = union_fdbr'' (tmph1 ents) (tmph2 ents)
+
 --TODO: MERGE IMAGES PROPER
 termor' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
 termor' tmph1 tmph2 ents = union_fdbr' (tmph1 ents) (tmph2 ents)
 
 --copied from gangster_v4: combinators
+--termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
+
+--termor = termor' >|< termor_gf
+
+termor :: SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR -> TF FDBR)
+termor tmph1 tmph2 ents@(tf, g) = (union_fdbr' tf1 tf2, gettsIntersect (gettsUnion g1 g2) g)
+    where
+        (tf1, g1) = tmph1 ents
+        (tf2, g2) = tmph2 ents
+
+--TODO MEMO: Strange -- a problem, JC!  gettsIntersect gettsUnion is not sufficient to separate (hall and kuiper) from (hall or kuiper)!
+{-
 termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
-termor = bipure termor' (\g1 -> \g2 -> \g3 -> gettsIntersect (gettsUnion (gettsApply g1) (gettsApply g2)) g3)
+termor (tmph1_tf, tmph1_gf) (tmph2_tf, tmph2_gf) (ents_tf, ents_g)
+    = termor' tmph1_tf tmph2_tf ents_tf >>>|<<< gettsIntersect (gettsUnion (tmph1_gf ents_g) (tmph2_gf ents_g)) ents_g
+-}
 
 --see MSc thesis for explanation of why termand is in terms of termor
+termand'' :: TF FDBR -> TF FDBR -> TF FDBR
+termand'' nph vbph r = if not (List.null $ nph r) && not (List.null $ vbph r) then union_fdbr' nph vbph r else []
+
 termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
 termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.null $ tmph2 ents r) then termor' tmph1 tmph2 ents r else []
 
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
 --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
-termand = bipure termand' $ snd termor 
+termand :: SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR -> TF FDBR)
+termand tmph1 tmph2 ents@(tf, g) = (termand'' tf1 tf2, gettsIntersect (gettsUnion g1 g2) g)
+    where
+        (tf1, g1) = tmph1 ents
+        (tf2, g2) = tmph2 ents
 
 --TODO: FDBRs are sorted.  Use that to improve this.
+--NOTE: when GFDBRs are in use, they are NOT sorted in the ents
+--BIG TODO: detect this: GFDBR `intersect` FDBR (want resultant FDBR from GFDBR sorted)
 intersect_fdbr'' _ [] = []
 intersect_fdbr'' [] _ = []
 intersect_fdbr'' fdbr1@((e1, evs1):eei1)  fdbr2@((e2, evs2):eei2)
@@ -53,10 +81,10 @@ intersect_fdbr'' fdbr1@((e1, evs1):eei1)  fdbr2@((e2, evs2):eei2)
   = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]-}
 
 intersect_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
-intersect_fdbr' = liftA2 intersect_fdbr'' --intersect_fdbr'' <$> tf1 <*> tf2
+intersect_fdbr' = liftA2 intersect_fdbr'' -- liftA2 for [Triple], liftM2 for state
 
 intersect_fdbr :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-intersect_fdbr = bipure intersect_fdbr' gettsIntersect
+intersect_fdbr = intersect_fdbr' >|< gettsIntersect -- liftA2 for [Triple], liftM2 for state
 
 union_fdbr'' :: FDBR -> FDBR -> FDBR
 union_fdbr'' fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
@@ -65,7 +93,7 @@ union_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
 union_fdbr' = liftA2 union_fdbr''
 
 union_fdbr :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-union_fdbr = bipure union_fdbr' gettsUnion
+union_fdbr = union_fdbr' >|< gettsUnion
 
 nounand = intersect_fdbr
 
@@ -91,7 +119,7 @@ every' :: TF FDBR -> TF FDBR -> TF FDBR
 every' = liftA2 every''
 
 every :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-every = bipure every' gettsIntersect
+every = every' >|< gettsIntersect
 
 most'' :: FDBR -> FDBR -> FDBR
 most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
@@ -103,7 +131,7 @@ most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
 most':: TF FDBR -> TF FDBR -> TF FDBR
 most' = liftA2 most''
 
-most = bipure most' gettsIntersect
+most = most' >|< gettsIntersect
 
 {- TODO:
 no' nph vbph =
@@ -126,7 +154,7 @@ one'' nph vbph   | length res == 1 = res
 one' :: TF FDBR -> TF FDBR -> TF FDBR
 one' = liftA2 one''
 
-one = bipure one' gettsIntersect
+one = one' >|< gettsIntersect
 
 two'' nph vbph   | length res == 2 = res
                 | otherwise = []
@@ -135,7 +163,7 @@ two'' nph vbph   | length res == 2 = res
 
 two' = liftA2 two'' 
 
-two = bipure two' gettsIntersect
+two = two' >|< gettsIntersect
 
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
@@ -146,25 +174,38 @@ which'' nph vbph = if not $ T.null result then result else "none."
   result = T.unwords $ map fst $ intersect_fdbr'' nph vbph
 
 which :: SemFunc (TF FDBR -> TF FDBR -> TF T.Text)
-which = bipure (liftA2 which'') gettsIntersect
+which = (liftA2 which'') >|< gettsIntersect
 
 how_many'' nph vbph = tshow $ List.length (intersect_fdbr'' nph vbph)
-how_many = bipure (liftA2 how_many'') gettsIntersect
+how_many = (liftA2 how_many'') >|< gettsIntersect
 
-who = which <<*>> (nounor <<*>> (get_members "person") <<*>> (get_members "science_team"))
+who = which (nounor (get_members "person") (get_members "science_team"))
 
 --New
 what'' nph = if not $ T.null result then result else "nothing."
     where result = T.unwords $ map fst nph
 
-what = bipure (fmap what'') id
+what' = liftA what''
 
---TODO: prepositions
-make_prep props = bipure (\tmph -> (props, Nothing, tmph)) gettsApply
+what = what' >|< id
 
-make_prep_nph props = bipure (\nph -> (props, Nothing, intersect_fdbr' nph)) id
+extract :: SemFunc (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR, GettsTree)
+extract termph = r1 >|< r2
+    where
+        apply tf = termph (tf, GettsNone)
+        r1 = fst . apply
+        r2 = snd $ apply $ const []
 
-make_prep_superph props = bipure (\(ord, tmph) -> (props, Just ord, tmph)) id
+--Prepositions (TODO NOBIAPP note that GettsNone is applied here)
+make_prep props termph = (props, Nothing, tf) >|< g
+        where
+            (tf, g) = extract termph
+
+make_prep_nph props = (\nph -> (props, Nothing, intersect_fdbr' nph)) >|< id
+
+make_prep_superph props (ord, termph) = (props, Just ord, tf) >|< g
+    where
+        (tf, g) = extract termph
 
 --with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with = make_prep ["with_implement"]
@@ -176,7 +217,7 @@ at = make_prep ["location"]
 make_pnoun'' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 
 make_pnoun :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
-make_pnoun noun = bipure (fmap $ make_pnoun'' noun) id
+make_pnoun noun = (fmap $ make_pnoun'' noun) >|< id
 
 --TODO: ugly hack to work around parser problem
 make_year = make_pnoun . tshow
@@ -402,7 +443,7 @@ make_trans'' voice rel preps rtriples = ord_fdbr
     --Now for superlatives.  All termphrases are applied first, and ordering happens after.
     ord_fdbr = filter_super preps fdbr rtriples
 
---make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
+--make_trans_active' "discover_ev" (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?
 --TODO: refactor to take into account active tmph
 --TODO: refactor both passive and active into same function (active version may involve more)
@@ -412,24 +453,31 @@ make_trans'' voice rel preps rtriples = ord_fdbr
 --' denotes preps
 --'' denotes tmph followed by preps
 
-make_trans_active' :: Relation -> SemFunc ([([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active' :: Relation -> SemFunc ([([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))]) -> SemFunc (TF FDBR)
 make_trans_active' rel =  make_trans'' ActiveVoice rel >|< gettsTP ActiveVoice rel
 
 --TODO: Bug in solarman3 semantics here with only "subject" in GettsTP
 --make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR)  -> TF FDBR)
 --make_trans_active ev_type = (\tmph_sem -> make_trans_active'' ev_type [(["object"], tmph_sem)]) >|< (\g -> GettsTP ["subject", "object"] ev_type [gettsApply g])
 
+{-
 make_trans_active :: Relation -> SemFunc ((TF FDBR -> TF FDBR) -> TF FDBR)
 make_trans_active rel = (\tmph_sem -> f [([object], Nothing, tmph_sem)]) >|< (\getts -> g $ GettsPreps [object] [gettsApply getts])
   where
     (_, object) = getVoiceProps ActiveVoice rel
     (f, g) = make_trans_active' rel
+-}
+
+make_trans_active :: Relation -> SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR)
+make_trans_active rel tmph = make_trans_active' rel $ [([object], Nothing, tmph_tf)] >|< GettsPreps [object] [tmph_g]
+    where
+      (tmph_tf, tmph_g) = extract tmph
+      (_, object) = getVoiceProps ActiveVoice rel
 
 make_trans_active'' :: Relation -> SemFunc ((TF FDBR -> TF FDBR) -> [([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active'' rel = (\tmph_sem -> \preps -> f (([object], Nothing, tmph_sem):preps)) >|< (\getts -> \preps -> g (addPrep object getts preps))
-  where
+make_trans_active'' rel (tmph_tf, tmph_gf) (preps_tf, preps_gf) = make_trans_active' rel $ (([object], Nothing, tmph_tf):preps_tf) >|< addPrep object tmph_gf preps_gf
+    where
     (subject, object) = getVoiceProps ActiveVoice rel
-    (f, g) = make_trans_active' rel
     addPrep :: T.Text -> (GettsTree -> GettsTree) -> GettsTree -> GettsTree
     addPrep prop getts (GettsPreps props subs) = GettsPreps (prop:props) ((gettsApply getts):subs)
 
@@ -455,7 +503,8 @@ make_trans_passive rel = make_trans'' PassiveVoice rel >|< gettsTP PassiveVoice 
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
-yesno = bipure (fmap yesno') id
+
+yesno (sent_tf, sent_g) = (yesno' . sent_tf) >|< sent_g  
 
 does = yesno
 did = yesno
@@ -476,7 +525,7 @@ sand'' [] _ = []
 sand'' _ [] = []
 sand'' fdbr1 fdbr2 = union_fdbr'' fdbr1 fdbr2
 
-sand = bipure (liftA2 sand'') gettsUnion
+sand = (liftA2 sand'') >|< gettsUnion
 
 --TODO: testing
 {-
@@ -930,11 +979,11 @@ applyBiOp [e1,op,e2]
 -- getAtts f (y,i) x = f (head (x y i))
 -- copy      [b]     = \(atts,i) -> head (b atts i)
 
-intrsct1 [x, y] atts = NOUNCLA_VAL (intersect_fdbr <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts y))
+intrsct1 [x, y] atts = NOUNCLA_VAL (intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
-intrsct2 [x, y] atts = ADJ_VAL (intersect_fdbr <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts y))
+intrsct2 [x, y] atts = ADJ_VAL (intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
 
-applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) <<*>> (getAtts getAVALS atts y)
+applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
 
 --make_trans_vb is very similar to make_trans_active.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
@@ -944,43 +993,43 @@ applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) <<*>> (getAtts getA
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep [object] <<*>> predicate) : preps)
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln $ gatherPreps ((make_prep [object] predicate) : preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep [object] <<*>> predicate]
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln $ gatherPreps [make_prep [object] predicate]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbsuper [x, y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep_superph [object] <<*>> superpred]
+applytransvbsuper [x, y] atts = VERBPH_VAL $ make_trans_active' reln $ gatherPreps [make_prep_superph [object] superpred]
     where
     reln = getAtts getBR atts x 
     superpred = getAtts getSUPERPHVAL atts y
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbsuper [x, y, z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep_superph [object] <<*>> superpred) : preps)
+applytransvbsuper [x, y, z] atts = VERBPH_VAL $ make_trans_active' reln $ gatherPreps ((make_prep_superph [object] superpred) : preps)
     where
     reln = getAtts getBR atts x 
     superpred = getAtts getSUPERPHVAL atts y
     preps = getAtts getPREPVAL atts z
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps preps
+applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln $ gatherPreps preps
     where
     reln = getAtts getBR atts x
     preps = getAtts getPREPVAL atts y
 
-applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps []
+applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln $ gatherPreps []
     where
     reln = getAtts getBR atts x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make_trans_passive reln <<*>> gatherPreps preps)
+apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph (make_trans_passive reln $ gatherPreps preps)
     where
     linkingvb = getAtts getLINKVAL atts x2
     termph = getAtts getTVAL atts x3
@@ -992,17 +1041,17 @@ apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make
 applyprepph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             termph = getAtts getTVAL atts y in
-                make_prep prep_names <<*>> termph
+                make_prep prep_names termph
 
 applyprepph_nph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNPHVAL atts x
             nph = getAtts getAVALS atts y in
-                make_prep_nph prep_names <<*>> nph
+                make_prep_nph prep_names nph
 
 applyprepph_super [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             superph = getAtts getSUPERPHVAL atts y in
-                make_prep_superph prep_names <<*>> superph
+                make_prep_superph prep_names superph
 
 applyprep [x] atts = PREP_VAL $ [getAtts getPREPPHVAL atts x]--[(["with_implement"], a telescope)]
 
@@ -1012,10 +1061,10 @@ applysuperph [x, y, z] atts = SUPERPH_VAL $
         let super_the = getAtts getSUPERPHSTARTVAL atts x
             super_ordering = getAtts getSUPERVAL atts y
             nph = getAtts getAVALS atts z
-            inject :: Ordering -> SemFunc ((TF FDBR -> TF FDBR) -> (Ordering, TF FDBR -> TF FDBR))
-            inject ord = bipure (\termph -> (ord, termph)) gettsApply
+            inject :: Ordering -> SemFunc (TF FDBR -> TF FDBR) -> (Ordering, SemFunc (TF FDBR -> TF FDBR))
+            inject ord termph = (ord, termph)
             in
-                inject super_ordering <<*>> (intersect_fdbr <<*>> nph)
+                inject super_ordering (intersect_fdbr nph)
                 
 
 applyyear [x] atts = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
@@ -1024,15 +1073,15 @@ applyyear [x] atts = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
 
 applyvbph [z] atts = VERBPH_VAL (getAtts getAVALS atts z)
 
-appjoin1 [x, y, z] atts = TERMPH_VAL $ (getAtts getTJVAL atts y) <<*>> (getAtts getTVAL atts x) <<*>> (getAtts getTVAL atts z)
+appjoin1 [x, y, z] atts = TERMPH_VAL $ (getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z)
 
-appjoin2 [x, y, z] atts = VERBPH_VAL ((getAtts getVJVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+appjoin2 [x, y, z] atts = VERBPH_VAL ((getAtts getVJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
-apply_middle1 [x, y, z] atts = NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+apply_middle1 [x, y, z] atts = NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
-apply_middle2 [x, y, z] atts = NOUNCLA_VAL ((getAtts getNJVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+apply_middle2 [x, y, z] atts = NOUNCLA_VAL ((getAtts getNJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
-apply_middle3 [x, y, z] atts =  NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (getAtts getAVALS atts x) <<*>> (getAtts getAVALS atts z))
+apply_middle3 [x, y, z] atts =  NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
 
 -- Think "a orbited by b" vs "b orbits a"
 {-drop3rd          [w, x, y, z]
@@ -1042,7 +1091,7 @@ apply_middle3 [x, y, z] atts =  NOUNCLA_VAL ((getAtts getRELVAL atts y) <<*>> (g
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive reln <<*>> gatherPreps preps
+drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive reln $ gatherPreps preps
         where
         reln = getAtts getBR atts x
         preps = case xs of
@@ -1050,21 +1099,21 @@ drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive reln <<*>> gatherPre
                   (p:_) -> getAtts getPREPVAL atts p
 --END PREPOSITIONAL PHRASES
 
-apply_termphrase [x, y] atts = SENT_VAL ((getAtts getTVAL atts x) <<*>> (getAtts getAVALS atts y))
+apply_termphrase [x, y] atts = SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y))
 
-sent_val_comp [s1, f, s2] atts = SENT_VAL ((getAtts getSJVAL atts f) <<*>> (getAtts getSV atts s1) <<*>> (getAtts getSV atts s2))
+sent_val_comp [s1, f, s2] atts = SENT_VAL ((getAtts getSJVAL atts f) (getAtts getSV atts s1) (getAtts getSV atts s2))
 
-ans1 [x, y] atts = QUEST_VAL ((getAtts getQU1VAL atts x) <<*>> (getAtts getSV atts y) )
+ans1 [x, y] atts = QUEST_VAL ((getAtts getQU1VAL atts x) (getAtts getSV atts y) )
 
-ans2 [x, y] atts = QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getAVALS atts y))
+ans2 [x, y] atts = QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getAVALS atts y))
 
-ans3 [x, y, z] atts = QUEST_VAL ((getAtts getQU3VAL atts x) <<*>> (getAtts getAVALS atts y) <<*>> (getAtts getAVALS atts z))
+ans3 [x, y, z] atts = QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
 
-ans5 [x, y, z] atts = QUEST_VAL ((getAtts getQU2VAL atts x) <<*>> (getAtts getSV atts z))
+ans5 [x, y, z] atts = QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getSV atts z))
 
 ans6 [x, y, z] atts = QUEST_VAL ((getAtts getQU6VAL atts x) (getAtts getSV atts z))
 
-truefalse [x] atts = QUEST_VAL $ fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") `first` (getAtts getSV atts x)
+truefalse [x] atts = QUEST_VAL $ let (tf, g) = (getAtts getSV atts x) in ((\fdbr -> if not (List.null fdbr) then "true." else "false.") . tf, g)
 
 {-
 ||-----------------------------------------------------------------------------
@@ -1227,10 +1276,10 @@ dictionary = [
     ("use",                Transvb,   [VERB_VAL use_rel]),
     ("used",               Transvb,   [VERB_VAL use_rel]),
     ("uses",               Transvb,   [VERB_VAL use_rel]),
-    ("is",                 Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
-    ("was",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
-    ("are",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
-    ("were",               Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
+    ("is",                 Linkingvb, [LINKINGVB_VAL $ (liftA id) >|< id]),
+    ("was",                Linkingvb, [LINKINGVB_VAL $ (liftA id) >|< id]),
+    ("are",                Linkingvb, [LINKINGVB_VAL $ (liftA id) >|< id]),
+    ("were",               Linkingvb, [LINKINGVB_VAL $ (liftA id) >|< id]),
     ("that",               Relpron,   [RELPRON_VAL    $ that]),
     ("who",                Relpron,   [RELPRON_VAL    $ that]),
     ("which",              Relpron,   [RELPRON_VAL    $ that]),

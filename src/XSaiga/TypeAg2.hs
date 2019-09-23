@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module XSaiga.TypeAg2 where
 
@@ -8,12 +9,21 @@ import XSaiga.Getts
 import Data.Text as T hiding (map)
 import XSaiga.ShowText
 import Control.Arrow
-import Data.Bifunctor
-import Data.Biapplicative
 import Data.List (nub)
---import Control.Applicative
+--import Control.Monad.State.Lazy
+import qualified Data.Map.Strict as Map
 
+type GettsCache = Map.Map GettsTree FDBR
+
+--NOTE: much of this stuff should be moved to Getts.hs
+--NOTE: *2.hs should be renamed such that there is no 2
+--NOTE: use the state monad to memoize everything
+--type TF a = [Triple] -> State GettsCache a
 type TF a = [Triple] -> a
+
+--NOTE: this is more like a syntax tree, it should be renamed
+--NOTE: FGetts* is essentially the actual Getts information
+--NOTE: GettsNone is more like a placeholder rather than just "get nothing" -- it is treated like an identity value for now
 data GettsTree =
       GettsNone
     | GettsMembers Text
@@ -21,7 +31,7 @@ data GettsTree =
     | GettsPreps [Text] [GettsTree]
     | GettsIntersect GettsTree GettsTree --representing result of intersect_fdbr (only evs from 2nd tree are kept)
     | GettsUnion GettsTree GettsTree --representing result of "union" of fdbrs.  Keeps everything.
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 
 data GettsFlatTypes =
     FGettsMembers Text
@@ -32,15 +42,28 @@ type FGettsT = ([Text], Text)
 
 type GettsFlat = ([FGettsMembers], [FGettsT])
 
---Convert a function signature to a Getts style function
---Keeps same kind, same arity
-type family Treeify x where
-  --Treeify ((TF a -> b) -> c) = Treeify (TF a -> b) -> Treeify c
-  --Treeify (TF a -> b) = GettsTree -> Treeify b
-  Treeify (TF a) = GettsTree
-  Treeify (a -> b) = Treeify a -> Treeify b
-  Treeify a = GettsTree
-  --Treeify _ = GettsTree<Paste>
+--NOTE: it seems possible to do without a biapplicative bifunctor if you allow overlapping instances (or find a way to work around those)
+--Also, you need AllowAmbiguousTypes for things like (+) >|< (-) (but things like plus >|< minus should be fine)
+
+type family Treeify x y where
+    Treeify (x -> a2) (y -> b2) = (x, y) -> Treeify a2 b2
+    Treeify x y = (x, y)
+
+--Convert a function of the form a -> b -> c to the form GettsTree -> GettsTree -> ... -> GettsTree
+--Keep the same arity
+type family GettsTreeify x where
+    GettsTreeify (TF a) = GettsTree -- Needed to halt recursion when a TF is found
+    GettsTreeify (a -> b) = GettsTreeify a -> GettsTreeify b
+    GettsTreeify a = GettsTree -- For everything else
+
+class TreeifyImpl x y where
+    (>|<) :: x -> y -> Treeify x y
+
+instance {-# OVERLAPPING #-} (TreeifyImpl a2 b2) => TreeifyImpl (a1 -> a2) (b1 -> b2) where
+    f >|< g = (\(a, b) ->  (f a) >|< (g b))
+
+instance (Treeify a b ~ (a, b)) => TreeifyImpl a b where
+    a >|< b = (a, b)
 
 --TODO: Abstract tree into separate datastructure as Foldable and Traversable
 --It seems to me there are five layers:
@@ -58,13 +81,8 @@ Flattened layer
 -}
 
 --A SemFunc is really just a tuple of two functions
-type SemFunc a = (a, Treeify a)
-getGetts = snd
-getSem = fst
-
---TODO: restrict arity of b (same kind as a)
-semFunc :: a -> Treeify a -> SemFunc a
-semFunc = bipure
+--Use GettsTreeify to keep the same arity
+type SemFunc a = Treeify a (GettsTreeify a)
 
 --Just for presentation purposes
 instance Show (TF FDBR) where
@@ -76,7 +94,20 @@ instance Show (TF GFDBR) where
 instance Show (TF Text) where
   show x = "TF Text"
 
+--This is also bothering me!
+{-
+sem_memo :: ([Triple] -> State GettsCache FDBR) -> GettsTree ->  [Triple] -> State GettsCache FDBR --TF FDBR
+sem_memo f key rtriples = state $ \cache ->
+    case Map.lookup key cache of
+        Just fdbr -> (fdbr, cache)
+        Nothing -> runState cache $ do
+                                 fdbr <- f rtriples
+                                 cache' <- get
+                                 let cache'' = Map.insert key fdbr cache'
+                                 return (fdbr, cache'')
 
+f >>>|<<< key = sem_memo f key
+-}
 
 --Unclean -- Foldable would help
 --TODO: filter duplicates
@@ -94,8 +125,16 @@ flattenGetts (GettsUnion i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
 merge :: GettsFlat -> GettsFlat -> GettsFlat
 merge (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
 
-(>|<) :: a -> Treeify a -> SemFunc a
-f >|< g = bipure f g
+{-
+gettsMemoize :: GettsTree -> ([Triple] -> FDBR) -> [Triple] -> State GettsCache FDBR
+gettsMemoize key f rtriples = state $ \cache ->
+    case Map.lookup key cache of
+        Just fdbr -> (fdbr, cache)
+        Nothing -> let fdbr = f rtriples in (fdbr, Map.insert key fdbr cache)
+
+--Easy memoization operator (may only be used with fully applied trees)
+f >>|<< key = gettsMemoize key f >|< key
+-}
 
 --Reduce GettsTree down to minimum number of queries that spans original
 --it is okay if they end up pulling in more data than needed
@@ -135,9 +174,8 @@ gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
 
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
---TODO: augment with superlative
-gatherPreps :: [SemFunc ([T.Text], Maybe Ordering, t)] -> SemFunc [([T.Text], Maybe Ordering, t)]
-gatherPreps preps = bipure preps_tf (GettsPreps prepNames (map snd preps))
+gatherPreps :: [SemFunc ([T.Text], Maybe Ordering, TF FDBR -> TF FDBR)] -> SemFunc [([T.Text], Maybe Ordering, TF FDBR -> TF FDBR)]
+gatherPreps preps = preps_tf >|< GettsPreps prepNames (map snd preps)
   where
     prepNames = nub $ Prelude.concatMap (\(a, _, _) -> a) preps_tf
     preps_tf = map fst preps
@@ -148,12 +186,20 @@ gatherPreps preps = bipure preps_tf (GettsPreps prepNames (map snd preps))
 --Get members of named set
 --get_members :: (TripleStore m) => m -> Text -> IO FDBR
 --get_members = getts_members
+
 get_members :: Text -> SemFunc (TF FDBR)
-get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
+get_members set = (\rtriples -> pure_getts_members rtriples set) >|< GettsMembers set
 
 --TODO: revise this for new transitive verb definition.  should not assume these fields in general.
+--Used for intransitive verbs
+--The above revisions means "discoverer" works because "subject" is used, but consider the others that use "object", "implement", etc
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP ["subject"] (ev_type, "subject", "object") []
+get_subjs_of_event_type ev_type =
+    (\rtriples -> make_fdbr_with_prop (pure_getts_triples_entevprop_type rtriples ["subject"] ev_type) "subject")
+    >|<
+    GettsTP ["subject"] (ev_type, "subject", "object") []
+
+--NOTE: anytime you add to the following ADT, you must extend setAtt to cover it
 
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}
@@ -173,10 +219,10 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | RELPRON_VAL     {getRELVAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
-          | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
+          | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR -> TF FDBR) }
           | SUPERPHSTART_VAL  {getSUPERPHSTARTVAL :: ()}
           | SUPER_VAL       {getSUPERVAL ::  Ordering}
-          | SUPERPH_VAL     {getSUPERPHVAL :: SemFunc (Ordering, TF FDBR -> TF FDBR)}
+          | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, SemFunc (TF FDBR -> TF FDBR))}
           | PREP_VAL       {getPREPVAL ::   [SemFunc ([Text], Maybe Ordering, (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
@@ -288,11 +334,6 @@ instance Eq AttValue where
     (SUPER_VAL s1)     == (SUPER_VAL s) = True
     (SUPERPH_VAL s1)   == (SUPERPH_VAL s) = True
     _                  == _              = False
-
-
-
-
-
 
 --------- *********************** --------------
 -- needs to be simplified --
