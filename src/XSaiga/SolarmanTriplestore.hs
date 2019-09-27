@@ -26,24 +26,27 @@ subset s t = (s \\ t) == []
 
 --TODO: MERGE IMAGES PROPER
 termor' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
-termor' tmph1 tmph2 ents = union_fdbr' (tmph1 ents) (tmph2 ents)
+termor' = liftA2 union_fdbr'
 
 --copied from gangster_v4: combinators
 termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
-termor = bipure termor' (\g1 -> \g2 -> \g3 -> gettsIntersect (gettsUnion (gettsApply g1) (gettsApply g2)) g3)
+termor = termor' >|< liftA2 gettsUnion
 
 --see MSc thesis for explanation of why termand is in terms of termor
+termand'' :: FDBR -> FDBR -> FDBR
+termand'' nph vbph = if not (List.null $ nph) && not (List.null $ vbph) then union_fdbr'' nph vbph else []
+
 termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
-termand' tmph1 tmph2 ents r = if not (List.null $ tmph1 ents r) && not (List.null $ tmph2 ents r) then termor' tmph1 tmph2 ents r else []
+termand' = liftA2 . liftA2 $ termand''
 
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
 --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
-termand = bipure termand' $ snd termor 
+termand = termand' >|< liftA2 gettsUnion
 
 --TODO: FDBRs are sorted.  Use that to improve this.
 intersect_fdbr'' _ [] = []
 intersect_fdbr'' [] _ = []
-intersect_fdbr'' fdbr1@((e1, evs1):eei1)  fdbr2@((e2, evs2):eei2)
+intersect_fdbr'' fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
   = case compare e1 e2 of
       LT -> intersect_fdbr'' eei1 fdbr2
       EQ -> (e2, evs2):(intersect_fdbr'' eei1 eei2) 
