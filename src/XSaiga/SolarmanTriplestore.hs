@@ -1,5 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module XSaiga.SolarmanTriplestore where
 
@@ -25,23 +26,19 @@ import qualified Data.Maybe as Maybe
 subset s t = (s \\ t) == []
 
 --TODO: MERGE IMAGES PROPER
-termor' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
-termor' = liftA2 union_fdbr'
 
 --copied from gangster_v4: combinators
 termor :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
-termor = termor' >|< liftA2 gettsUnion
+termor = (liftA2 . liftA2 $ union_fdbr'') >|< liftA2 gettsUnion
 
 --see MSc thesis for explanation of why termand is in terms of termor
 termand'' :: FDBR -> FDBR -> FDBR
 termand'' nph vbph = if not (List.null $ nph) && not (List.null $ vbph) then union_fdbr'' nph vbph else []
 
-termand' :: (TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR
-termand' = liftA2 . liftA2 $ termand''
-
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
 --TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
-termand = termand' >|< liftA2 gettsUnion
+termand :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
+termand = (liftA2 . liftA2 $ termand'') >|< liftA2 gettsUnion
 
 --TODO: FDBRs are sorted.  Use that to improve this.
 intersect_fdbr'' _ [] = []
@@ -55,20 +52,14 @@ intersect_fdbr'' fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
 {-intersect_fdbr'' eei1 eei2
   = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]-}
 
-intersect_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
-intersect_fdbr' = liftA2 intersect_fdbr'' --intersect_fdbr'' <$> tf1 <*> tf2
-
 intersect_fdbr :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-intersect_fdbr = bipure intersect_fdbr' gettsIntersect
+intersect_fdbr = liftA2 intersect_fdbr'' >|< gettsIntersect
 
 union_fdbr'' :: FDBR -> FDBR -> FDBR
 union_fdbr'' fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
 
-union_fdbr' :: TF FDBR -> TF FDBR -> TF FDBR
-union_fdbr' = liftA2 union_fdbr''
-
 union_fdbr :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-union_fdbr = bipure union_fdbr' gettsUnion
+union_fdbr = liftA2 union_fdbr'' >|< gettsUnion
 
 nounand = intersect_fdbr
 
@@ -90,11 +81,8 @@ every'' :: FDBR -> FDBR -> FDBR
 every'' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr'' nph vbph
                 | otherwise = []
 
-every' :: TF FDBR -> TF FDBR -> TF FDBR
-every' = liftA2 every''
-
 every :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-every = bipure every' gettsIntersect
+every = liftA2 every'' >|< gettsIntersect
 
 most'' :: FDBR -> FDBR -> FDBR
 most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
@@ -103,10 +91,8 @@ most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
     n_nph = fromIntegral $ length nph
     n_nph_v = fromIntegral $ length nph_v
 
-most':: TF FDBR -> TF FDBR -> TF FDBR
-most' = liftA2 most''
-
-most = bipure most' gettsIntersect
+most :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
+most = liftA2 most'' >|< gettsIntersect
 
 {- TODO:
 no' nph vbph =
@@ -126,19 +112,16 @@ one'' nph vbph   | length res == 1 = res
     where
       res = intersect_fdbr'' nph vbph
 
-one' :: TF FDBR -> TF FDBR -> TF FDBR
-one' = liftA2 one''
-
-one = bipure one' gettsIntersect
+one :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
+one = liftA2 one'' >|< gettsIntersect
 
 two'' nph vbph   | length res == 2 = res
                 | otherwise = []
     where
       res = intersect_fdbr'' nph vbph
 
-two' = liftA2 two'' 
-
-two = bipure two' gettsIntersect
+two :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
+two = liftA2 two'' >|< gettsIntersect
 
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
@@ -149,10 +132,10 @@ which'' nph vbph = if not $ T.null result then result else "none."
   result = T.unwords $ map fst $ intersect_fdbr'' nph vbph
 
 which :: SemFunc (TF FDBR -> TF FDBR -> TF T.Text)
-which = bipure (liftA2 which'') gettsIntersect
+which = liftA2 which'' >|< gettsIntersect
 
 how_many'' nph vbph = tshow $ List.length (intersect_fdbr'' nph vbph)
-how_many = bipure (liftA2 how_many'') gettsIntersect
+how_many = liftA2 how_many'' >|< gettsIntersect
 
 who = which <<*>> (nounor <<*>> (get_members "person") <<*>> (get_members "science_team"))
 
@@ -160,14 +143,14 @@ who = which <<*>> (nounor <<*>> (get_members "person") <<*>> (get_members "scien
 what'' nph = if not $ T.null result then result else "nothing."
     where result = T.unwords $ map fst nph
 
-what = bipure (fmap what'') id
+what = fmap what'' >|< id
 
 --TODO: prepositions
-make_prep props = bipure (\tmph -> (props, Nothing, tmph)) gettsApply
+make_prep props = (\tmph -> (props, Nothing, tmph)) >|< gettsApply
 
-make_prep_nph props = bipure (\nph -> (props, Nothing, intersect_fdbr' nph)) id
+make_prep_nph props = (\nph -> (props, Nothing, liftA2 intersect_fdbr'' nph)) >|< id
 
-make_prep_superph props = bipure (\(ord, tmph) -> (props, Just ord, tmph)) id
+make_prep_superph props = (\(ord, tmph) -> (props, Just ord, tmph)) >|< id
 
 --with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with = make_prep ["with_implement"]
@@ -179,7 +162,7 @@ at = make_prep ["location"]
 make_pnoun'' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 
 make_pnoun :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
-make_pnoun noun = bipure (fmap $ make_pnoun'' noun) id
+make_pnoun noun = (fmap $ make_pnoun'' noun) >|< id
 
 --TODO: ugly hack to work around parser problem
 make_year = make_pnoun . tshow
@@ -187,7 +170,7 @@ make_year = make_pnoun . tshow
 in' = make_prep ["location", "year"]
 
 --TODO: verify "subject" and identity here.  should not be introducing more info...
---to = bipure (\nph -> (["subject"], intersect_fdbr' nph)) (id)
+--to = (\nph -> (["subject"], intersect_fdbr' nph)) >|< id
 to = make_prep_nph ["subject"]
 
 --New for new new semantics
@@ -458,7 +441,7 @@ make_trans_passive rel = make_trans'' PassiveVoice rel >|< gettsTP PassiveVoice 
 
 --Copied from old solarman:
 yesno' x = if x /= [] then "yes." else "no"
-yesno = bipure (fmap yesno') id
+yesno = fmap yesno' >|< id
 
 does = yesno
 did = yesno
@@ -479,7 +462,7 @@ sand'' [] _ = []
 sand'' _ [] = []
 sand'' fdbr1 fdbr2 = union_fdbr'' fdbr1 fdbr2
 
-sand = bipure (liftA2 sand'') gettsUnion
+sand = liftA2 sand'' >|< gettsUnion
 
 --TODO: testing
 {-
@@ -1016,7 +999,7 @@ applysuperph [x, y, z] atts = SUPERPH_VAL $
             super_ordering = getAtts getSUPERVAL atts y
             nph = getAtts getAVALS atts z
             inject :: Ordering -> SemFunc ((TF FDBR -> TF FDBR) -> (Ordering, TF FDBR -> TF FDBR))
-            inject ord = bipure (\termph -> (ord, termph)) gettsApply
+            inject ord = (\termph -> (ord, termph)) >|< gettsApply
             in
                 inject super_ordering <<*>> (intersect_fdbr <<*>> nph)
                 
@@ -1230,10 +1213,10 @@ dictionary = [
     ("use",                Transvb,   [VERB_VAL use_rel]),
     ("used",               Transvb,   [VERB_VAL use_rel]),
     ("uses",               Transvb,   [VERB_VAL use_rel]),
-    ("is",                 Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
-    ("was",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
-    ("are",                Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
-    ("were",               Linkingvb, [LINKINGVB_VAL $ bipure (liftA id) id]),
+    ("is",                 Linkingvb, [LINKINGVB_VAL $ id >|< id]),
+    ("was",                Linkingvb, [LINKINGVB_VAL $ id >|< id]),
+    ("are",                Linkingvb, [LINKINGVB_VAL $ id >|< id]),
+    ("were",               Linkingvb, [LINKINGVB_VAL $ id >|< id]),
     ("that",               Relpron,   [RELPRON_VAL    $ that]),
     ("who",                Relpron,   [RELPRON_VAL    $ that]),
     ("which",              Relpron,   [RELPRON_VAL    $ that]),

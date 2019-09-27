@@ -137,7 +137,7 @@ gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 --TODO: augment with superlative
 gatherPreps :: [SemFunc ([T.Text], Maybe Ordering, t)] -> SemFunc [([T.Text], Maybe Ordering, t)]
-gatherPreps preps = bipure preps_tf (GettsPreps prepNames (map snd preps))
+gatherPreps preps = preps_tf >|< (GettsPreps prepNames (map snd preps))
   where
     prepNames = nub $ Prelude.concatMap (\(a, _, _) -> a) preps_tf
     preps_tf = map fst preps
