@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module XSaiga.TypeAg2 where
 
@@ -28,6 +29,7 @@ data SyntaxTree =
     | S_TransVb Text Text [SyntaxTree] --may need revisiting
     deriving (Eq, Ord, Show)
 
+--If made fine grained enough, this may suffice for memoization
 type TF a = [Triple] -> a
 data GettsTree =
       GettsNone
@@ -76,6 +78,31 @@ Flattened layer
 type SemFunc a = (a, Treeify a)
 getGetts = snd
 getSem = fst
+
+--NEW: convert from biapplicative form to regular function application
+--this is a one way conversion, unless you have the property that the tuple elements are "invariant" with respect to each other
+
+--A type-level function to "tie" two functions together into a series of functions each taking a pair argument
+type family BiappFunc x y where
+    BiappFunc (a1 -> a2) (b1 -> b2) = (a1, b1) -> BiappFunc a2 b2
+    BiappFunc x y = (x, y)
+
+--Implementation of the "tie" function above
+class BiappFuncImpl x y where
+    tieFunc :: x -> y -> BiappFunc x y
+
+instance {-# OVERLAPPING #-} (BiappFuncImpl a2 b2) => BiappFuncImpl (a1 -> a2) (b1 -> b2) where
+    tieFunc f g = (\(a, b) -> tieFunc (f a) (g b))
+
+instance (BiappFunc a b ~ (a, b)) => BiappFuncImpl a b where
+    tieFunc a b = (a, b)
+
+--Implementation to convert `SemFunc a` to function application form
+convBiapp (a, b) = tieFunc a b
+
+--So, you get the original behaviour by doing convBiapp $ termor, convBiapp $ a, etc...
+--This allows biapplicative form to be used for easy extraction, and function application form for convenience
+--It would be nice to get rid of the overlapping instances though!
 
 --TODO: restrict arity of b (same kind as a)
 semFunc :: a -> Treeify a -> SemFunc a
