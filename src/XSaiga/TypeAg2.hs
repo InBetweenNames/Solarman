@@ -13,6 +13,21 @@ import Data.Biapplicative
 import Data.List (nub)
 --import Control.Applicative
 
+--idea: the tree should be fully applied whenever it is stored
+data SyntaxTree =
+      S_CNoun Text
+    | S_PNoun Text
+    | S_Adjective SyntaxTree
+    | S_TermAnd SyntaxTree SyntaxTree
+    | S_TermOr SyntaxTree SyntaxTree
+    | S_NounAnd SyntaxTree SyntaxTree
+    | S_NounOr SyntaxTree SyntaxTree
+    | S_Intersect SyntaxTree SyntaxTree
+    | S_Union SyntaxTree SyntaxTree
+    | S_Prep [Text] SyntaxTree
+    | S_TransVb Text Text [SyntaxTree] --may need revisiting
+    deriving (Eq, Ord, Show)
+
 type TF a = [Triple] -> a
 data GettsTree =
       GettsNone
@@ -136,11 +151,10 @@ gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 --TODO: augment with superlative
-gatherPreps :: [SemFunc ([T.Text], Maybe Ordering, t)] -> SemFunc [([T.Text], Maybe Ordering, t)]
-gatherPreps preps = preps_tf >|< (GettsPreps prepNames (map snd preps))
+gatherPreps :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> SemFunc [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))]
+gatherPreps preps = preps >|< (GettsPreps prepNames (map (\(_, _, g) -> gettsApply $ getGetts g) preps))
   where
-    prepNames = nub $ Prelude.concatMap (\(a, _, _) -> a) preps_tf
-    preps_tf = map fst preps
+    prepNames = nub $ Prelude.concatMap (\(a, _, _) -> a) preps
 
 --a <<*>> moon <<*>> spins... 
 --PUBLIC INTERFACE (TODO)
@@ -176,11 +190,11 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
           | SUPERPHSTART_VAL  {getSUPERPHSTARTVAL :: ()}
           | SUPER_VAL       {getSUPERVAL ::  Ordering}
-          | SUPERPH_VAL     {getSUPERPHVAL :: SemFunc (Ordering, TF FDBR -> TF FDBR)}
-          | PREP_VAL       {getPREPVAL ::   [SemFunc ([Text], Maybe Ordering, (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
+          | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, SemFunc (TF FDBR -> TF FDBR))}
+          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
-          | PREPPH_VAL      {getPREPPHVAL :: SemFunc ([Text], Maybe Ordering, (TF FDBR -> TF FDBR))}
+          | PREPPH_VAL      {getPREPPHVAL :: ([Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))}
           | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
           | SENTJOIN_VAL    {getSJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
           | DOT_VAL         {getDOTVAL  ::   SemFunc (TF Text)}

@@ -146,11 +146,11 @@ what'' nph = if not $ T.null result then result else "nothing."
 what = fmap what'' >|< id
 
 --TODO: prepositions
-make_prep props = (\tmph -> (props, Nothing, tmph)) >|< gettsApply
+make_prep props tmph = (props, Nothing, tmph)
 
-make_prep_nph props = (\nph -> (props, Nothing, liftA2 intersect_fdbr'' nph)) >|< id
+make_prep_nph props nph = (props, Nothing, intersect_fdbr <<*>> nph)
 
-make_prep_superph props = (\(ord, tmph) -> (props, Just ord, tmph)) >|< id
+make_prep_superph props (ord, tmph) = (props, Just ord, tmph)
 
 --with :: (TF FDBR -> TF FDBR) -> ([T.Text], TF FDBR -> TF FDBR)
 with = make_prep ["with_implement"]
@@ -294,15 +294,15 @@ filter_ev ev_data ((names,pred):list) evs = do
     if res /= [] then filter_ev ev_data list evs else return False-}
 
 --new filter_ev: Handles prepositional phrases (IN TESTING)
---TODO: handle superlatives
-filter_ev :: [([T.Text], Maybe Ordering, TF FDBR -> TF FDBR)] -> [Event] -> TF [Event]
+--TODO: handle superlatives =
+filter_ev :: [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> [Event] -> TF [Event]
 filter_ev [] evs ev_data = evs
 filter_ev ((names,_,pred):list) evs triples
   = if not $ List.null res then filter_ev list relevant_evs triples else []
   where  
   relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events
   relevant_list = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names 
-  res = pred (pure relevant_list) triples --TODO: prove correct
+  res = (getSem pred) (pure relevant_list) triples --TODO: prove correct (TODO USE getGetts AS WELL FOR MEMOIZATION!!!)
   --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
   relevant_evs = List.nub $ concatMap snd res
 
@@ -325,7 +325,7 @@ make_partition ord gfdbr = map (map (\(_, ent, fdbr) -> (ent, fdbr))) $ groupBy 
 condense_gfdbr :: GFDBR -> FDBR
 condense_gfdbr = map (\(ent, fdbr) -> (ent, concatMap snd fdbr))
 
-filter_super :: [([T.Text], Maybe Ordering, TF FDBR -> TF FDBR)] -> FDBR -> TF FDBR
+filter_super :: [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> FDBR -> TF FDBR
 filter_super preps fdbr_start rtriples = foldr filt fdbr_start preps
     where
         filt (_, Nothing, _) fdbr = fdbr --do nothing if no ordering is required (e.g, ``in 1877'')
@@ -377,7 +377,7 @@ gettsTP voice rel (GettsPreps props' sub) = GettsTP (subject:props') rel sub
 relname (a, _, _) = a
 
 --TODO: need to modify this to actually use the ordering
-make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR
+make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
 make_trans'' voice rel preps rtriples = ord_fdbr
   where
     (subjectProp,_) = getVoiceProps voice rel
@@ -398,26 +398,22 @@ make_trans'' voice rel preps rtriples = ord_fdbr
 --' denotes preps
 --'' denotes tmph followed by preps
 
-make_trans_active' :: Relation -> SemFunc ([([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_active' :: Relation -> SemFunc ([([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR)
 make_trans_active' rel =  make_trans'' ActiveVoice rel >|< gettsTP ActiveVoice rel
 
 --TODO: Bug in solarman3 semantics here with only "subject" in GettsTP
 --make_trans_active :: T.Text -> SemFunc ((TF FDBR -> TF FDBR)  -> TF FDBR)
 --make_trans_active ev_type = (\tmph_sem -> make_trans_active'' ev_type [(["object"], tmph_sem)]) >|< (\g -> GettsTP ["subject", "object"] ev_type [gettsApply g])
 
-make_trans_active :: Relation -> SemFunc ((TF FDBR -> TF FDBR) -> TF FDBR)
-make_trans_active rel = (\tmph_sem -> f [([object], Nothing, tmph_sem)]) >|< (\getts -> g $ GettsPreps [object] [gettsApply getts])
+make_trans_active :: Relation -> SemFunc (TF FDBR -> TF FDBR) -> SemFunc (TF FDBR)
+make_trans_active rel tmph = make_trans_active' rel <<*>> gatherPreps [([object], Nothing, tmph)]
   where
     (_, object) = getVoiceProps ActiveVoice rel
-    (f, g) = make_trans_active' rel
 
-make_trans_active'' :: Relation -> SemFunc ((TF FDBR -> TF FDBR) -> [([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR)
-make_trans_active'' rel = (\tmph_sem -> \preps -> f (([object], Nothing, tmph_sem):preps)) >|< (\getts -> \preps -> g (addPrep object getts preps))
+make_trans_active'' :: Relation -> SemFunc (TF FDBR -> TF FDBR) -> [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
+make_trans_active'' rel tmph preps = make_trans_active' rel <<*>> gatherPreps (([object], Nothing, tmph):preps)
   where
     (subject, object) = getVoiceProps ActiveVoice rel
-    (f, g) = make_trans_active' rel
-    addPrep :: T.Text -> (GettsTree -> GettsTree) -> GettsTree -> GettsTree
-    addPrep prop getts (GettsPreps props subs) = GettsPreps (prop:props) ((gettsApply getts):subs)
 
 {-make_trans_passive' :: (TripleStore m) => m -> String -> [([String], IO [String] -> IO Bool)] -> IO [String]
 make_trans_passive' ev_data rel preps = do
@@ -436,7 +432,7 @@ make_trans_passive' ev_data rel preps = do
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs-}
 
-make_trans_passive :: Relation -> SemFunc ([([T.Text], Maybe Ordering, (TF FDBR -> TF FDBR))] -> TF FDBR)
+make_trans_passive :: Relation -> SemFunc ([([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR)
 make_trans_passive rel = make_trans'' PassiveVoice rel >|< gettsTP PassiveVoice rel
 
 --Copied from old solarman:
@@ -930,26 +926,26 @@ applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) <<*>> (getAtts getA
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep [object] <<*>> predicate) : preps)
+applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep [object] predicate) : preps)
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     preps = getAtts getPREPVAL atts z
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep [object] <<*>> predicate]
+applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep [object] predicate]
     where
     reln = getAtts getBR atts x
     predicate = getAtts getTVAL atts y
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbsuper [x, y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep_superph [object] <<*>> superpred]
+applytransvbsuper [x, y] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps [make_prep_superph [object] superpred]
     where
     reln = getAtts getBR atts x 
     superpred = getAtts getSUPERPHVAL atts y
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbsuper [x, y, z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep_superph [object] <<*>> superpred) : preps)
+applytransvbsuper [x, y, z] atts = VERBPH_VAL $ make_trans_active' reln <<*>> gatherPreps ((make_prep_superph [object] superpred) : preps)
     where
     reln = getAtts getBR atts x 
     superpred = getAtts getSUPERPHVAL atts y
@@ -978,17 +974,17 @@ apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph <<*>> (make
 applyprepph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             termph = getAtts getTVAL atts y in
-                make_prep prep_names <<*>> termph
+                make_prep prep_names termph
 
 applyprepph_nph [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNPHVAL atts x
             nph = getAtts getAVALS atts y in
-                make_prep_nph prep_names <<*>> nph
+                make_prep_nph prep_names nph
 
 applyprepph_super [x, y] atts = PREPPH_VAL $
         let prep_names = getAtts getPREPNVAL atts x
             superph = getAtts getSUPERPHVAL atts y in
-                make_prep_superph prep_names <<*>> superph
+                make_prep_superph prep_names superph
 
 applyprep [x] atts = PREP_VAL $ [getAtts getPREPPHVAL atts x]--[(["with_implement"], a telescope)]
 
@@ -998,10 +994,10 @@ applysuperph [x, y, z] atts = SUPERPH_VAL $
         let super_the = getAtts getSUPERPHSTARTVAL atts x
             super_ordering = getAtts getSUPERVAL atts y
             nph = getAtts getAVALS atts z
-            inject :: Ordering -> SemFunc ((TF FDBR -> TF FDBR) -> (Ordering, TF FDBR -> TF FDBR))
-            inject ord = (\termph -> (ord, termph)) >|< gettsApply
+            inject :: Ordering -> SemFunc (TF FDBR -> TF FDBR) -> (Ordering, SemFunc (TF FDBR -> TF FDBR))
+            inject ord termph = (ord, termph)
             in
-                inject super_ordering <<*>> (intersect_fdbr <<*>> nph)
+                inject super_ordering $ intersect_fdbr <<*>> nph
                 
 
 applyyear [x] atts = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
