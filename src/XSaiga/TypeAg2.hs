@@ -29,16 +29,23 @@ data SyntaxTree =
     | S_TransVb Text Text [SyntaxTree] --may need revisiting
     deriving (Eq, Ord, Show)
 
+data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Show, Ord)
+data GettsUnionType = GU_NounOr | GU_NounAnd deriving (Eq, Show, Ord)
+
 --If made fine grained enough, this may suffice for memoization
 type TF a = [Triple] -> a
 data GettsTree =
-      GettsNone
+      GettsNone -- TODO MEMO: NOT to be used for memoization (replace with Maybe GettsTree in termphrases/superphrases?)
+    | GettsPNoun Text
     | GettsMembers Text
-    | GettsTP [Text] Relation [GettsTree]
-    | GettsPreps [Text] [GettsTree]
-    | GettsIntersect GettsTree GettsTree --representing result of intersect_fdbr (only evs from 2nd tree are kept)
-    | GettsUnion GettsTree GettsTree --representing result of "union" of fdbrs.  Keeps everything.
-    deriving (Eq, Show)
+    | GettsTP Text Relation [GettsTree] --TODO: rely on [GettsPrep] for props
+    | GettsPrep [Text] GettsTree -- TODO: change to GettsPrep [props] GettsTree
+    | GettsIntersect GettsIntersectType GettsTree GettsTree --representing result of intersect_fdbr (only evs from 2nd tree are kept)
+    | GettsUnion GettsUnionType GettsTree GettsTree --representing result of "union" of fdbrs.  Keeps everything.
+    | GettsYesNo GettsTree
+    | GettsPropTmph Text GettsTree
+    | GettsAttachP Text GettsTree
+    deriving (Eq, Show, Ord)
 
 data GettsFlatTypes =
     FGettsMembers Text
@@ -98,7 +105,12 @@ instance (BiappFunc a b ~ (a, b)) => BiappFuncImpl a b where
     tieFunc a b = (a, b)
 
 --Implementation to convert `SemFunc a` to function application form
-convBiapp (a, b) = tieFunc a b
+fromBiapp (a, b) = tieFunc a b
+--toBiapp :: (a, b) -> (a2, b2) -> ... -> (a -> a2 -> ..., b -> b2 ->...)
+--TODO: make more general -- support generalized biapplicative?
+--fromBiapp :: Biapplicative p (a1 -> a2) (b1 -> b2) -> p a1 b1 -> p a2 b2
+--fromBiapp b x = (b <<*>> x) <<*> ...
+--TODO: support higher order functions as well using `extract` function
 
 --So, you get the original behaviour by doing convBiapp $ termor, convBiapp $ a, etc...
 --This allows biapplicative form to be used for easy extraction, and function application form for convenience
@@ -125,13 +137,28 @@ instance Show (TF Text) where
 --TODO: make [SemFunc a] not used with gatherPreps, apply directly to verb?
 --Would avoid GettsPreps situation
 
+--apply over the intersect_entevimages, remember evs of im2 are preserved and im1 are discarded
+gettsAttachP :: T.Text -> GettsTree -> GettsTree
+gettsAttachP prop (GettsIntersect t x y) = GettsIntersect t x (gettsAttachP prop y)
+gettsAttachP prop (GettsTP p rel sub) = GettsTP p rel ((GettsPrep [prop] GettsNone):sub) --is this correct?  should i go back to the old way?  does cardinality have to match?
+--TODO MEMO -- altering tree may affect identity for memoization
+--IDEA!!  create a GettsAttachP node instead and only during flattening will it have any effect -- prevents altering trees
+
 flattenGetts :: GettsTree -> GettsFlat
 flattenGetts GettsNone = ([],[])
+flattenGetts (GettsPNoun _) = ([],[])
 flattenGetts (GettsMembers set) = ([set], [])
-flattenGetts (GettsTP props (rel,_,_) sub) = merge ([], [(props, rel)]) (Prelude.concat *** Prelude.concat $ unzip $ map flattenGetts sub)
-flattenGetts (GettsPreps props sub) = error "Cannot flatten preps"
-flattenGetts (GettsIntersect i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
-flattenGetts (GettsUnion i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
+flattenGetts (GettsYesNo fdbr) = flattenGetts fdbr
+flattenGetts (GettsIntersect t i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
+flattenGetts (GettsUnion t i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
+
+flattenGetts (GettsPrep props sub) = error "Cannot flatten prep directly" --TODO
+flattenGetts (GettsPropTmph t sub) = flattenGetts sub --TODO MEMO!
+
+flattenGetts (GettsAttachP prop sub) = flattenGetts $ gettsAttachP prop sub
+
+flattenGetts (GettsTP prop (rel, _, _) preps) = let props = nub $ prop:(Prelude.concatMap (\(GettsPrep p _) -> p) preps)
+        in Prelude.foldr merge ([],[(props, rel)]) $ map (\(GettsPrep _ sub) -> flattenGetts sub) preps
 
 merge :: GettsFlat -> GettsFlat -> GettsFlat
 merge (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
@@ -159,29 +186,25 @@ getReducedTriplestore ev_data (sets, trans) = do
 
 unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TODO: debugging
 
-gettsIdentity f GettsNone y = y
+--TODO OLD
+{-gettsIdentity f GettsNone y = y
 gettsIdentity f x GettsNone = x
 gettsIdentity f x y = f x y
 
 gettsIntersect = gettsIdentity GettsIntersect
 
-gettsApply g = g GettsNone
-
 --TODO: make this a proper union
 gettsUnion = gettsIdentity GettsUnion
+-}
 
---apply over the intersect_entevimages, remember evs of im2 are preserved and im1 are discarded
-gettsAttachP :: T.Text -> GettsTree -> GettsTree
-gettsAttachP prop (GettsIntersect x y) = GettsIntersect x (gettsAttachP prop y)
-gettsAttachP prop (GettsTP props rel sub) = GettsTP (prop:props) rel sub
+gettsApply g = g GettsNone
 
+--NOTE MEMO: only use gettsApply here for unique naming, not for memoizing individual semantic functions
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 --TODO: augment with superlative
-gatherPreps :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> SemFunc [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))]
-gatherPreps preps = preps >|< (GettsPreps prepNames (map (\(_, _, g) -> gettsApply $ getGetts g) preps))
-  where
-    prepNames = nub $ Prelude.concatMap (\(a, _, _) -> a) preps
+gatherPreps :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> [GettsTree]
+gatherPreps = map (\(props, _, g) -> GettsPrep props $ gettsApply $ getGetts g)
 
 --a <<*>> moon <<*>> spins... 
 --PUBLIC INTERFACE (TODO)
@@ -194,7 +217,7 @@ get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
 
 --TODO: revise this for new transitive verb definition.  should not assume these fields in general.
 get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP ["subject"] (ev_type, "subject", "object") []
+get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP "subject" (ev_type, "subject", "object") []
 
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}
