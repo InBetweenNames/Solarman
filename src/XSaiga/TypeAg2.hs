@@ -38,8 +38,8 @@ data GettsTree =
       GettsNone -- TODO MEMO: NOT to be used for memoization (replace with Maybe GettsTree in termphrases/superphrases?)
     | GettsPNoun Text
     | GettsMembers Text
-    | GettsTP Text Relation [GettsTree] --TODO: rely on [GettsPrep] for props
-    | GettsPrep [Text] GettsTree -- TODO: change to GettsPrep [props] GettsTree
+    | GettsTP Text Relation [GettsTree]
+    | GettsPrep [Text] (Maybe Ordering) GettsTree --TODO memoized superlatives
     | GettsIntersect GettsIntersectType GettsTree GettsTree --representing result of intersect_fdbr (only evs from 2nd tree are kept)
     | GettsUnion GettsUnionType GettsTree GettsTree --representing result of "union" of fdbrs.  Keeps everything.
     | GettsYesNo GettsTree
@@ -140,7 +140,7 @@ instance Show (TF Text) where
 --apply over the intersect_entevimages, remember evs of im2 are preserved and im1 are discarded
 gettsAttachP :: T.Text -> GettsTree -> GettsTree
 gettsAttachP prop (GettsIntersect t x y) = GettsIntersect t x (gettsAttachP prop y)
-gettsAttachP prop (GettsTP p rel sub) = GettsTP p rel ((GettsPrep [prop] GettsNone):sub) --is this correct?  should i go back to the old way?  does cardinality have to match?
+gettsAttachP prop (GettsTP p rel sub) = GettsTP p rel ((GettsPrep [prop] Nothing GettsNone):sub) --is this correct?  should i go back to the old way?  does cardinality have to match?
 --TODO MEMO -- altering tree may affect identity for memoization
 --IDEA!!  create a GettsAttachP node instead and only during flattening will it have any effect -- prevents altering trees
 
@@ -152,13 +152,13 @@ flattenGetts (GettsYesNo fdbr) = flattenGetts fdbr
 flattenGetts (GettsIntersect t i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
 flattenGetts (GettsUnion t i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
 
-flattenGetts (GettsPrep props sub) = error "Cannot flatten prep directly" --TODO
+flattenGetts (GettsPrep props _ sub) = error "Cannot flatten prep directly" --TODO
 flattenGetts (GettsPropTmph t sub) = flattenGetts sub --TODO MEMO!
 
 flattenGetts (GettsAttachP prop sub) = flattenGetts $ gettsAttachP prop sub
 
-flattenGetts (GettsTP prop (rel, _, _) preps) = let props = nub $ prop:(Prelude.concatMap (\(GettsPrep p _) -> p) preps)
-        in Prelude.foldr merge ([],[(props, rel)]) $ map (\(GettsPrep _ sub) -> flattenGetts sub) preps
+flattenGetts (GettsTP prop (rel, _, _) preps) = let props = nub $ prop:(Prelude.concatMap (\(GettsPrep p _ _) -> p) preps)
+        in Prelude.foldr merge ([],[(props, rel)]) $ map (\(GettsPrep _ _ sub) -> flattenGetts sub) preps
 
 merge :: GettsFlat -> GettsFlat -> GettsFlat
 merge (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
@@ -204,7 +204,7 @@ gettsApply g = g GettsNone
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 --TODO: augment with superlative
 gatherPreps :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> [GettsTree]
-gatherPreps = map (\(props, _, g) -> GettsPrep props $ gettsApply $ getGetts g)
+gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ gettsApply $ getGetts g)
 
 --a <<*>> moon <<*>> spins... 
 --PUBLIC INTERFACE (TODO)
