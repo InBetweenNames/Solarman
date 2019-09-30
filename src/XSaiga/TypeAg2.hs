@@ -12,28 +12,19 @@ import Control.Arrow
 import Data.Bifunctor
 import Data.Biapplicative
 import Data.List (nub)
+import qualified Data.Map.Lazy as Map
+import Control.Monad.State.Lazy
 --import Control.Applicative
-
---idea: the tree should be fully applied whenever it is stored
-data SyntaxTree =
-      S_CNoun Text
-    | S_PNoun Text
-    | S_Adjective SyntaxTree
-    | S_TermAnd SyntaxTree SyntaxTree
-    | S_TermOr SyntaxTree SyntaxTree
-    | S_NounAnd SyntaxTree SyntaxTree
-    | S_NounOr SyntaxTree SyntaxTree
-    | S_Intersect SyntaxTree SyntaxTree
-    | S_Union SyntaxTree SyntaxTree
-    | S_Prep [Text] SyntaxTree
-    | S_TransVb Text Text [SyntaxTree] --may need revisiting
-    deriving (Eq, Ord, Show)
 
 data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Show, Ord)
 data GettsUnionType = GU_NounOr | GU_NounAnd deriving (Eq, Show, Ord)
 
+--idea: the tree should be fully applied whenever it is stored
 --If made fine grained enough, this may suffice for memoization
 type TF a = [Triple] -> a
+
+type TFMemo a = (TF (State (Map.Map GettsTree FDBR) a), GettsTree)
+
 data GettsTree =
       GettsNone -- TODO MEMO: NOT to be used for memoization (replace with Maybe GettsTree in termphrases/superphrases?)
     | GettsPNoun Text
@@ -45,6 +36,7 @@ data GettsTree =
     | GettsYesNo GettsTree
     | GettsPropTmph Text GettsTree
     | GettsAttachP Text GettsTree
+    | GettsPropFDBR [Text] [Text] --props and events, used for memoizing filter_evs
     deriving (Eq, Show, Ord)
 
 data GettsFlatTypes =
@@ -86,6 +78,47 @@ type SemFunc a = (a, Treeify a)
 getGetts = snd
 getSem = fst
 
+wrap :: ((TF FDBR),GettsTree) -> TFMemo FDBR
+wrap (f,g) = (f', g)
+    where
+        f' triples = do
+            s <- get
+            case Map.lookup g s of
+                Just fdbr -> return fdbr
+                Nothing -> do
+                    let res = f triples
+                    modify (\s' -> Map.insert g res s')
+                    return res
+
+liftS :: (FDBR -> FDBR) -> (GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR
+liftS f g a = (f', g')
+                where
+                    g' = g (getGetts a)
+                    f' triples = do
+                        s <- get
+                        case Map.lookup g' s of
+                            Just fdbr -> return fdbr
+                            Nothing -> do
+                                fdbr1 <- (getSem a) triples
+                                let res = f fdbr1
+                                modify (\s' -> Map.insert g' res s')
+                                return res
+
+liftS2 :: (FDBR -> FDBR -> FDBR) -> (GettsTree -> GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR
+liftS2 f g a1 a2 = (f', g')
+                where
+                    g' = g (getGetts a1) (getGetts a2)
+                    f' triples = do
+                        s <- get
+                        case Map.lookup g' s of
+                            Just fdbr -> return fdbr
+                            Nothing -> do
+                                fdbr1 <- (getSem a1) triples
+                                fdbr2 <- (getSem a2) triples
+                                let res = f fdbr1 fdbr2
+                                modify (\s' -> Map.insert g' res s')
+                                return res
+
 --NEW: convert from biapplicative form to regular function application
 --this is a one way conversion, unless you have the property that the tuple elements are "invariant" with respect to each other
 
@@ -123,6 +156,9 @@ semFunc = bipure
 --Just for presentation purposes
 instance Show (TF FDBR) where
   show x = "TF FDBR"
+
+instance (Show a) => Show (TF (State (Map.Map GettsTree FDBR) a)) where
+  show x = "TF State"
 
 instance Show (TF GFDBR) where
   show x = "TF GFDBR"
@@ -166,11 +202,6 @@ merge (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
 (>|<) :: a -> Treeify a -> SemFunc a
 f >|< g = bipure f g
 
---Reduce GettsTree down to minimum number of queries that spans original
---it is okay if they end up pulling in more data than needed
-gettsOptimize :: GettsTree -> GettsTree
-gettsOptimize u = u
-
 flatOptimize :: GettsFlat -> GettsFlat
 flatOptimize (members, gettsTPs) = (nub members, dedupTP)
   where
@@ -203,8 +234,11 @@ gettsApply g = g GettsNone
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 --TODO: augment with superlative
-gatherPreps :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> [GettsTree]
-gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ gettsApply $ getGetts g)
+gatherPreps' :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> [GettsTree]
+gatherPreps' = map (\(props, ord, g) -> GettsPrep props ord $ gettsApply $ getGetts g)
+
+gatherPreps :: [([T.Text], Maybe Ordering, TFMemo a -> TFMemo b)] -> [GettsTree]
+gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ snd $ g (error "Should not eval!", GettsNone)) --test with undefined to prove
 
 --a <<*>> moon <<*>> spins... 
 --PUBLIC INTERFACE (TODO)
@@ -212,12 +246,16 @@ gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ gettsApply $ getGet
 --Get members of named set
 --get_members :: (TripleStore m) => m -> Text -> IO FDBR
 --get_members = getts_members
-get_members :: Text -> SemFunc (TF FDBR)
-get_members set = (\r -> pure_getts_members r set) >|< GettsMembers set
+get_members' :: Text -> SemFunc (TF FDBR)
+get_members' set = (\r -> pure_getts_members r set) >|< GettsMembers set
+
+get_members = wrap . get_members'
 
 --TODO: revise this for new transitive verb definition.  should not assume these fields in general.
-get_subjs_of_event_type :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP "subject" (ev_type, "subject", "object") []
+get_subjs_of_event_type' :: Text -> SemFunc (TF FDBR)
+get_subjs_of_event_type' ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP "subject" (ev_type, "subject", "object") []
+
+get_subjs_of_event_type = wrap . get_subjs_of_event_type'
 
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}
@@ -226,34 +264,34 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)}
               | U_OP            {getU_OP    ::   (Int -> Int)}
-              | SENT_VAL        {getSV      ::   SemFunc (TF FDBR) }
+              | SENT_VAL        {getSV      ::   TFMemo FDBR }
               | ErrorVal        {getEVAL    ::   Text}
-              | NOUNCLA_VAL     {getAVALS   ::   SemFunc (TF FDBR) }
-              | VERBPH_VAL      {getAVALS   ::   SemFunc (TF FDBR) }
-              | ADJ_VAL         {getAVALS   ::   SemFunc (TF FDBR) }
-              | TERMPH_VAL      {getTVAL    ::   SemFunc (TF FDBR -> TF FDBR)}
-              | DET_VAL         {getDVAL    ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
+              | NOUNCLA_VAL     {getAVALS   ::   TFMemo FDBR }
+              | VERBPH_VAL      {getAVALS   ::   TFMemo FDBR }
+              | ADJ_VAL         {getAVALS   ::   TFMemo FDBR }
+              | TERMPH_VAL      {getTVAL    ::   TFMemo FDBR -> TFMemo FDBR}
+              | DET_VAL         {getDVAL    ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
               | VERB_VAL        {getBR      ::   Relation } --stores relation, "subject" and "object". TODO: need to expand on later for "used"      
-          | RELPRON_VAL     {getRELVAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
-          | NOUNJOIN_VAL    {getNJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
-          | VBPHJOIN_VAL    {getVJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
-          | TERMPHJOIN_VAL  {getTJVAL   ::   SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR) }
+          | RELPRON_VAL     {getRELVAL  ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
+          | NOUNJOIN_VAL    {getNJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
+          | VBPHJOIN_VAL    {getVJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
+          | TERMPHJOIN_VAL  {getTJVAL   ::   (TFMemo FDBR -> TFMemo FDBR) -> (TFMemo FDBR -> TFMemo FDBR) -> TFMemo FDBR -> TFMemo FDBR }
           | SUPERPHSTART_VAL  {getSUPERPHSTARTVAL :: ()}
           | SUPER_VAL       {getSUPERVAL ::  Ordering}
-          | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, SemFunc (TF FDBR -> TF FDBR))}
-          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))]} -- used in "hall discovered phobos with a telescope" as "with".  
+          | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, TFMemo FDBR -> TFMemo FDBR)}
+          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)]} -- used in "hall discovered phobos with a telescope" as "with".  
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
-          | PREPPH_VAL      {getPREPPHVAL :: ([Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))}
-          | LINKINGVB_VAL   {getLINKVAL ::   SemFunc (TF FDBR -> TF FDBR)}
-          | SENTJOIN_VAL    {getSJVAL   ::   SemFunc (TF FDBR -> TF FDBR -> TF FDBR)}
-          | DOT_VAL         {getDOTVAL  ::   SemFunc (TF Text)}
-          | QM_VAL          {getQMVAL   ::   SemFunc (TF Text)}
-          | QUEST_VAL       {getQUVAL   ::   SemFunc (TF Text)}
-          | QUEST1_VAL      {getQU1VAL  ::   SemFunc (TF FDBR -> TF Text)}
-          | QUEST2_VAL      {getQU2VAL  ::   SemFunc (TF FDBR -> TF Text)}
-          | QUEST6_VAL      {getQU6VAL  ::   SemFunc (TF FDBR) -> SemFunc(TF Text)}
-          | QUEST3_VAL      {getQU3VAL  ::   SemFunc (TF FDBR -> TF FDBR -> TF Text)}
+          | PREPPH_VAL      {getPREPPHVAL :: ([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)}
+          | LINKINGVB_VAL   {getLINKVAL ::   TFMemo FDBR -> TFMemo FDBR}
+          | SENTJOIN_VAL    {getSJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
+          | DOT_VAL         {getDOTVAL  ::   TFMemo Text}
+          | QM_VAL          {getQMVAL   ::   TFMemo Text}
+          | QUEST_VAL       {getQUVAL   ::   TFMemo Text}
+          | QUEST1_VAL      {getQU1VAL  ::   TFMemo FDBR -> TFMemo Text}
+          | QUEST2_VAL      {getQU2VAL  ::   TFMemo FDBR -> TFMemo Text}
+          | QUEST6_VAL      {getQU6VAL  ::   TFMemo FDBR -> TFMemo Text}
+          | QUEST3_VAL      {getQU3VAL  ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo Text}
           | YEAR_VAL        {getYEARVAL ::   Int}
 
 --            | RESULT [sys_message]
