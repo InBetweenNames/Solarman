@@ -528,7 +528,9 @@ make_trans'' voice rel preps = (f, g)
                 fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev preps evs rtriples >>= (\x -> return (subj, x))) images
                 let fdbr = filter (not . List.null . snd) fdbrRelevantEvs --TODO: this will make it so sets of events with a cardinality of 0 are not counted, leading to wrong "the least" behaviour
                 --Now for superlatives.  All termphrases are applied first, and ordering happens after.
-                filter_super preps fdbr rtriples
+                res <- filter_super preps fdbr rtriples
+                modify (\s' -> Map.insert g res s')
+                return res
 
 --make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?
