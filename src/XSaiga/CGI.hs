@@ -13,6 +13,7 @@ import qualified XSaiga.Getts as Getts
 import qualified XSaiga.TypeAg2 as TypeAg2
 import qualified Control.Monad.State.Lazy as State
 import qualified Data.Map.Lazy as Map
+import qualified Control.Monad as M
 
 --change between remoteData and localData
 --dataStore = Local.localData
@@ -146,11 +147,16 @@ interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
         let interpretations = List.map TypeAg2.getQUVAL $ App.parse input
-        outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
-        let formatted = T.concat $ List.intersperse " ; " $ Prelude.map fst outs
+        --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
+        (outs, _) <- M.foldM nextInterp ([], Map.empty) interpretations --TODO: save the state for later?  paper opportunity
+        let formatted = T.concat $ List.intersperse " ; " outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
+    where
+        nextInterp (txt, state) interp = do
+            (out, nState) <- evaluate interp state
+            return (txt ++ [out], nState)
 
-evaluate (sem, getts) = do
+evaluate (sem, getts) startState = do
   rtriples <- TypeAg2.getReducedTriplestore remoteData (TypeAg2.flatOptimize $ TypeAg2.flattenGetts getts)
-  return $ State.runState (sem rtriples) (Map.empty)
+  return $ State.runState (sem rtriples) startState
