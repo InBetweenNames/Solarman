@@ -11,8 +11,8 @@ import Data.Text.Encoding as E
 --import qualified XSaiga.LocalData as Local
 import qualified XSaiga.Getts as Getts
 import qualified XSaiga.TypeAg2 as TypeAg2
-import qualified Control.Monad.State.Lazy as State
-import qualified Data.Map.Lazy as Map
+import qualified Control.Monad.State.Strict as State
+import qualified Data.Map.Strict as Map
 import qualified Control.Monad as M
 
 --change between remoteData and localData
@@ -94,13 +94,13 @@ interpret "what is your favorite band"
    = "Pink Floyd. I love, dark side of the moon"
 
 interpret "who is the vice president at the university of windsor" 
-  = "Leo Groarke"
+  = "Douglas Kneale"
 
 interpret "who is the president at the university of windsor" 
-  = "Doctor Alan Wildeman."
+  = "Doctor Robert Gordon."
 
 interpret "who is the dean of science at the university of windsor"
-  = "Doctor Marlys Koschinsky"
+  = "Doctor Chris Houser"
 
 interpret "tell me a poem" = "do not know any poems. But my friend, Judy, does"
 
@@ -148,15 +148,22 @@ interpret' input = do
     if firstpass == "BLANKVALNOTUSED" then do
         let interpretations = List.map TypeAg2.getQUVAL $ App.parse input
         --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
-        (outs, _) <- M.foldM nextInterp ([], Map.empty) interpretations --TODO: save the state for later?  paper opportunity
+        let flatQueries = Prelude.foldr mergeFlat ([],[]) interpretations
+        let optQueries = TypeAg2.flatOptimize flatQueries
+        rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
+        (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) interpretations --TODO: save the state for later?  paper opportunity
         let formatted = T.concat $ List.intersperse " ; " outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
     where
-        nextInterp (txt, state) interp = do
-            (out, nState) <- evaluate interp state
+        mergeFlat interp flatGetts = let g = TypeAg2.getGetts interp in TypeAg2.merge (TypeAg2.flattenGetts (assertGetts g)) flatGetts
+        nextInterp rtriples (txt, state) interp = do --TODO: improves by about 2 seconds on heavy workloads -- could be better!
+            (out, nState) <- evaluate rtriples interp state
             return (txt ++ [out], nState)
 
-evaluate (sem, getts) startState = do
-  rtriples <- TypeAg2.getReducedTriplestore remoteData (TypeAg2.flatOptimize $ TypeAg2.flattenGetts getts)
-  return $ State.runState (sem rtriples) startState
+evaluate rtriples interp startState = do
+  return $ State.runState (TypeAg2.getSem interp rtriples) startState
+
+assertGetts :: Maybe a -> a
+assertGetts Nothing = error "Top-level getts is missing!"
+assertGetts (Just x) = x

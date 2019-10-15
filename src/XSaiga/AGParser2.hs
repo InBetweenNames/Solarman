@@ -9,9 +9,7 @@ import qualified Data.Text as T
 import XSaiga.TypeAg2
 import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
-import Control.Monad.State.Lazy
-
-
+import Control.Monad.State.Strict
 
 ---- ************************************ -----------------------
 
@@ -477,4 +475,37 @@ attsFinalAlt  key e t  =  [ [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, en
 formatAttsFinalAlt :: MemoL -> Int -> MemoTable -> Atts
 formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ attsFinalAlt key e t
 
-                   
+meaning_of p dInp key
+ = let dInput     = T.words dInp
+       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) []
+       upperBound = (length dInput) + 1
+   in  formFinal key upperBound (snd $ appParser)
+
+meaning_of_ p dInp key
+ = let dInput     = T.words dInp
+       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) []
+       upperBound = (length dInput) + 1
+   in  (snd $ appParser)
+
+formAtts key ePoint t
+    = concat $ concat $ concat $ concat
+        [[[[  val1 |(id1,val1)<-synAtts]
+                |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
+                |((i,inAt1),((cs,ct),rs)) <- sr ]
+                |(s,sr) <- t, s == key ]
+
+formFinal key ePoint t
+    = concat $ concat $ concat $ concat
+        [[[[  val1 |(id1,val1)<-synAtts]
+                |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
+                |((i,inAt1),((cs,ct),rs)) <- sr ]
+                |(s,sr) <- t, s == key ]
+
+--test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
+test p input = runState (p ((1,[]),input) ([],[])) []
+
+--formatParseIO = mapM id . map showio . parse
+
+findStart st ((s,ss):rest) | s == st   = [(s,ss)]
+                           | otherwise = findStart st rest
+findStart st []                        = []

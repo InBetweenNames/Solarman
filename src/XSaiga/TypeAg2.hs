@@ -12,8 +12,8 @@ import Control.Arrow
 import Data.Bifunctor
 import Data.Biapplicative
 import Data.List (nub)
-import qualified Data.Map.Lazy as Map
-import Control.Monad.State.Lazy
+import qualified Data.Map.Strict as Map
+import Control.Monad.State.Strict
 --import Control.Applicative
 
 data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Show, Ord)
@@ -23,7 +23,81 @@ data GettsUnionType = GU_NounOr | GU_NounAnd deriving (Eq, Show, Ord)
 --If made fine grained enough, this may suffice for memoization
 type TF a = [Triple] -> a
 
-type TFMemo a = (TF (State (Map.Map GettsTree FDBR) a), GettsTree)
+--newtype TFMemo a = TFMemo (TF (State (Map.Map GettsTree FDBR) a), Maybe GettsTree)
+
+--A SemFunc is really just a tuple of two functions
+type SemFunc a = (a, Treeify a)
+
+--convenience functions for TFMemo
+{-
+getGetts (TFMemo a) = snd a
+getSem (TFMemo a) = fst a
+
+instance Functor TFMemo where
+    fmap f m = TFMemo (\triples -> fmap f (getSem m triples), Nothing)
+
+instance Applicative TFMemo where
+    --(<*>) :: TFMemo (a -> b) -> TFMemo a -> TFMemo b
+    f <*> m = TFMemo (f', Nothing)
+        where
+            f' triples = (getSem f triples) <*> (getSem m triples)
+    --f <*> m = f >>= (\f' -> m >>= (\a -> return $ f' a))
+    pure a = TFMemo (const $ return a, Nothing)
+
+instance Monad TFMemo where
+    m >>= f = TFMemo (f', Nothing)
+        where
+            f' triples = getSem m triples >>= (\a -> getSem (f a) triples)
+    return = pure
+-}
+
+--OBSERVATIONS:
+{-
+ * we didn't even use liftM anywhere for TFMemoT
+ * we didn't use TFMemoT as a monad anywhere even
+ * we actually lost performance when not memoizing GettsPropFDBR (1.62 vs 1.22 observed on highly ambiguous query)
+ * we improved performance slightly using Strict map and Strict state
+ * we improved performance slightly by re-using the state between ambiguous parses
+ * so, do we need to overcomplicate with Nothing?
+
+ * significant slowdown in ambiguous queries from fact that SPARQL queries are not cached between parses
+ * it may be ideal to collect ALL parses at once and then make a reduced triplestore from that
+ * above IMPLEMENTED to GREAT effect!
+ * and also fix our representation of how reduced triplestores are stored to alleviate the slowdown
+ 
+  NEED TO TEST:
+  * liftS vs wrapV -- can we just get SemFunc to do our work for us
+
+-}
+
+newtype TFMemoT t g m a = TFMemoT (t -> m a, Maybe g)
+getGetts (TFMemoT a) = snd a
+getSem (TFMemoT a) = fst a
+
+instance (Functor m) => Functor (TFMemoT t g m) where
+    fmap f m = TFMemoT (\triples -> fmap f (getSem m triples), Nothing)
+
+instance (Applicative m) => Applicative (TFMemoT t g m) where
+    f <*> m = TFMemoT (f', Nothing)
+        where
+            f' triples = (getSem f triples) <*> (getSem m triples)
+    --f <*> m = f >>= (\f' -> m >>= (\a -> return $ f' a))
+    pure a = TFMemoT (const $ pure a, Nothing)
+
+instance (Monad m) => Monad (TFMemoT t g m) where
+    m >>= f = TFMemoT (f', Nothing)
+        where
+            f' triples = getSem m triples >>= (\a -> getSem (f a) triples)
+    return = pure
+
+type TFMemo = TFMemoT [Triple] GettsTree (State (Map.Map GettsTree FDBR))
+
+--moon >>= (\moon_fdbr -> spins >>= (\spin_fdbr -> a'' moon_fdbr spins_fdbr))
+
+--the idea: bind erases the name but keeps the memoized computation
+--so liftM* works as expected
+--liftS* can be used to keep names for things
+--does this uphold the monad laws?
 
 data GettsTree =
       GettsNone -- TODO MEMO: NOT to be used for memoization (replace with Maybe GettsTree in termphrases/superphrases?)
@@ -73,13 +147,9 @@ Flattened layer
 
 -}
 
---A SemFunc is really just a tuple of two functions
-type SemFunc a = (a, Treeify a)
-getGetts = snd
-getSem = fst
-
-wrap :: ((TF FDBR),GettsTree) -> TFMemo FDBR
-wrap (f,g) = (f', g)
+--wrap memoizes and names
+wrap :: (TF FDBR, GettsTree) -> TFMemo FDBR
+wrap (f,g) = TFMemoT (f', Just g)
     where
         f' triples = do
             s <- get
@@ -90,34 +160,79 @@ wrap (f,g) = (f', g)
                     modify (\s' -> Map.insert g res s')
                     return res
 
-liftS :: (FDBR -> FDBR) -> (GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR
-liftS f g a = (f', g')
+--ALTERNATIVE APPROACH: use existing SemFunc infrastructure and const to produce memoized definitions
+--wrapV* functions do not memoize results but do provide names
+--provides more uniformity!  could leverage all existing definitions and automatically have them work
+--but does const imply a performance penalty?
+wrapU0 :: TF a -> TFMemo a
+wrapU0 f = TFMemoT (f', Nothing)
+                    where
+                        f' triples = return $ f triples
+
+wrapV0 :: (TF a, GettsTree) -> TFMemo a
+wrapV0 (f,g) = TFMemoT (f', Just g)
+                    where
+                        f' triples = return $ f triples
+
+wrapV1 :: (TF a -> TF b, GettsTree -> GettsTree) -> TFMemo a -> TFMemo b
+wrapV1 (f,g) a = TFMemoT (f', g')
+                    where
+                        g' = liftM g (getGetts a)
+                        f' triples = (getSem a triples) >>= (\x -> return $ f (const x) triples)
+
+wrapV2 :: (TF a -> TF b -> TF c, GettsTree -> GettsTree -> GettsTree) -> TFMemo a -> TFMemo b -> TFMemo c
+wrapV2 (f,g) a b = TFMemoT (f', g')
+                    where
+                        g' = liftM2 g (getGetts a) (getGetts b)
+                        f' triples = do
+                            x1 <- (getSem a triples)
+                            x2 <- (getSem b triples)
+                            return $ f (const x1) (const x2) triples
+
+--versions of wrapV* could be provided that do memoize results, PROVIDED they are FDBRs
+
+--liftT* is like liftM, but it still maintains a unique name even though it does not memoize anything
+liftT :: (a -> b) -> (GettsTree -> GettsTree) -> TFMemo a -> TFMemo b
+liftT f g a = TFMemoT (f', g')
                 where
-                    g' = g (getGetts a)
-                    f' triples = do
-                        s <- get
-                        case Map.lookup g' s of
-                            Just fdbr -> return fdbr
-                            Nothing -> do
-                                fdbr1 <- (getSem a) triples
-                                let res = f fdbr1
-                                modify (\s' -> Map.insert g' res s')
-                                return res
+                    g' = liftM g (getGetts a)
+                    f' triples = liftM f $ getSem a triples
+
+liftT2 :: (a -> b -> c) -> (GettsTree -> GettsTree -> GettsTree) -> TFMemo a -> TFMemo b -> TFMemo c
+liftT2 f g a b = TFMemoT (f', g')
+                where
+                    g' = liftM2 g (getGetts a) (getGetts b)
+                    f' triples = liftM2 f (getSem a triples) (getSem b triples)
+
+liftS :: (FDBR -> FDBR) -> (GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR
+liftS f g a = TFMemoT (f', g')
+                where
+                    g' = liftM g (getGetts a)
+                    f' triples = case g' of
+                        Nothing -> liftM f $ getSem a triples
+                        Just name -> do
+                            s <- get
+                            case Map.lookup name s of
+                                Just fdbr -> return fdbr
+                                Nothing -> do
+                                    res <- liftM f $ getSem a triples
+                                    modify (\s' -> Map.insert name res s')
+                                    return res
 
 liftS2 :: (FDBR -> FDBR -> FDBR) -> (GettsTree -> GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR
-liftS2 f g a1 a2 = (f', g')
+liftS2 f g a1 a2 = TFMemoT (f', g')
                 where
-                    g' = g (getGetts a1) (getGetts a2)
-                    f' triples = do
-                        s <- get
-                        case Map.lookup g' s of
-                            Just fdbr -> return fdbr
-                            Nothing -> do
-                                fdbr1 <- (getSem a1) triples
-                                fdbr2 <- (getSem a2) triples
-                                let res = f fdbr1 fdbr2
-                                modify (\s' -> Map.insert g' res s')
-                                return res
+                    g' = liftM2 g (getGetts a1) (getGetts a2)
+                    f' triples = case g' of
+                        Nothing -> liftM2 f (getSem a1 triples) (getSem a2 triples)
+                        Just name -> do
+                            s <- get
+                            case Map.lookup name s of
+                                Just fdbr -> return fdbr
+                                Nothing -> do
+                                    res <- liftM2 f (getSem a1 triples) (getSem a2 triples)
+                                    modify (\s' -> Map.insert name res s')
+                                    return res
 
 --NEW: convert from biapplicative form to regular function application
 --this is a one way conversion, unless you have the property that the tuple elements are "invariant" with respect to each other
@@ -231,14 +346,34 @@ gettsUnion = gettsIdentity GettsUnion
 gettsApply g = g GettsNone
 
 --NOTE MEMO: only use gettsApply here for unique naming, not for memoizing individual semantic functions
+--NOTE MEMO: what do we do if we have unmemoized stuff?
+--NOTE MEMO: assume all top level things are named, because otherwise we can't query the database
 --cannot use sequenceA because it would look like
 --with (a (telescope (by (a (person))))) instead of (with ( a telescope )), (by (a person))
 --TODO: augment with superlative
 gatherPreps' :: [([T.Text], Maybe Ordering, SemFunc (TF a -> TF b))] -> [GettsTree]
-gatherPreps' = map (\(props, ord, g) -> GettsPrep props ord $ gettsApply $ getGetts g)
+gatherPreps' = map (\(props, ord, g) -> GettsPrep props ord $ gettsApply $ snd g)
 
 gatherPreps :: [([T.Text], Maybe Ordering, TFMemo a -> TFMemo b)] -> [GettsTree]
-gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ snd $ g (error "Should not eval!", GettsNone)) --test with undefined to prove
+gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ applyGettsPrep g) --test with undefined to prove
+
+--used ONLY to get a unique identifier for prepositions
+applyGettsPrep :: (TFMemo a -> TFMemo b) -> GettsTree
+applyGettsPrep g = case getGetts $ g (TFMemoT (error "Should not eval!", Just GettsNone)) of
+                    Just x -> x
+                    Nothing -> error "Top level semantic functions need GettsTree names"
+
+--OBSERVATION: top level things need names for sure.  the only time we don't want to name things is sometimes inside other computations.
+--a top level expression without a name will cause the entire expression to not have a name
+--but that also means we can't retrieve anything from the triplestore because we will have Nothing to query it with
+--it would be nice to garrant that top level things will always have a name, and provide an escape hatch for those inside computations that don't contribute to the name of other things
+--in practice, it's only inside transitive verbs we need more control over this
+--in particular, the predicates in here need that control
+--if we pass Nothing in, we forbid them from memoizing
+--since they may appear at the top level, the same denotation must be used inside and outside
+--therefore, that denotation needs to account for this
+--if we make GettsIntersect have a Maybe GettsTree as the last argument, we can remove GettsNone
+--but this complicates liftS* a bit: (FDBR -> FDBR -> FDBR) -> (GettsTree -> Maybe GettsTree -> Maybe GettsTree) -> ...?
 
 --a <<*>> moon <<*>> spins... 
 --PUBLIC INTERFACE (TODO)
