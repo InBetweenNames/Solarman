@@ -58,38 +58,27 @@ instance Monad TFMemo where
  * we actually lost performance when not memoizing GettsPropFDBR (1.62 vs 1.22 observed on highly ambiguous query)
  * we improved performance slightly using Strict map and Strict state
  * we improved performance slightly by re-using the state between ambiguous parses
- * so, do we need to overcomplicate with Nothing?
+ * so, do we need to overcomplicate with Nothing?  for now, lets not do this.
+ * liftS/T vs wrapS/V -- can we just get SemFunc to do our work for us?  as it turns out, yes, for no real additional cost
+   all memoized denotations are now in terms of the original SemFunc definitions using this
 
  * significant slowdown in ambiguous queries from fact that SPARQL queries are not cached between parses
- * it may be ideal to collect ALL parses at once and then make a reduced triplestore from that
- * above IMPLEMENTED to GREAT effect!
- * and also fix our representation of how reduced triplestores are stored to alleviate the slowdown
- 
-  NEED TO TEST:
-  * liftS vs wrapV -- can we just get SemFunc to do our work for us
+   it may be ideal to collect ALL parses at once and then make a reduced triplestore from that
+   above IMPLEMENTED to GREAT effect!
+   and also fix our representation of how reduced triplestores are stored to alleviate the slowdown
+
+ * could we make an wrap style function that can handle N-arity?  probably needs TH
+
+ * TODO: pre-populate GettsMembers FDBRs, EntEvProp FDBRs, and optimize [Triple] for faster GettsPropFDBR queries
+ could we eliminate [Triple] altogether and do everything right from the FDBR cache?  probably not, but worth thinking about
 
 -}
 
-newtype TFMemoT t g m a = TFMemoT (t -> m a, Maybe g)
+newtype TFMemoT t g m a = TFMemoT (t -> m a, g)
 getGetts (TFMemoT a) = snd a
 getSem (TFMemoT a) = fst a
 
-instance (Functor m) => Functor (TFMemoT t g m) where
-    fmap f m = TFMemoT (\triples -> fmap f (getSem m triples), Nothing)
-
-instance (Applicative m) => Applicative (TFMemoT t g m) where
-    f <*> m = TFMemoT (f', Nothing)
-        where
-            f' triples = (getSem f triples) <*> (getSem m triples)
-    --f <*> m = f >>= (\f' -> m >>= (\a -> return $ f' a))
-    pure a = TFMemoT (const $ pure a, Nothing)
-
-instance (Monad m) => Monad (TFMemoT t g m) where
-    m >>= f = TFMemoT (f', Nothing)
-        where
-            f' triples = getSem m triples >>= (\a -> getSem (f a) triples)
-    return = pure
-
+--this could be made into a monad if we use Maybe GettsTree... but it is not a useful one
 type TFMemo = TFMemoT [Triple] GettsTree (State (Map.Map GettsTree FDBR))
 
 --moon >>= (\moon_fdbr -> spins >>= (\spin_fdbr -> a'' moon_fdbr spins_fdbr))
@@ -147,9 +136,10 @@ Flattened layer
 
 -}
 
---wrap memoizes and names
-wrap :: (TF FDBR, GettsTree) -> TFMemo FDBR
-wrap (f,g) = TFMemoT (f', Just g)
+--wrapS* memoizes SemFuncs
+--wrapT* does not (but still uses memoization in the arguments)
+wrapS0 :: SemFunc (TF FDBR) -> TFMemo FDBR
+wrapS0 (f,g) = TFMemoT (f', g)
     where
         f' triples = do
             s <- get
@@ -160,79 +150,54 @@ wrap (f,g) = TFMemoT (f', Just g)
                     modify (\s' -> Map.insert g res s')
                     return res
 
---ALTERNATIVE APPROACH: use existing SemFunc infrastructure and const to produce memoized definitions
---wrapV* functions do not memoize results but do provide names
---provides more uniformity!  could leverage all existing definitions and automatically have them work
---but does const imply a performance penalty?
-wrapU0 :: TF a -> TFMemo a
-wrapU0 f = TFMemoT (f', Nothing)
+wrapS1 :: SemFunc (TF a -> TF FDBR) -> TFMemo a -> TFMemo FDBR
+wrapS1 (f,g) a = TFMemoT (f', g')
+                where
+                    g' = g (getGetts a)
+                    f' triples = do
+                            s <- get
+                            case Map.lookup g' s of
+                                Just fdbr -> return fdbr
+                                Nothing -> do
+                                    x <- getSem a triples
+                                    let res = f (const x) triples
+                                    modify (\s' -> Map.insert g' res s')
+                                    return res
+
+wrapS2 :: SemFunc (TF a -> TF b -> TF FDBR) -> TFMemo a -> TFMemo b -> TFMemo FDBR
+wrapS2 (f,g) a b = TFMemoT (f', g')
+                where
+                    g' = g (getGetts a) (getGetts b)
+                    f' triples = do
+                            s <- get
+                            case Map.lookup g' s of
+                                Just fdbr -> return fdbr
+                                Nothing -> do
+                                    x1 <- getSem a triples
+                                    x2 <- getSem b triples
+                                    let res = f (const x1) (const x2) triples
+                                    modify (\s' -> Map.insert g' res s')
+                                    return res
+
+wrapT0 :: (TF a, GettsTree) -> TFMemo a
+wrapT0 (f,g) = TFMemoT (f', g)
                     where
                         f' triples = return $ f triples
 
-wrapV0 :: (TF a, GettsTree) -> TFMemo a
-wrapV0 (f,g) = TFMemoT (f', Just g)
+wrapT1 :: (TF a -> TF b, GettsTree -> GettsTree) -> TFMemo a -> TFMemo b
+wrapT1 (f,g) a = TFMemoT (f', g')
                     where
-                        f' triples = return $ f triples
-
-wrapV1 :: (TF a -> TF b, GettsTree -> GettsTree) -> TFMemo a -> TFMemo b
-wrapV1 (f,g) a = TFMemoT (f', g')
-                    where
-                        g' = liftM g (getGetts a)
+                        g' = g (getGetts a)
                         f' triples = (getSem a triples) >>= (\x -> return $ f (const x) triples)
 
-wrapV2 :: (TF a -> TF b -> TF c, GettsTree -> GettsTree -> GettsTree) -> TFMemo a -> TFMemo b -> TFMemo c
-wrapV2 (f,g) a b = TFMemoT (f', g')
+wrapT2 :: (TF a -> TF b -> TF c, GettsTree -> GettsTree -> GettsTree) -> TFMemo a -> TFMemo b -> TFMemo c
+wrapT2 (f,g) a b = TFMemoT (f', g')
                     where
-                        g' = liftM2 g (getGetts a) (getGetts b)
+                        g' = g (getGetts a) (getGetts b)
                         f' triples = do
                             x1 <- (getSem a triples)
                             x2 <- (getSem b triples)
                             return $ f (const x1) (const x2) triples
-
---versions of wrapV* could be provided that do memoize results, PROVIDED they are FDBRs
-
---liftT* is like liftM, but it still maintains a unique name even though it does not memoize anything
-liftT :: (a -> b) -> (GettsTree -> GettsTree) -> TFMemo a -> TFMemo b
-liftT f g a = TFMemoT (f', g')
-                where
-                    g' = liftM g (getGetts a)
-                    f' triples = liftM f $ getSem a triples
-
-liftT2 :: (a -> b -> c) -> (GettsTree -> GettsTree -> GettsTree) -> TFMemo a -> TFMemo b -> TFMemo c
-liftT2 f g a b = TFMemoT (f', g')
-                where
-                    g' = liftM2 g (getGetts a) (getGetts b)
-                    f' triples = liftM2 f (getSem a triples) (getSem b triples)
-
-liftS :: (FDBR -> FDBR) -> (GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR
-liftS f g a = TFMemoT (f', g')
-                where
-                    g' = liftM g (getGetts a)
-                    f' triples = case g' of
-                        Nothing -> liftM f $ getSem a triples
-                        Just name -> do
-                            s <- get
-                            case Map.lookup name s of
-                                Just fdbr -> return fdbr
-                                Nothing -> do
-                                    res <- liftM f $ getSem a triples
-                                    modify (\s' -> Map.insert name res s')
-                                    return res
-
-liftS2 :: (FDBR -> FDBR -> FDBR) -> (GettsTree -> GettsTree -> GettsTree) -> TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR
-liftS2 f g a1 a2 = TFMemoT (f', g')
-                where
-                    g' = liftM2 g (getGetts a1) (getGetts a2)
-                    f' triples = case g' of
-                        Nothing -> liftM2 f (getSem a1 triples) (getSem a2 triples)
-                        Just name -> do
-                            s <- get
-                            case Map.lookup name s of
-                                Just fdbr -> return fdbr
-                                Nothing -> do
-                                    res <- liftM2 f (getSem a1 triples) (getSem a2 triples)
-                                    modify (\s' -> Map.insert name res s')
-                                    return res
 
 --NEW: convert from biapplicative form to regular function application
 --this is a one way conversion, unless you have the property that the tuple elements are "invariant" with respect to each other
@@ -359,9 +324,7 @@ gatherPreps = map (\(props, ord, g) -> GettsPrep props ord $ applyGettsPrep g) -
 
 --used ONLY to get a unique identifier for prepositions
 applyGettsPrep :: (TFMemo a -> TFMemo b) -> GettsTree
-applyGettsPrep g = case getGetts $ g (TFMemoT (error "Should not eval!", Just GettsNone)) of
-                    Just x -> x
-                    Nothing -> error "Top level semantic functions need GettsTree names"
+applyGettsPrep g = getGetts $ g $ TFMemoT (error "Should not eval!", GettsNone)
 
 --OBSERVATION: top level things need names for sure.  the only time we don't want to name things is sometimes inside other computations.
 --a top level expression without a name will cause the entire expression to not have a name
@@ -384,13 +347,13 @@ applyGettsPrep g = case getGetts $ g (TFMemoT (error "Should not eval!", Just Ge
 get_members' :: Text -> SemFunc (TF FDBR)
 get_members' set = (\r -> pure_getts_members r set) >|< GettsMembers set
 
-get_members = wrap . get_members'
+get_members = wrapS0 . get_members'
 
 --TODO: revise this for new transitive verb definition.  should not assume these fields in general.
 get_subjs_of_event_type' :: Text -> SemFunc (TF FDBR)
 get_subjs_of_event_type' ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP "subject" (ev_type, "subject", "object") []
 
-get_subjs_of_event_type = wrap . get_subjs_of_event_type'
+get_subjs_of_event_type = wrapS0 . get_subjs_of_event_type'
 
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}

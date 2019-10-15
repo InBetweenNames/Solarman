@@ -33,7 +33,8 @@ termor' :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> T
 termor' = (liftA2 . liftA2 $ union_fdbr'') >|< liftA2 (GettsUnion GU_NounOr)
 
 termor :: (TFMemo FDBR -> TFMemo FDBR) -> (TFMemo FDBR -> TFMemo FDBR) -> TFMemo FDBR -> TFMemo FDBR
-termor = liftA2 $ liftS2 union_fdbr'' (GettsUnion GU_NounOr)
+termor = liftA2 $ wrapS2 $ (liftA2 union_fdbr'') >|< (GettsUnion GU_NounOr)
+--termor = liftA2 union_fdbr
 
 --see MSc thesis for explanation of why termand is in terms of termor
 termand'' :: FDBR -> FDBR -> FDBR
@@ -45,7 +46,7 @@ termand' :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> 
 termand' = (liftA2 . liftA2 $ termand'') >|< liftA2 (GettsUnion GU_NounAnd)
 
 termand :: (TFMemo FDBR -> TFMemo FDBR) -> (TFMemo FDBR -> TFMemo FDBR) -> TFMemo FDBR -> TFMemo FDBR
-termand = liftA2 $ liftS2 termand'' (GettsUnion GU_NounAnd)
+termand = liftA2 $ wrapS2 $ (liftA2 termand'') >|< (GettsUnion GU_NounAnd)
 
 --TODO: FDBRs are sorted.  Use that to improve this.
 intersect_fdbr'' _ [] = []
@@ -62,7 +63,7 @@ intersect_fdbr'' fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
 intersect_fdbr' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 intersect_fdbr' = liftA2 intersect_fdbr'' >|< GettsIntersect GI_NounAnd
 
-intersect_fdbr = liftS2 intersect_fdbr'' (GettsIntersect GI_NounAnd)
+intersect_fdbr = wrapS2 intersect_fdbr'
 
 union_fdbr'' :: FDBR -> FDBR -> FDBR
 union_fdbr'' fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
@@ -70,7 +71,7 @@ union_fdbr'' fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
 union_fdbr' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 union_fdbr' = liftA2 union_fdbr'' >|< GettsUnion GU_NounOr
 
-union_fdbr = liftS2 union_fdbr'' (GettsUnion GU_NounOr)
+union_fdbr = wrapS2 union_fdbr'
 
 nounand = intersect_fdbr
 
@@ -95,7 +96,7 @@ every'' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr'' nph vb
 every' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 every' = liftA2 every'' >|< GettsIntersect GI_Every
 
-every = liftS2 every'' (GettsIntersect GI_Every)
+every = wrapS2 every'
 
 most'' :: FDBR -> FDBR -> FDBR
 most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
@@ -107,7 +108,7 @@ most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
 most' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 most' = liftA2 most'' >|< GettsIntersect GI_Most
 
-most = liftS2 most'' (GettsIntersect GI_Most)
+most = wrapS2 most'
 
 {- TODO:
 no' nph vbph =
@@ -130,7 +131,7 @@ one'' nph vbph   | length res == 1 = res
 one' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 one' = liftA2 one'' >|< GettsIntersect (GI_Number 1)
 
-one = liftS2 one'' (GettsIntersect (GI_Number 1))
+one = wrapS2 one'
 
 two'' nph vbph   | length res == 2 = res
                 | otherwise = []
@@ -140,7 +141,7 @@ two'' nph vbph   | length res == 2 = res
 two' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
 two' = liftA2 two'' >|< GettsIntersect (GI_Number 2)
 
-two = liftS2 two'' (GettsIntersect (GI_Number 2))
+two = wrapS2 two'
 
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
@@ -158,7 +159,7 @@ which' = liftA2 which'' >|< GettsIntersect (GI_Which)
 --need: unique name, but unmemoized result
 --like liftS, but SKIPS memoization
 which :: TFMemo FDBR -> TFMemo FDBR -> TFMemo T.Text
-which = liftT2 which'' (GettsIntersect (GI_Which))
+which = wrapT2 which'
 --which (nph_tf, nph_g) (vbph_tf, vbph_g) = (f, g)
 --    where
 --        g = GettsIntersect (GI_Which) nph_g vbph_g
@@ -168,8 +169,9 @@ how_many'' nph vbph = tshow $ List.length (intersect_fdbr'' nph vbph)
 how_many' = liftA2 how_many'' >|< GettsIntersect (GI_HowMany)
 
 --TODO MEMO: would REALLY like to say liftM2 here to skip memoization
+--but we can't because then it would not have a name and it would be top-level!
 --how_many = liftS2 how_many'' (GettsIntersect (GI_HowMany))
-how_many = liftT2 how_many'' (GettsIntersect (GI_HowMany))
+how_many = wrapT2 how_many'
 {-how_many (nph, g1) (vbph, g2) = (f, g)
     where
         g = GettsIntersect (GI_HowMany) g1 g2
@@ -190,7 +192,7 @@ what' = fmap what'' >|< id
 --        f = liftA (liftM what'') tf
 
 --is "id" correct here?
-what = liftT what'' id
+what = wrapT1 what'
 
 --TODO: prepositions
 make_prep props tmph = (props, Nothing, tmph)
@@ -213,7 +215,7 @@ make_pnoun'' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 make_pnoun' :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
 make_pnoun' noun = (fmap $ make_pnoun'' noun) >|< GettsIntersect GI_NounAnd (GettsPNoun noun)
 
-make_pnoun noun = liftS (make_pnoun'' noun) (GettsIntersect GI_NounAnd (GettsPNoun noun))
+make_pnoun noun = wrapS1 $ make_pnoun' noun
 
 --TODO: ugly hack to work around parser problem
 make_year' = make_pnoun' . tshow
@@ -253,7 +255,7 @@ make_prop_termphrase_ prop = make_prop_termphrase' prop >|< (GettsPropTmph prop 
 --TODO: how to memoize text? WE DON'T
 make_prop_termphrase :: T.Text -> TFMemo FDBR -> TFMemo T.Text
 --make_prop_termphrase prop (tf, g) = liftW (make_prop_termphrase'' prop) (GettsPropTmph prop . GettsAttachP prop)
-make_prop_termphrase prop = wrapV1 $ make_prop_termphrase_ prop
+make_prop_termphrase prop = wrapT1 $ make_prop_termphrase_ prop
 
 --NOTE: we could simplify by taking in SemFunc things and lifting directly
 --would need to use const to facilitate the memoization
@@ -276,7 +278,7 @@ whatobj' (tf, getts) = make_prop_termphrase' prop tf >|< GettsPropTmph prop (Get
 
 --top level things should ALWAYS be named
 whatobj :: TFMemo FDBR -> TFMemo T.Text
-whatobj x | Just g <- getGetts x = make_prop_termphrase (findFirstObj g) x
+whatobj x = let g = getGetts x in make_prop_termphrase (findFirstObj g) x
 
 --end of copied from gangster_v4
 
@@ -380,76 +382,33 @@ filter_ev' ((names,_,pred):list) evs triples
 --What's a good name for GettsFilterEv?  How do we deal with the recursion?
 --Temporary workaround: don't bother memoizing the list of events
 filter_ev :: [([T.Text], Maybe Ordering, (TFMemo FDBR -> TFMemo FDBR))] -> [Event] -> [Triple] -> State (Map.Map GettsTree FDBR) [Event]
-filter_ev [] evs triples = return evs
-filter_ev ((names,_,pred):list) evs triples
-    = do
-        let pred_tf = getSem $ pred (make_pred_arg_memo evs names)
-        --Memoization already happened in pred_tf thankfully
-        res <- pred_tf triples
-        let relevant_evs = List.nub $ concatMap snd res
-        if not $ List.null res then filter_ev list relevant_evs triples else return []
-    
-    --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
---OBSERVATIONS: the memoized filter_ev seems to be slightly faster in ambiguous queries, but only slightly
-
-filter_ev_unmemo :: [([T.Text], Maybe Ordering, (TFMemo FDBR -> TFMemo FDBR))] -> [Event] -> [Triple] -> State (Map.Map GettsTree FDBR) [Event]
-filter_ev_unmemo [] evs triples = return evs
-filter_ev_unmemo ((names,_,pred):list) evs triples
-    = do
-        let pred_tf = getSem $ pred (make_pred_arg_unmemo evs names) --nothing skips memoizing the result NOTE: it almost looks like this argument should be defined somewhere else
-        --Memoization already happened in pred_tf thankfully
-        res <- pred_tf triples
-        let relevant_evs = List.nub $ concatMap snd res
-        if not $ List.null res then filter_ev_unmemo list relevant_evs triples else return []
-
-filter_ev_unmemo' :: [([T.Text], Maybe Ordering, (TFMemo FDBR -> TFMemo FDBR))] -> [Event] -> [Triple] -> State (Map.Map GettsTree FDBR) [Event]
-filter_ev_unmemo' list evs triples = foldrM filt evs list
+filter_ev list evs triples = foldrM filt evs list
     where
         filt _ [] = return []
         filt (names, _, pred) evs = do
-            let pred_tf = getSem $ pred (make_pred_arg_unmemo evs names) --skips memoizing the result
+            let pred_tf = getSem $ pred (make_pred_arg_memo evs names) --skips memoizing the result
             --Memoization already happened in pred_tf thankfully
             res <- pred_tf triples
             let relevant_evs = List.nub $ concatMap snd res
             return relevant_evs
-
+    
+    --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
 
 make_pred_arg_pure :: [Event] -> [T.Text] -> TF FDBR
 make_pred_arg_pure evs names triples = let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events
                                         in concatMap (\name -> make_fdbr_with_prop relevant_triples name) names
 
---CASES:
--- case 1: arguments memoized, result is not          (covered by liftM*)
--- case 2: arguments not all memoized, result is not  (covered by liftM*)
--- case 3: arguments memoized, result memoized        (covered by liftS*)
--- case 4: arguments not all memoized, result memoized (covered by liftS* -- but arguments do need names)
-
---simplified:
--- if the result should be memoized, use liftS
--- otherwise, use liftM
--- liftS will memoize if all arguments have names, regardless of if the arguments themselves are memoized
-
--- addendum:
--- things should be memoized automatically if a unique ID is able to be made -- regardless if the arguments or other components are not memoized
--- setting the name to Nothing prevents memoization in higher order functions
--- it is possible to give something a unique name and still have it not be memoized -- the name allows higher order functions to generate unique names
--- so Nothing means, regardless of whether the tf is memoized or not, prevent any memoization from happening automatically in things that use this
--- we can use Nothing in predicates to avoid caching GettsPropFDBRs and GettsIntersect _ _ GettsPropFDBRs
--- it seems like this could be made simpler
--- everything is possible to have a unique name -- but how do we control whether to memoize what it's passed into?
--- for example, say we don't want to memoize GettsPropFDBRs and GettsIntersect _ _ GettsPropFDBRs.
-
--- simplified description of TFMemo:
--- (tf, gt) => tf is a possibly memoized triplestore retrieval function using the State monad.  gt is either a unique name to refer to it or Nothing.
--- there are four cases:
--- tf is memoized, gt is Nothing -- things that use tf are not automatically memoized with liftS*, EVEN though tf itself is memoized
--- tf is not memoized, gt is Nothing -- things that use tf are not automatically memoized with liftS*
--- tf is memoized, gt is Just name -- things that use tf are automatically memoized with liftS* 
--- tf is not memoized, gt is Just name -- things that use tf are automatically memoized with liftS*, EVEN THOUGH tf itself is not memoized
--- all are valid and affect memoization in different ways
--- can we simplify this and still cover all use cases?
-make_pred_arg_memo evs names = wrap (make_pred_arg_pure evs names, GettsPropFDBR names evs)
-make_pred_arg_unmemo evs names = wrapU0 (make_pred_arg_pure evs names)
+--Previously, we allowed things to not have names, and unnamed things inhibit memoization in expressions using them
+--this was used to kill memoization in prepositional phrases for the prop-FDBRs produced there as it was believed it would hurt performance
+--but this turned out not to be the case.
+--In that scheme, having a name and being memoized were separate things and 4 cases emerged: unnamed, unmemoized; named, unmemoized...; etc
+--it allowed fine grained control over memoization in transitive verbs, but also introduced increased complexity and the possibility of the top-level expression tree
+--being unnamed. that would have been a problem for doing the Getts* initial queries as that name is used to produce the flattened getts queries.
+--so, asserts were in the code to try to catch this.  as a side effect, it made TFMemo itself a monad transformer where using it would remove any name.
+--but that turned out to not be useful as generally you want names for things.
+--the new scheme is that everything is memoized, as empirically this was better, and everything is named.
+--make_pred_arg_unmemo evs names = wrapU0 (make_pred_arg_pure evs names)
+make_pred_arg_memo evs names = wrapS0 (make_pred_arg_pure evs names, GettsPropFDBR names evs)
 
 --TODO: can we memoize this?  could we perhaps have a GFDBR table?
 make_gfdbr' :: [T.Text] -> FDBR -> TF GFDBR
@@ -568,7 +527,7 @@ make_trans''' voice rel preps rtriples = ord_fdbr
     ord_fdbr = filter_super' preps fdbr rtriples
 
 make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)] -> TFMemo FDBR
-make_trans'' voice rel preps = TFMemoT (f, Just g) --top level things ALWAYS have a name
+make_trans'' voice rel preps = TFMemoT (f, g) --top level things ALWAYS have a name
     where
     g = gettsTP voice rel (gatherPreps preps)
     f rtriples = do
@@ -643,13 +602,13 @@ yesno' :: SemFunc (TF FDBR -> TF T.Text)
 yesno' = fmap yesno'' >|< GettsYesNo
 
 yesno :: TFMemo FDBR -> TFMemo T.Text
-yesno = liftT yesno'' GettsYesNo
+yesno = wrapT1 yesno'
 
 _truefalse'' x = if x /= [] then "true." else "false."
 _truefalse' = fmap _truefalse'' >|< GettsYesNo
 
 _truefalse :: TFMemo FDBR -> TFMemo T.Text
-_truefalse = liftT _truefalse'' GettsYesNo
+_truefalse = wrapT1 _truefalse'
 
 does = yesno
 did = yesno
@@ -673,7 +632,7 @@ sand'' fdbr1 fdbr2 = union_fdbr'' fdbr1 fdbr2
 
 sand' = liftA2 sand'' >|< GettsUnion GU_NounAnd
 
-sand = liftS2 sand'' (GettsUnion GU_NounAnd)
+sand = wrapS2 sand'
 
 --TODO: testing
 {-

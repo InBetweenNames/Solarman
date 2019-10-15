@@ -156,14 +156,10 @@ interpret' input = do
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
     where
-        mergeFlat interp flatGetts = let g = TypeAg2.getGetts interp in TypeAg2.merge (TypeAg2.flattenGetts (assertGetts g)) flatGetts
+        mergeFlat interp flatGetts = let g = TypeAg2.getGetts interp in TypeAg2.merge (TypeAg2.flattenGetts g) flatGetts
         nextInterp rtriples (txt, state) interp = do --TODO: improves by about 2 seconds on heavy workloads -- could be better!
             (out, nState) <- evaluate rtriples interp state
             return (txt ++ [out], nState)
 
 evaluate rtriples interp startState = do
   return $ State.runState (TypeAg2.getSem interp rtriples) startState
-
-assertGetts :: Maybe a -> a
-assertGetts Nothing = error "Top-level getts is missing!"
-assertGetts (Just x) = x
