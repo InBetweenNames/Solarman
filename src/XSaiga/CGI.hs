@@ -14,6 +14,7 @@ import qualified XSaiga.TypeAg2 as TypeAg2
 import qualified Control.Monad.State.Strict as State
 import qualified Data.Map.Strict as Map
 import qualified Control.Monad as M
+import qualified XSaiga.ShowText as ShowText
 
 --change between remoteData and localData
 --dataStore = Local.localData
@@ -152,7 +153,7 @@ interpret' input = do
         let optQueries = TypeAg2.flatOptimize flatQueries
         rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
         (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) interpretations --TODO: save the state for later?  paper opportunity
-        let formatted = T.concat $ List.intersperse " ; " outs
+        let formatted = T.intercalate " <br/> " $ List.zipWith (\a -> \b -> T.concat [ShowText.tshow a, " -- ", b]) (List.map TypeAg2.getGetts interpretations) outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
     where

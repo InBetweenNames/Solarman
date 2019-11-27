@@ -16,8 +16,25 @@ import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
 --import Control.Applicative
 
-data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Show, Ord)
-data GettsUnionType = GU_NounOr | GU_NounAnd deriving (Eq, Show, Ord)
+data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Ord)
+
+instance Show GettsIntersectType where
+    show GI_NounAnd = "intersect_fdbr"
+    show GI_Most = "most"
+    show GI_Every = "every"
+    show GI_Which = "which"
+    show GI_HowMany = "how many"
+    show (GI_Number 0) = "zero"
+    show (GI_Number 1) = "one"
+    show (GI_Number 2) = "two"
+    show (GI_Number 3) = "three"
+    show (GI_Number x) = show x
+
+data GettsUnionType = GU_NounOr | GU_NounAnd deriving (Eq, Ord)
+
+instance Show GettsUnionType where
+    show GU_NounOr = "or"
+    show GU_NounAnd = "and"
 
 --idea: the tree should be fully applied whenever it is stored
 --If made fine grained enough, this may suffice for memoization
@@ -101,6 +118,25 @@ data GettsTree =
     | GettsAttachP Text GettsTree
     | GettsPropFDBR [Text] [Text] --props and events, used for memoizing filter_evs
     deriving (Eq, Show, Ord)
+
+showOrd Nothing = ""
+showOrd (Just x) = show x
+
+showList list = T.concat ["[", (T.intercalate "," list), "]"]
+
+treeToParsedSentence :: GettsTree -> Text
+treeToParsedSentence GettsNone = ""
+treeToParsedSentence (GettsPNoun t) = t
+treeToParsedSentence (GettsMembers t) = t
+treeToParsedSentence (GettsTP sub (rel, _, _) preps) = T.concat [rel, "_(", sub, ") ", XSaiga.TypeAg2.showList $ map treeToParsedSentence preps]
+treeToParsedSentence (GettsPrep props ord tree) = T.concat ["(", XSaiga.TypeAg2.showList props, ", ", pack $ showOrd ord, treeToParsedSentence tree , ")"]
+treeToParsedSentence (GettsIntersect t t1 t2) = T.concat $ ["(", (pack $ show t), " ", treeToParsedSentence t1] ++ (let x = treeToParsedSentence t2 in if T.null x then [] else [" ", x]) ++ [")"]
+treeToParsedSentence (GettsUnion t t1 t2) =  T.concat $ ["(", (pack $ show t), " ", treeToParsedSentence t1] ++ (let x = treeToParsedSentence t2 in if T.null x then [] else [" ", x]) ++ [")"]
+treeToParsedSentence (GettsYesNo t) = treeToParsedSentence t
+treeToParsedSentence (GettsPropTmph t tree) = T.concat [t, treeToParsedSentence tree]
+treeToParsedSentence (GettsAttachP t tree) = T.concat [t, treeToParsedSentence tree]
+treeToParsedSentence (GettsPropFDBR x y) = undefined
+
 
 data GettsFlatTypes =
     FGettsMembers Text
@@ -420,6 +456,9 @@ type Relation = (Text, Text, Text)
 data DisplayTree = B [DisplayTree]
                  | N Int
                    deriving (Show, Eq)
+
+instance Show AttValue where
+    show x = "AttValue"
 
 {-instance Show AttValue where
     show (VAL  j)     = "VAL "    ++ show j

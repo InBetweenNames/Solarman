@@ -27,7 +27,7 @@ type Atts     = [AttValue] -- [(AttType, AttValue)]
 
 type InsAttVals = [(Instance,Atts)]
 
-type Start    = ((Int,InsAttVals), [T.Text])
+type Start    = ((Int,InsAttVals), [T.Text]) --What purpose does this T.text serve?
 
 type Context  = ([MemoL],[(Int,[(MemoL, Int)])])
 
@@ -38,7 +38,7 @@ type End      = (Int, InsAttVals)
 data Tree = Leaf (MemoL,Instance)
             | SubNode ((MemoL, Instance), (Start1,End))
             | Branch [Tree] 
-              deriving (Eq)
+              deriving (Eq, Show)
 
 type Result   = [((Start1, End),[Tree])]
 
@@ -470,7 +470,34 @@ op   = memoize Op
 
 attsFinalAlt :: MemoL -> Int -> MemoTable -> [[[[Atts]]]]
 attsFinalAlt  key e t  =  [ [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ] | (s,sr) <- t, s == key ]
+
+--attsFinalAltTree :: MemoL -> Int -> MemoTable -> [[[[Atts]], Tree]]
+attsFinalAltTree  key e t  =  [ [ [ (synAtts, ts) | ((_,(end,synAtts)), ts)<-rs, end == e] | (_,(_,rs)) <- sr ] | (s,sr) <- t, s == key ]
               
+--Take a parse identifier, a MemoTable, and return a list of Trees such that that has all SubNodes replaced with Leafs for each ambiguous parse
+--visTree :: MemoL -> Int -> Int -> MemoTable -> [(Atts, Tree)]
+
+--lookupTable :: MemoL -> Int -> Int -> MemoTable -> [Tree]
+lookupTable key start end t =  concat $ concat $ concat $ [ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start] | (s, sr) <- t, s == key]
+
+findAllParseTrees t (Leaf (ALeaf str, _)) = [str]
+findAllParseTrees t (SubNode ((key, _), ((_start, _), (_end, _)))) = concatMap (findAllParseTrees t) $ nubBy eqAmb (lookupTable key _start _end t)
+findAllParseTrees t (Branch tree) = map (\x -> T.intercalate " " $ ["("] ++ x ++ [")"]) $ sequence $ map (findAllParseTrees t) (nubBy eqAmb tree)
+
+findAllParseTrees' key start end t = zip trees sems
+    where
+        sems = formatAttsFinalAlt key end t
+        trees = concat $ sequence $ map (findAllParseTrees t) $ nubBy eqAmb (lookupTable key start end t)
+
+eqAmb :: Tree -> Tree -> Bool
+eqAmb (Leaf x) (Leaf y) = x == y
+eqAmb (SubNode x) (SubNode y) = x == y
+eqAmb (Branch []) (Branch []) = True
+eqAmb (Branch []) _ = False
+eqAmb _ (Branch []) = False
+eqAmb (Branch (x:xs)) (Branch (y:ys)) = eqAmb x y && eqAmb (Branch xs) (Branch ys)
+eqAmb _ _ = False
+
 --The unformatted flattened parse trees
 formatAttsFinalAlt :: MemoL -> Int -> MemoTable -> Atts
 formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ attsFinalAlt key e t
@@ -502,6 +529,9 @@ formFinal key ePoint t
                 |(s,sr) <- t, s == key ]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
+test :: (Start -> Context -> State MemoTable (Context, Result))
+    -> [T.Text]
+    -> ((Context, Result), MemoTable)
 test p input = runState (p ((1,[]),input) ([],[])) []
 
 --formatParseIO = mapM id . map showio . parse
