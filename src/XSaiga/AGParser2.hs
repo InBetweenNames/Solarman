@@ -470,16 +470,32 @@ op   = memoize Op
 
 attsFinalAlt :: MemoL -> Int -> MemoTable -> [[[[Atts]]]]
 attsFinalAlt  key e t  =  [ [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ] | (s,sr) <- t, s == key ]
-
---attsFinalAltTree :: MemoL -> Int -> MemoTable -> [[[[Atts]], Tree]]
-attsFinalAltTree  key e t  =  [ [ [ (synAtts, ts) | ((_,(end,synAtts)), ts)<-rs, end == e] | (_,(_,rs)) <- sr ] | (s,sr) <- t, s == key ]
               
---Take a parse identifier, a MemoTable, and return a list of Trees such that that has all SubNodes replaced with Leafs for each ambiguous parse
---visTree :: MemoL -> Int -> Int -> MemoTable -> [(Atts, Tree)]
-
---lookupTable :: MemoL -> Int -> Int -> MemoTable -> [Tree]
+--Using a start, end, and memoization key, locate all valid parses that match.  In the case of ambiguity, there may be more than one result.
+--These three conditions are sufficient to guarantee the result is unique and valid.
+lookupTable :: MemoL -> Int -> Int -> MemoTable -> [Tree]
 lookupTable key start end t =  concat $ concat $ concat $ [ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start] | (s, sr) <- t, s == key]
 
+--The memo table itself must be "unravelled" to reveal the parse tree.  If there is only one valid parse, this is easy.
+--If there are multiple valid parses due to ambiguity, then we must return all valid trees.
+--But the problem is that the originator for a particular SubNode or Branch is lost during parsing -- only the differing AttValue is kept.
+--This is because this information isn't necessary to get a valid parse.
+--However, we'd sure like to have it.  Note that in ambiguity, there will be cases where the start, end, and key match and only the AttValue differs.
+--But this is not helpful to us, because we can't meaningfully compare those.
+--It should be possible to modify the code somehow to preserve this, but I'm not sure how, as it's very hard to read.
+--So, instead, produce a reduced memo table using eqAmb where ambiguous parses are reduced to 1 parse, discarding AttValue.
+--Then walk the tree recursively, branching off whenever the syntax tree starts to actually diverge to ensure we get the relevant info.
+--In other words, we have to just produce all unique trees we can that are valid parses and hope to god that we can recover the AttValues later somehow,
+--because there's no direct reference to where a particular AttValue came from.  If there are 3 possible AttValues from 3 ambiguous parses that could have yielded
+--an AttValue, then we have no way of knowing which one it actually was because start, end, and key will match for *all* of them.  Ouch.
+--NOTE: a Leaf is just a terminal, a Branch is a sequence of non-terminals and terminals, and a SubNode corresponds to a reference to a terminal or non-terminal.
+--Actually, I think that Branch may only have SubNodes, which makes it essentially a representation of a non-terminal.  This may have to do with the compact memory representation.
+--Anyway, only bother to put brackets in on Branches, as this is where the syntax tree does the real "splitting" it seems.
+--To "unpack" a SubNode, you must traverse the MemoTable and find the entry corresponding to the start, end, and key
+
+--But there is a problem with this.
+--TODO: it looks like traversing this way will guarantee that the AttValues retrieved later during formatAttsFinalAlt will be in the same order as the returned trees
+--(so that the trees will map correspondingly to their attvalues).  But I haven't proved this at all!  It would be sure nice if the tree were embedded somehow in the actual parse.
 findAllParseTrees t (Leaf (ALeaf str, _)) = [str]
 findAllParseTrees t (SubNode ((key, _), ((_start, _), (_end, _)))) = concatMap (findAllParseTrees t) $ nubBy eqAmb (lookupTable key _start _end t)
 findAllParseTrees t (Branch tree) = map (\x -> T.intercalate " " $ ["("] ++ x ++ [")"]) $ sequence $ map (findAllParseTrees t) (nubBy eqAmb tree)
@@ -489,6 +505,7 @@ findAllParseTrees' key start end t = zip trees sems
         sems = formatAttsFinalAlt key end t
         trees = concat $ sequence $ map (findAllParseTrees t) $ nubBy eqAmb (lookupTable key start end t)
 
+--Compare trees up until Atts.  We're looking for a syntactic match and cannot compare atts meaningfully.
 eqAmb :: Tree -> Tree -> Bool
 eqAmb (Leaf x) (Leaf y) = x == y
 eqAmb (SubNode x) (SubNode y) = x == y
