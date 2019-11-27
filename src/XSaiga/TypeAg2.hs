@@ -33,8 +33,8 @@ instance Show GettsIntersectType where
 data GettsUnionType = GU_NounOr | GU_NounAnd deriving (Eq, Ord)
 
 instance Show GettsUnionType where
-    show GU_NounOr = "or"
-    show GU_NounAnd = "and"
+    show GU_NounOr = "nounor"
+    show GU_NounAnd = "nounand"
 
 --idea: the tree should be fully applied whenever it is stored
 --If made fine grained enough, this may suffice for memoization

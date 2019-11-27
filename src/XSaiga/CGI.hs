@@ -6,6 +6,7 @@ import qualified XSaiga.SolarmanTriplestore as App
 import Network.FastCGI
 import qualified Data.List as List
 import Data.Text as T
+import Data.Text.IO as TIO
 import qualified Data.ByteString.Lazy as BL
 import Data.Text.Encoding as E
 --import qualified XSaiga.LocalData as Local
@@ -147,13 +148,19 @@ interpret'' = TypeAg2.getQUVAL . List.head . App.parse
 interpret' input = do
     let firstpass = interpret input
     if firstpass == "BLANKVALNOTUSED" then do
-        let interpretations = List.map TypeAg2.getQUVAL $ App.parse input
+        let attTrees = App.parseTree input
+        let atts = Prelude.map fst attTrees
+        let trees = Prelude.map snd attTrees
+        let sems = List.map TypeAg2.getQUVAL atts
         --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
-        let flatQueries = Prelude.foldr mergeFlat ([],[]) interpretations
+        let flatQueries = Prelude.foldr mergeFlat ([],[]) sems
         let optQueries = TypeAg2.flatOptimize flatQueries
         rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
-        (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) interpretations --TODO: save the state for later?  paper opportunity
-        let formatted = T.intercalate " <br/> " $ List.zipWith (\a -> \b -> T.concat [ShowText.tshow a, " -- ", b]) (List.map TypeAg2.getGetts interpretations) outs
+        (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) sems --TODO: save the state for later?  paper opportunity
+        let formatted = T.intercalate "\n<br/><br/>\n" $
+                List.zipWith3 (\syntax -> \getts -> \res -> T.intercalate "<br/>\n"
+                    [T.append "result: " res, T.append "syntax: " syntax, T.append "getts: " $ TypeAg2.treeToParsedSentence getts])
+                    trees (List.map TypeAg2.getGetts sems) outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
     where
@@ -164,3 +171,5 @@ interpret' input = do
 
 evaluate rtriples interp startState = do
   return $ State.runState (TypeAg2.getSem interp rtriples) startState
+
+interpret''' input = interpret' input >>= TIO.putStrLn

@@ -11,6 +11,8 @@ import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
 import Control.Monad.State.Strict
 
+--TODO: make the MemoTable use this: import qualified Data.Map.Strict as Map
+
 ---- ************************************ -----------------------
 
                 
@@ -500,7 +502,7 @@ findAllParseTrees t (Leaf (ALeaf str, _)) = [str]
 findAllParseTrees t (SubNode ((key, _), ((_start, _), (_end, _)))) = concatMap (findAllParseTrees t) $ nubBy eqAmb (lookupTable key _start _end t)
 findAllParseTrees t (Branch tree) = map (\x -> T.intercalate " " $ ["("] ++ x ++ [")"]) $ sequence $ map (findAllParseTrees t) (nubBy eqAmb tree)
 
-findAllParseTrees' key start end t = zip trees sems
+findAllParseTrees' key start end t = zip sems trees
     where
         sems = formatAttsFinalAlt key end t
         trees = concat $ sequence $ map (findAllParseTrees t) $ nubBy eqAmb (lookupTable key start end t)

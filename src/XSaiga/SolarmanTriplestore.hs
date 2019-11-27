@@ -1687,6 +1687,7 @@ as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of 
 list_of_years = map (\n -> (tshow n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
 
 parse i = formatAttsFinalAlt Question ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
+parseTree i = findAllParseTrees' Question 1 ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
 
 headParse = getQUVAL . head . parse
 
