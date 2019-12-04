@@ -879,7 +879,7 @@ prepph
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
                                                      synthesized TERMPH_VAL OF S2]]
      <|>
-     parser (nt prepnph S1 *> nt verbph S2) -- "to discover phobos"
+     parser (nt prepnph S1 *> nt joinvbph S2) -- "to discover phobos"
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_nph [synthesized PREPNPH_VAL OF S1,
                                                          synthesized VERBPH_VAL OF S2]] 
      <|>
@@ -1686,8 +1686,59 @@ as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of 
 
 list_of_years = map (\n -> (tshow n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
 
+--todo, pull from dictionary, move to solarman
+isPrep "in" = True
+isPrep "at" = True
+isPrep "by" = True
+isPrep "using" = True
+isPrep "with" = True
+isPrep "to" = True
+isPrep _ = False
+
+--the rules:
+--brackets are collapsed
+--comma has a space after it
+--expressions are separated by spaces
+--if it is not punctuation, put a space after it unless a comma follows, in which case the space goes after the comma
+--"that" is written as "`that`"
+
+shouldSpace x y = isWord x && isWord y || isWord x && isOpeningBracket y || isClosingBracket x && isWord y || isClosingBracket x && isOpeningBracket y
+    where
+        isBracket x = elem x ["(", ")", "[", "]"]
+        isClosingBracket x = elem x [")", "]"]
+        isOpeningBracket x = elem x ["(", "["]
+        isWord "," = False
+        isWord x = not $ isBracket x
+
+intercalateBrackets [] = ""
+intercalateBrackets ("that":xs) = "`that` " `T.append` intercalateBrackets xs
+intercalateBrackets (x:",":xs) = x `T.append` ", " `T.append` intercalateBrackets xs
+intercalateBrackets (x:y:xs) | shouldSpace x y = x `T.append` " " `T.append` intercalateBrackets (y:xs)
+intercalateBrackets (x:xs) = x `T.append` intercalateBrackets xs
+
+--note: prepns are scoped as such: (a (b (c d)))
+--TODO: This code should be moved to SolarmanTriplestore as it is tied to the syntax of that grammar
+--Should keep a version in here which works as it did before
+flattenPreps :: SyntaxTree -> [SyntaxTree]
+flattenPreps qs@(SyntaxTreeNT ((SyntaxTreeT prep):_)) = [qs]
+flattenPreps (SyntaxTreeNT [x@(SyntaxTreeNT _), a]) = x:(flattenPreps a)
+
+syntaxTreeToLinearPreps :: SyntaxTree -> [T.Text]
+syntaxTreeToLinearPreps list = intercalate [","] $ map fmt $ flattenPreps list
+        where fmt (SyntaxTreeNT t) = concatMap syntaxTreeToLinear t
+
+syntaxTreeToLinear :: SyntaxTree -> [T.Text]
+syntaxTreeToLinear (SyntaxTreeT x) = [x]
+syntaxTreeToLinear (SyntaxTreeNT ts@((SyntaxTreeT prep):_)) | isPrep prep = ["["] ++ concatMap syntaxTreeToLinear ts ++ ["]"]
+syntaxTreeToLinear ts@(SyntaxTreeNT ((SyntaxTreeNT ((SyntaxTreeT prep):_)):_)) | isPrep prep = ["["] ++ syntaxTreeToLinearPreps ts ++ ["]"]
+syntaxTreeToLinear (SyntaxTreeNT ts) = ["("] ++ concatMap syntaxTreeToLinear ts ++ [")"]
+
+syntaxTreeToLinear' :: SyntaxTree -> T.Text
+syntaxTreeToLinear' (SyntaxTreeT x) = x
+syntaxTreeToLinear' (SyntaxTreeNT ts) = intercalateBrackets $ concatMap syntaxTreeToLinear ts
+
 parse i = formatAttsFinalAlt Question ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
-parseTree i = findAllParseTrees' Question 1 ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
+parseTree i = findAllParseTreesFormatted syntaxTreeToLinear' Question ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
 
 headParse = getQUVAL . head . parse
 

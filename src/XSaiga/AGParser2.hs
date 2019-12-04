@@ -498,14 +498,22 @@ lookupTable key start end t =  concat $ concat $ concat $ [ [ [ tree | ((_,(_end
 --But there is a problem with this.
 --TODO: it looks like traversing this way will guarantee that the AttValues retrieved later during formatAttsFinalAlt will be in the same order as the returned trees
 --(so that the trees will map correspondingly to their attvalues).  But I haven't proved this at all!  It would be sure nice if the tree were embedded somehow in the actual parse.
-findAllParseTrees t (Leaf (ALeaf str, _)) = [str]
-findAllParseTrees t (SubNode ((key, _), ((_start, _), (_end, _)))) = concatMap (findAllParseTrees t) $ nubBy eqAmb (lookupTable key _start _end t)
-findAllParseTrees t (Branch tree) = map (\x -> T.intercalate " " $ ["("] ++ x ++ [")"]) $ sequence $ map (findAllParseTrees t) (nubBy eqAmb tree)
+data SyntaxTree = SyntaxTreeNT [SyntaxTree] | SyntaxTreeT T.Text deriving (Show)
 
-findAllParseTrees' key start end t = zip sems trees
+findAllParseTrees t (Leaf (ALeaf str, _)) = [SyntaxTreeT str]
+--SubNodes introduce ambiguity?
+findAllParseTrees t (SubNode ((key, _), ((_start, _), (_end, _)))) = let trees = nubBy eqAmb (lookupTable key _start _end t) in concatMap (findAllParseTrees t) trees
+--nubBy eqAmb necessary for Branch?  Ambiguity?
+findAllParseTrees t (Branch tree) = map SyntaxTreeNT $ sequence $ map (findAllParseTrees t) tree
+
+findAllParseTreesT' key end t = zip sems trees
     where
         sems = formatAttsFinalAlt key end t
-        trees = concat $ sequence $ map (findAllParseTrees t) $ nubBy eqAmb (lookupTable key start end t)
+        trees = concat $ sequence $ map (findAllParseTrees t) $ nubBy eqAmb (lookupTable key 1 end t)
+
+findAllParseTreesFormatted formatTree key end t = map (\(x, y) -> (x, formatTree y)) $ findAllParseTreesT' key end t
+
+findAllParseTreesFormatted' = findAllParseTreesFormatted syntaxTreeToLinearGeneric'
 
 --Compare trees up until Atts.  We're looking for a syntactic match and cannot compare atts meaningfully.
 eqAmb :: Tree -> Tree -> Bool
@@ -516,6 +524,42 @@ eqAmb (Branch []) _ = False
 eqAmb _ (Branch []) = False
 eqAmb (Branch (x:xs)) (Branch (y:ys)) = eqAmb x y && eqAmb (Branch xs) (Branch ys)
 eqAmb _ _ = False
+
+--the rules:
+--brackets are collapsed
+--expressions are separated by spaces
+
+shouldSpaceGeneric x y = isWord x && isWord y || isWord x && isOpeningBracket y || isClosingBracket x && isWord y || isClosingBracket x && isOpeningBracket y
+        where
+            isBracket x = x == "(" || x == ")"
+            isClosingBracket x = x == ")"
+            isOpeningBracket x = x == "("
+            isWord x = not $ isBracket x
+
+intercalateBracketsGeneric [] = ""
+intercalateBracketsGeneric (x:y:xs) | shouldSpaceGeneric x y = x `T.append` " " `T.append` intercalateBracketsGeneric (y:xs)
+intercalateBracketsGeneric (x:xs) = x `T.append` intercalateBracketsGeneric xs
+
+syntaxTreeToLinearGeneric :: SyntaxTree -> [T.Text]
+syntaxTreeToLinearGeneric (SyntaxTreeT x) = [x]
+syntaxTreeToLinearGeneric (SyntaxTreeNT ts) = ["("] ++ concatMap syntaxTreeToLinearGeneric ts ++ [")"]
+
+syntaxTreeToLinearGeneric' :: SyntaxTree -> T.Text
+syntaxTreeToLinearGeneric' (SyntaxTreeT x) = x
+syntaxTreeToLinearGeneric' (SyntaxTreeNT ts) = intercalateBracketsGeneric $ concatMap syntaxTreeToLinearGeneric ts
+
+--WIP
+diffTree :: SyntaxTree -> SyntaxTree -> [SyntaxTree]
+diffTree (SyntaxTreeT t1) a@(SyntaxTreeT t2) = if t1 == t2 then [] else [a]
+diffTree (SyntaxTreeT t1) a@(SyntaxTreeNT ts2) = [a]
+diffTree (SyntaxTreeNT ts1) a@(SyntaxTreeT t2) = [a]
+diffTree (SyntaxTreeNT []) (SyntaxTreeNT xs)= xs
+diffTree (SyntaxTreeNT xs) (SyntaxTreeNT []) = []
+diffTree (SyntaxTreeNT (t1:ts1)) a@(SyntaxTreeNT (t2:ts2)) = diffTree t1 t2 ++ diffTree (SyntaxTreeNT ts1) (SyntaxTreeNT ts2)
+--need edit distance...
+
+--a moon spins = SyntaxTreeNT [SyntaxTreeT "a", SyntaxTreeT "moon", SyntaxTreeT "spins"]
+--discover (a moon) = SyntaxTreeNT [SyntaxTreeT "discover", SyntaxTree NT[SyntaxTreeT "a", SyntaxTree "moon"]]
 
 --The unformatted flattened parse trees
 formatAttsFinalAlt :: MemoL -> Int -> MemoTable -> Atts
