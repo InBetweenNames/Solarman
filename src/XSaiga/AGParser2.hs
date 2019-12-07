@@ -11,12 +11,14 @@ import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
 import Control.Monad.State.Strict
 
---TODO: make the MemoTable use this: import qualified Data.Map.Strict as Map
+--TODO: make the MemoTable use this:
+
+import qualified Data.Map.Strict as Map
 
 ---- ************************************ -----------------------
 
                 
-data SorI     = S | I |NILL  deriving (Eq,Ord,Show, Enum) 
+data SorI     = S | I | NILL  deriving (Eq,Ord,Show, Enum) 
                 -- Synthesized or inherited or NILL
 
 type Instance = (SorI, Id) 
@@ -45,7 +47,7 @@ data Tree = Leaf (MemoL,Instance)
 type Result   = [((Start1, End),[Tree])]
 
 --Also called an "MTable" or "State" originally
-type MemoTable = [(MemoL ,[(Start1,(Context,Result))])] 
+type MemoTable = Map.Map MemoL [(Start1,(Context,Result))]
 
 type M = Start -> Context -> State MemoTable (Context, Result)
 
@@ -144,9 +146,12 @@ empty_cuts = ([],[])
 empty :: InsAttVals -> M
 empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
-        
+--a3 = [MemoL]
+-- ((Int, b1), t a1) appears twice (appears to be Start)
+-- a2 = MemoL
+memoize :: MemoL -> (Id -> InsAttVals -> M) -> Id -> InsAttVals -> M
 memoize name f id downAtts ((inp,dAtts),dInput) context 
- = do s <- get        
+ = do s <- get
       case (lookupT name inp (snd context) s) of   
        Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd lRes) 
                        return (fst lRes,lookUpRes)
@@ -167,12 +172,26 @@ findWithFst key    = find ((== key) . fst)
 
 filterWithFst key  = filter ((== key) . fst)
 
+{-replaceSnd :: MemoL
+    -> [(Start1,(Context, Result))]
+    -> ([(Start1,(Context,Result))] -> [(Start1,(Context,Result))])
+    -> [(MemoL,[(Start1,(Context,Result))])]
+    -> [(MemoL,[(Start1,(Context,Result))])]
+-}
 replaceSnd key def f list
   = before ++ replaceFirst replacePoint
   where
     (before, replacePoint) = break ((== key) . fst) list
     replaceFirst [] = [(key, def)]
-    replaceFirst ((a, b):nc) = (a, f b):nc                           
+    replaceFirst ((a, b):nc) = (a, f b):nc 
+    
+{-replaceSnd' :: MemoL
+    -> [(Start1,(Context, Result))]
+    -> ([(Start1,(Context,Result))] -> [(Start1,(Context,Result))])
+    -> MemoTable
+    -> MemoTable
+-}
+replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map  --Map.adjust f key map
 
 --TODO: Should this return all matches?  why return a list?
 findContext inp = maybeToList . findWithFst inp
@@ -204,12 +223,12 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 
-lookupT name inp context mTable
-  | null res_in_table = Nothing 
-  | otherwise          = checkUsability inp context (lookupRes inp (res_in_table !! 0)) 
-  where 
-    res_in_table = map snd $ filterWithFst name mTable
+lookupT :: MemoL -> Int -> [(Int,[(MemoL, Int)])] -> MemoTable -> Maybe (Context,Result)
+lookupT name inp context mTable = do
+    res_in_table <- Map.lookup name mTable
+    checkUsability inp context (lookupRes inp res_in_table)
 
+lookupRes :: Int -> [(Start1,(Context,Result))] -> Maybe (Context, Result)
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
 checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
@@ -228,8 +247,9 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Ju
 {-nub (dA ++ dAtts)-}
 --udt == "update table"?
 udt :: (Context, Result) -> MemoL -> Start1 -> MemoTable -> MemoTable
-udt res name (inp, dAtts) = replaceSnd name [((inp,dAtts),res)] (my_merge (inp,nub dAtts) res)
+udt res name (inp, dAtts) = replaceSnd' name [((inp,dAtts),res)] (my_merge (inp,nub dAtts) res)
 
+replaceSndG :: Int -> (Start1, (Context, Result)) -> [(Start1, (Context, Result))] -> [(Start1, (Context, Result))]
 replaceSndG key def list
   = before ++ replaceFirst replacePoint
   where
@@ -237,6 +257,7 @@ replaceSndG key def list
     replaceFirst [] = [def]
     replaceFirst ((a, b):nc) = def:nc                           
 
+my_merge :: Start1 -> (Context, Result) -> [(Start1, (Context, Result))] -> [(Start1, (Context, Result))]
 my_merge (inp,ndAtts) res = replaceSndG inp ((inp,ndAtts),res) 
 
 {-
@@ -470,13 +491,16 @@ op   = memoize Op
 --The nastiest list comprehension I have ever seen in my life     
 --The unformatted parse tree
 
-attsFinalAlt :: MemoL -> Int -> MemoTable -> [[[[Atts]]]]
-attsFinalAlt  key e t  =  [ [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ] | (s,sr) <- t, s == key ]
+attsFinalAlt :: MemoL -> Int -> MemoTable -> [[[Atts]]]
+attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup key t)
+    where
+        allTrees sr = [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ]
               
 --Using a start, end, and memoization key, locate all valid parses that match.  In the case of ambiguity, there may be more than one result.
 --These three conditions are sufficient to guarantee the result is unique and valid.
 lookupTable :: MemoL -> Int -> Int -> MemoTable -> [Tree]
-lookupTable key start end t =  concat $ concat $ concat $ [ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start] | (s, sr) <- t, s == key]
+lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
+    where allTrees sr = concat $ concat $ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start]
 
 --The memo table itself must be "unravelled" to reveal the parse tree.  If there is only one valid parse, this is easy.
 --If there are multiple valid parses due to ambiguity, then we must return all valid trees.
@@ -563,39 +587,35 @@ diffTree (SyntaxTreeNT (t1:ts1)) a@(SyntaxTreeNT (t2:ts2)) = diffTree t1 t2 ++ d
 
 --The unformatted flattened parse trees
 formatAttsFinalAlt :: MemoL -> Int -> MemoTable -> Atts
-formatAttsFinalAlt key e t =  concat $ concat $ concat $ concat $ attsFinalAlt key e t
+formatAttsFinalAlt key e t =  concat $ concat $ concat $ attsFinalAlt key e t
 
 meaning_of p dInp key
  = let dInput     = T.words dInp
-       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) []
+       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) Map.empty
        upperBound = (length dInput) + 1
    in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ p dInp key
  = let dInput     = T.words dInp
-       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) []
+       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[]))  Map.empty
        upperBound = (length dInput) + 1
    in  (snd $ appParser)
 
-formAtts key ePoint t
-    = concat $ concat $ concat $ concat
-        [[[[  val1 |(id1,val1)<-synAtts]
-                |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
-                |((i,inAt1),((cs,ct),rs)) <- sr ]
-                |(s,sr) <- t, s == key ]
+formAtts key ePoint t = maybe [] allAtts $ Map.lookup key t
+        where allAtts sr = concat $ concat $ concat [[[  val1 |(id1,val1)<-synAtts]
+                                                    |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
+                                                    |((i,inAt1),((cs,ct),rs)) <- sr ]
 
-formFinal key ePoint t
-    = concat $ concat $ concat $ concat
-        [[[[  val1 |(id1,val1)<-synAtts]
-                |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
-                |((i,inAt1),((cs,ct),rs)) <- sr ]
-                |(s,sr) <- t, s == key ]
+formFinal key ePoint t = maybe [] final $ Map.lookup key t
+    where final sr = concat $ concat $ concat $ [[[  val1 |(id1,val1)<-synAtts]
+                                                    |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
+                                                    |((i,inAt1),((cs,ct),rs)) <- sr ]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
 test :: (Start -> Context -> State MemoTable (Context, Result))
     -> [T.Text]
     -> ((Context, Result), MemoTable)
-test p input = runState (p ((1,[]),input) ([],[])) []
+test p input = runState (p ((1,[]),input) ([],[])) Map.empty
 
 --formatParseIO = mapM id . map showio . parse
 
