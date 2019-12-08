@@ -11,8 +11,6 @@ import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
 import Control.Monad.State.Strict
 
---TODO: make the MemoTable use this:
-
 import qualified Data.Map.Strict as Map
 
 ---- ************************************ -----------------------
@@ -191,7 +189,7 @@ replaceSnd key def f list
     -> MemoTable
     -> MemoTable
 -}
-replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map  --Map.adjust f key map
+replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map 
 
 --TODO: Should this return all matches?  why return a list?
 findContext inp = maybeToList . findWithFst inp
@@ -231,17 +229,23 @@ lookupT name inp context mTable = do
 lookupRes :: Int -> [(Start1,(Context,Result))] -> Maybe (Context, Result)
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
+checkUsability :: Int -> [(Int,[(MemoL, Int)])] -> Maybe (Context, Result) -> Maybe (Context, Result)
 checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
   where
   --Want Nothing to be the case if list is empty or the inp could not be found
+  findInp :: Int -> [(Int,[(MemoL, Int)])] -> Maybe [(MemoL, Int)]
   findInp inp sc = findWithFst inp sc >>= (empty . snd)
+  empty :: [(MemoL, Int)] -> Maybe [(MemoL, Int)]
   empty [] = Nothing
   empty x  = Just x
+  checkUsability_ :: Maybe [(MemoL, Int)] -> Maybe [(MemoL, Int)] -> (Context, Result) -> Maybe (Context, Result)
   checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
-  checkUsability_ Nothing  _       _       = Nothing         -- if cc at j is empty then don't re-use
+  checkUsability_ Nothing  _       _       = Nothing    -- if cc at j is empty then don't re-use
   checkUsability_ (Just ccs) (Just scs) scres  | and $ condCheck ccs scs = Just scres
                                                | otherwise = Nothing
+  condCheck :: [(MemoL, Int)] -> [(MemoL, Int)] -> [Bool]
   condCheck ccs = map (condCheck_ ccs)
+  condCheck_ :: [(MemoL, Int)] -> (MemoL, Int) -> Bool
   condCheck_ ccs (n1, cs1) = maybe False (\(_, cs) -> cs >= cs1) $ findWithFst n1 ccs 
 
 {-nub (dA ++ dAtts)-}
