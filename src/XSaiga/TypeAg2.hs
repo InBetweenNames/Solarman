@@ -431,7 +431,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 --            | RESULT [sys_message]
 --Also called a "NodeName"
 data MemoL    = Start | Tree | Num | Emp | ALeaf Text | Expr | Op  | ET
-              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Super|Superph|SuperphStart|Prepn|Prepnph|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
+              | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Super|Superph|SuperphStart|Prepn|Prepnph|Prepyear|Joinyear|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6
                 deriving (Eq,Ord,Show)
 
@@ -490,6 +490,7 @@ instance Show AttValue where
     show (QUEST2_VAL j)  = "QUEST2_VAL"
     show (QUEST3_VAL j)  = "SENTJOIN_VAL"-}
 
+--TODO: find a better way to do this
 instance Eq AttValue where
     (VAL  j)           == (VAL  j')     = True
     (MaxVal j)         == (MaxVal j')   = True

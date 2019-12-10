@@ -13,6 +13,41 @@ import Control.Monad.State.Strict
 
 import qualified Data.Map.Strict as Map
 
+import Debug.Trace
+
+{-
+Finished improvements:
+    * Use a map for the top level of the memo table
+    * Cassini no longer refers to the wrong entry voyager_2
+    * superterminals, needed for dictionaryless pnouns, cnouns, adjs
+    * disambiguated grammar for years and locations
+
+TODO Improvements:
+    * Decouple TypeAg2 from AGParser2 (parameterize AttValue)
+    * Find another way to find "equivalence" between AttValues.  See TypeAg2 where the annoying bit is with instance Eq
+    * Move data Id to here from TypeAg2
+    * Use a hashmap instead of a red/black tree map (requires hashable MemoL)
+    * MemoL needs to be unique per memoize block, is this able to be generated automatically?
+    * Move the example code to a new file (with the +-/* grammar), use the parameterized code to do this
+    * Make a better syntax for the parser.  The list based syntax leaves a lot to be desired.
+    * New name for the parser.  XSaiga-NG?
+    * okay so memoized and unmemoized return the same type... but unmemoized never seems to work?  need type level correction
+    *** Cnouns, pnouns should not need to be in dictionary.  should be able to "try" a terminal as a pnoun or cnoun as needed.
+    *** in should be disambiguated for years and locations
+    *** "or" and "and" should not be ambiguous except when used with each other.  for example
+        "hall or phobos or deimos and hall or kuiper or galileo" should only be ambiguous around the "and":
+        "(hall or (phobos or (deimos))) and (hall or (kuiper or (galileo)))"
+        "hall or (phobos or ((deimos and hall) or (kuiper or galileo)))"
+        in other words, "or" and "and" should go to the left, but should still be ambiguous with respect to each other
+    *** would be nice to be able to tag a superterminal with the key used to tag it for presentation
+        eg, "hall discovered" => (Pnoun_(hall)) discovered
+            "which moons were discovered by hall in 1877" => which (Cnoun_(moons)) (were discovered [by (Pnoun_(hall)), in (Year_(1877))])
+
+    "every" seems to be able to answer "no" style questions kind of
+
+
+-}
+
 ---- ************************************ -----------------------
 
                 
@@ -274,6 +309,25 @@ my_merge (inp,ndAtts) res (((i,dA), es):rest)
 --------------- ************************* semantics of ATTRIBUTE GRAMMAR ************************* --------------------------
 
 --                               atts          iatts      Context was "l"
+
+--superterminal is like terminal, but does not require all possibilities to be enumerated.
+--use "f" to determine if a token may make a suitable terminal
+--Nothing -> means throw it out
+--Just a -> use it
+superterminal :: MemoL -> (T.Text -> Maybe Atts) -> Id -> InsAttVals -> M
+superterminal key f = memoize key (superterminal' f)
+
+superterminal' :: (T.Text -> Maybe Atts) -> Id -> InsAttVals -> M
+superterminal' f id _ q@((r,a),dInp)
+ = term q --trace ((show $ T.intercalate " " dInp) ++ show q) $ term q
+    where
+    inst = (S, id)
+    instAttVals atts =  [(inst,atts)]
+    term :: M --NTType
+    term ((r,a),dInp) _ = if r - 1 == length dInp then return (empty_cuts,[]) else let str = dInp!!(r - 1) in case f str of
+        Nothing -> return (empty_cuts, [])
+        Just atts -> return (empty_cuts,[(((r,[]),(r+1,instAttVals atts)),[Leaf (ALeaf str, inst)])])
+
 terminal :: T.Text -> Atts -> Id -> InsAttVals -> M
 terminal str semRules id _ ((i,a),inp)
  = (term str) ((i,[]),inp)
@@ -285,7 +339,6 @@ terminal str semRules id _ ((i,a),inp)
      |r - 1 == length dInp       = return (empty_cuts,[])
      |dInp!!(r - 1) == str       = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
      |otherwise                  = return (empty_cuts,[])  
-
 
 nt :: NTType -> Id -> SeqType
 nt fx idx id inhAtts semRules altFromSibs 

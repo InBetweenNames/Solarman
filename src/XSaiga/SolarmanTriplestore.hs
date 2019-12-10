@@ -8,6 +8,7 @@ import Prelude hiding ((*>), words, unwords, concat, concatMap, null)
 import XSaiga.Getts
 import Data.List as List hiding (words, unwords)
 import qualified Data.Text as T
+import qualified Data.Text.Read as TR
 import qualified Data.Set as Set
 import XSaiga.AGParser2
 import XSaiga.TypeAg2
@@ -658,9 +659,98 @@ spins = get_members "spin"
 ||-----------------------------------------------------------------------------
 -}
 
+--cnoun = superterminal Cnoun (\x -> [NOUNCLA_VAL $ get_members x])
+
+--TODO: spellchecker?  if invalid word, refuse query
+--TODO: do we need a lexer to tag things as pnouns, cnouns, etc?
+--TODO: must be careful to not treat words like "who", "what", etc as pnouns!
+--pnoun = superterminal Pnoun (\x -> Just [TERMPH_VAL $ make_pnoun x])
+--TODO: this is a hack to exclude years and anything in the dictionary that is not a pnoun from being considered one
+--Need a more sophisticated approach
 pnoun           =  memoize_terminals_from_dictionary Pnoun
+{-pnoun = superterminal Pnoun $ \x -> case TR.decimal x of
+    Right (y, _) -> Nothing
+    Left _ -> if x `elem` excluded then Nothing else Just [TERMPH_VAL $ make_pnoun x]
+    where
+        excluded = map (\(x, _, _) -> x) $ filter (\(_,type',_) -> type' /= Pnoun) dictionary
+-}
+
+--TODO: must take into account plurals, like moon/s, person/persons/people, satellite/satellites/moons etc.  needs synonym mapper.
 cnoun           =  memoize_terminals_from_dictionary Cnoun
+{-
+cnoun = superterminal Cnoun $ \x -> case TR.decimal x of
+    Right (y, _) -> Nothing
+    Left _ -> if x `elem` excluded then Nothing else case Map.lookup x synonyms of
+        --Note: discoverer is treated differently as the members are generated from the transitive verb subject
+        --orbiter would be treated the same way
+        --in general, these are nounphrases formed from transverbphrases?
+        --an intransitive verb is similar (spinner, which comes from treating spin like a transvb)
+        --all transitive verbs can be made to be intransitive
+        --but not all intransitive verbs are transitive
+        --should come up with a generation scheme:
+        -- <verb>er/<verb>ers -- are intransitive
+        -- <verb>ed/<verb>s -- are transitive, subject to synonym mapping
+        -- <cnoun>/<couns>s -- are cnouns, subject to synonym mapping
+        -- <pnoun> -- is pnoun
+        -- exclude from the above "who/what/when/where/why/how" "a/one/two/..." "most/least" "in/at/by/using/with", "to", indefinite pronouns, "and/or/not", "does/did/do", "many"
+        -- those words form the "solid" syntax of the semantics
+        Nothing -> if x == "discoverer" || x == "discoverers" then Just $ [NOUNCLA_VAL $ get_subjs_of_event_type "discover_ev"] else Just $ [NOUNCLA_VAL $ get_members x]
+        Just syn -> Just $ [NOUNCLA_VAL $ get_members syn]
+    where
+        excluded = map (\(x, _, _) -> x) $ filter (\(_,type',_) -> type' /= Cnoun) dictionary
+        --TODO: make this smarter.  things that end with "s" tend to point to the original
+        synonyms = Map.fromList [
+            ("things", "thing"),
+            ("planets","planet"),
+            ("moons", "moon"),
+            ("satellite", "moon"),
+            ("satellites", "moon"),
+            ("human", "person"),
+            ("people", "person"),
+            ("persons", "person"),
+            ("team", "science_team"),
+            ("teams", "science_team"),
+            ("telescopes", "telescope"),
+            ("spacecrafts", "spacecraft"),
+            ("places", "place")]
+-}
+{-
+    from the dictionary:
+    ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
+    ("things",             Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
+    ("planets",            Cnoun,     [NOUNCLA_VAL $ get_members "planet"]),
+    ("planet",             Cnoun,     [NOUNCLA_VAL $ get_members "planet"]),
+    ("person",             Cnoun,     [NOUNCLA_VAL $ get_members "person"]),
+    ("sun",                Cnoun,     [NOUNCLA_VAL $ get_members "sun"]),
+    ("moon",               Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("moons",              Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("satellite",          Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("satellites",         Cnoun,     [NOUNCLA_VAL $ get_members "moon"]),
+    ("human",       Cnoun,    meaning_of nouncla "person" Nouncla),
+    ("discoverer",  Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type "discover_ev"]),
+    ("discoverers", Cnoun,            [NOUNCLA_VAL $ get_subjs_of_event_type "discover_ev"]),
+    ("humans",      Cnoun,    meaning_of nouncla "person" Nouncla),
+    ("people",      Cnoun,    meaning_of nouncla "person" Nouncla),
+    ("team",                            Cnoun, [NOUNCLA_VAL $ get_members "science_team"]),
+    ("teams",                           Cnoun, [NOUNCLA_VAL $ get_members "science_team"]),
+    ("telescope",   Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
+    ("telescopes",  Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
+    ("spacecraft",  Cnoun, [NOUNCLA_VAL $ get_members "spacecraft"]),
+    ("spacecrafts", Cnoun, [NOUNCLA_VAL $ get_members "spacecraft"]),
+    ("place",   Cnoun, [NOUNCLA_VAL $ get_members "place"]),
+    ("places",  Cnoun, [NOUNCLA_VAL $ get_members "place"]),
+-}
+
 adj             =  memoize_terminals_from_dictionary Adj
+--OK -- so to get sensible parses we end up needing a dictionary anyway, for now
+--this seems to slow things down
+{-
+adj = superterminal Adj $ \x -> case TR.decimal x of
+    Right (y, _) -> Nothing
+    Left _ -> if x `elem` excluded then Nothing else Just [ADJ_VAL $ get_members x]
+    where
+        excluded = map (\(x, _, _) -> x) $ filter (\(_,type',_) -> type' /= Adj) dictionary
+-}
 det             =  memoize_terminals_from_dictionary Det
 intransvb       =  memoize_terminals_from_dictionary Intransvb
 transvb         =  memoize_terminals_from_dictionary Transvb
@@ -689,9 +779,24 @@ quest6          =  memoize_terminals_from_dictionary Quest6
 --NEW FOR PREPOSITIONAL PHRASES
 prep            =  memoize_terminals_from_dictionary Prepn
 prepnph         =  memoize_terminals_from_dictionary Prepnph
+prepyear        =  memoize_terminals_from_dictionary Prepyear
 super           =  memoize_terminals_from_dictionary Super
 superph_start   =  memoize_terminals_from_dictionary SuperphStart
-year            =  memoize_terminals_from_dictionary Year
+--year            =  memoize_terminals_from_dictionary Year
+
+--years are treated like termphrases.  but should they be?
+--want to be able to ask "between 1877 and 1922"
+--discovered in 1877 or at an observatory
+--discovered by hall or kuiper
+--discovered in greenwich or padua
+--discovered at greenwich or padua
+--discovered in 1877 or padua?  doesn't make sense
+--discovered in 1877 at padua
+--discovered in 1877 or 1922
+--discovered between 1877 and 1922
+year = superterminal Year $ \t -> case TR.decimal t of
+    Right (y, _) -> Just [YEAR_VAL $ y]
+    Left _ -> Nothing
 
 memoize_terminals_from_dictionary key
   = let key_words              = filter (\(_,type',_) -> type' == key) dictionary
@@ -872,6 +977,17 @@ preps
                                                    synthesized PREP_VAL OF S2]]
     )
 
+-- public <joinyear> = <year> | <joinyear> <termphjoin> <joinyear>
+joinyear = memoize Joinyear
+    (
+        parser (nt year S1) [rule_s TERMPH_VAL OF LHS ISEQUALTO applyyear [synthesized YEAR_VAL OF S1]]
+        <|>
+        parser (nt joinyear S1 *> nt termphjoin S2 *> nt joinyear S3)
+            [rule_s TERMPH_VAL  OF LHS ISEQUALTO appjoin1 [synthesized TERMPH_VAL     OF S1,
+                                                           synthesized TERMPHJOIN_VAL OF S2,
+                                                           synthesized TERMPH_VAL     OF S3]]
+    )
+
 -- public <prepph> = <prep> <jointermph>;
 prepph
  = memoize Prepph
@@ -882,6 +998,10 @@ prepph
      parser (nt prepnph S1 *> nt joinvbph S2) -- "to discover phobos"
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_nph [synthesized PREPNPH_VAL OF S1,
                                                          synthesized VERBPH_VAL OF S2]] 
+     <|>
+     parser (nt prepyear S1 *> nt joinyear S2) -- "in 1877 or 1822 and 1923"
+     [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
+                                                      synthesized TERMPH_VAL  OF S2]]
      <|>
      parser (nt prep S1 *> nt superph S2)
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_super [synthesized PREPN_VAL OF S1,
@@ -913,9 +1033,6 @@ termph
    <|>
    parser (nt detph S2)
    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S2]]
-   <|>
-   parser (nt year S3)
-   [rule_s TERMPH_VAL OF LHS ISEQUALTO applyyear [synthesized YEAR_VAL OF S3]]
    )
 
 ------------------------------------------------------------------------------------
@@ -1291,7 +1408,6 @@ dictionary = [
     ("venus",              Pnoun,     [TERMPH_VAL $ make_pnoun "venus"]),
     ("cassini",            Pnoun,     [TERMPH_VAL $ make_pnoun "cassini"]),
     ("dollfus",            Pnoun,     [TERMPH_VAL $ make_pnoun "dollfus"]),
-    --("fouuntain",          Pnoun,     [TERMPH_VAL $ make_pnoun "Fouuntain"]),
     ("galileo",            Pnoun,     [TERMPH_VAL $ make_pnoun "galileo"]),
     ("hall",               Pnoun,     [TERMPH_VAL $ make_pnoun "hall"]),
     ("herschel",           Pnoun,     [TERMPH_VAL $ make_pnoun "herschel"]),
@@ -1411,10 +1527,11 @@ dictionary = [
     --Begin prepositional stuff--
     ("with",        Prepn, [PREPN_VAL ["with_implement"]]),
     ("using",       Prepn, [PREPN_VAL ["with_implement"]]),
-    ("in",          Prepn, [PREPN_VAL ["location","year"]]),
+    ("in",          Prepn, [PREPN_VAL ["location"]]),
     ("at",          Prepn, [PREPN_VAL ["location"]]),
     ("by",          Prepn, [PREPN_VAL ["subject"]]),
     ("to",          Prepnph, [PREPNPH_VAL ["subject"]]),
+    ("in",          Prepyear, [PREPN_VAL ["year"]]),
     --Begin telescope stuff--
     ("telescope",   Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
     ("telescopes",  Cnoun, [NOUNCLA_VAL $ get_members "telescope"]),
@@ -1675,16 +1792,7 @@ dictionary = [
     ("kerberos",           Pnoun,     [TERMPH_VAL $ make_pnoun "kerberos"]),
     ("styx",               Pnoun,     [TERMPH_VAL $ make_pnoun "styx"])
 
-    ] ++ list_of_years
-
-{-Major hack: Since the basic unit that the parser understands is strings (not characters), we have to manually add all years that we can query into the dictionary...
-That is, we can't make the parser understand "1984" and "1245" by having it recognize four numbers, instead it must recognize the entire string of numbers at once
-as a terminal (i.e., "1984" would be a terminal, not a non-terminal composed of "1", "9", "8", and "4").  Therefore, all possible strings must be added to the dictionary so that the parser can match them.
-
-**this might need to be altered**
--}
-
-list_of_years = map (\n -> (tshow n, Year, [YEAR_VAL n])) $ List.concat [[1000 + x, 2000 + x] | x <- [0..999]]
+    ]
 
 --todo, pull from dictionary, move to solarman
 isPrep "in" = True
