@@ -10,6 +10,7 @@ import XSaiga.TypeAg2
 import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
 import Control.Monad.State.Strict
+import Data.Constructors.EqC
 
 import qualified Data.Map.Strict as Map
 
@@ -31,9 +32,9 @@ TODO Improvements:
     * Move the example code to a new file (with the +-/* grammar), use the parameterized code to do this
     * Make a better syntax for the parser.  The list based syntax leaves a lot to be desired.
     * New name for the parser.  XSaiga-NG?
+    * Decouple error reporting from AttValue
     * okay so memoized and unmemoized return the same type... but unmemoized never seems to work?  need type level correction
     *** Cnouns, pnouns should not need to be in dictionary.  should be able to "try" a terminal as a pnoun or cnoun as needed.
-    *** in should be disambiguated for years and locations
     *** "or" and "and" should not be ambiguous except when used with each other.  for example
         "hall or phobos or deimos and hall or kuiper or galileo" should only be ambiguous around the "and":
         "(hall or (phobos or (deimos))) and (hall or (kuiper or (galileo)))"
@@ -42,6 +43,7 @@ TODO Improvements:
     *** would be nice to be able to tag a superterminal with the key used to tag it for presentation
         eg, "hall discovered" => (Pnoun_(hall)) discovered
             "which moons were discovered by hall in 1877" => which (Cnoun_(moons)) (were discovered [by (Pnoun_(hall)), in (Year_(1877))])
+    *** which x discovered which y using a telescope
 
     "every" seems to be able to answer "no" style questions kind of
 
@@ -59,8 +61,8 @@ type Instance = (SorI, Id)
                 
 data Useless  = OF|ISEQUALTO  deriving (Show, Eq)
                 -- for decorating the semantic rules
-       
-type Atts     = [AttValue] -- [(AttType, AttValue)]
+
+type Atts     = [AttValue] -- [(AttType, AttValue)] 
 
 type InsAttVals = [(Instance,Atts)]
 
@@ -75,7 +77,7 @@ type End      = (Int, InsAttVals)
 data Tree = Leaf (MemoL,Instance)
             | SubNode ((MemoL, Instance), (Start1,End))
             | Branch [Tree] 
-              deriving (Eq, Show)
+              deriving (Show)
 
 type Result   = [((Start1, End),[Tree])]
 
@@ -400,13 +402,15 @@ rule_i          = rule I
 rule_s          = rule S
 
 --TODO: more undefined...
+--seems that there's a basic error catch here: if the left hand side does not agree with the right hand side data constructor, then it should
+--not be defined by setAtt.  "typ undefined" is compared to resType, to see if the same data constructor was used.
+--Also, no matter the declared type, if the right hand side is ErrorVal, we get ErrorVal, full stop.
+--This thing has bitten me so many times... it would be nice to actually have it done right.
 rule s_or_i typ oF pID isEq userFun listOfExp 
  = let formAtts  id spec =  (id, (forNode id . spec))
        forNode   id atts = [(id, atts)]
        resType           = userFun  listOfExp
    in  formAtts (s_or_i,pID) (setAtt (typ undefined) . resType)
-
-
 
 ---- **** -----
 

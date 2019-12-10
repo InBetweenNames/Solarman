@@ -2,6 +2,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module XSaiga.TypeAg2 where
 
@@ -15,6 +16,7 @@ import Data.List (nub)
 import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
 --import Control.Applicative
+import Data.Constructors.EqC
 
 data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Ord)
 
@@ -393,7 +395,6 @@ get_subjs_of_event_type = wrapS0 . get_subjs_of_event_type'
 
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}
-              | SubVal          {getAVAL    ::   Int}
               | RepVal          {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)}
@@ -491,43 +492,45 @@ instance Show AttValue where
     show (QUEST3_VAL j)  = "SENTJOIN_VAL"-}
 
 --TODO: find a better way to do this
+--NOTE: this is only here because of the expression problem in Haskell
+--Ideally, you do this with the EqC typeclass and then it gets handled properly in AGParser2
+--Instead, we define equality as equality up to the constructor used to generate the AttValue
 instance Eq AttValue where
-    (VAL  j)           == (VAL  j')     = True
-    (MaxVal j)         == (MaxVal j')   = True
-    (SubVal j)         == (SubVal j')   = True
-    (RepVal j)         == (RepVal j')   = True
-    (Res j)            == (Res j')      = True
-    (B_OP j)           == (B_OP j')     = True
-    (U_OP j)           == (U_OP j')     = True
-    (SENT_VAL j)       == (SENT_VAL j') = True
-    (NOUNCLA_VAL j)    == (NOUNCLA_VAL j') = True
-    (VERBPH_VAL j)     == (VERBPH_VAL j') = True
-    (ADJ_VAL j)        == (ADJ_VAL j') = True
-    (TERMPH_VAL j)     == (TERMPH_VAL j') = True
-    (DET_VAL j)        == (DET_VAL j') = True
-    (VERB_VAL j)       == (VERB_VAL j') = True
-    (RELPRON_VAL j)    == (RELPRON_VAL j') = True
-    (NOUNJOIN_VAL j)   == (NOUNJOIN_VAL j') = True
-    (VBPHJOIN_VAL j)   == (VBPHJOIN_VAL j') = True
-    (TERMPHJOIN_VAL j) == (TERMPHJOIN_VAL j') = True
-    (LINKINGVB_VAL j)  == (LINKINGVB_VAL j') = True
-    (SENTJOIN_VAL j)   == (SENTJOIN_VAL j') = True
-    (DOT_VAL j)        == (DOT_VAL j') = True
-    (QM_VAL j)         == (QM_VAL j') = True
-    (QUEST_VAL j)      == (QUEST_VAL j') = True
-    (QUEST1_VAL j)     == (QUEST1_VAL j') = True
-    (QUEST2_VAL j)     == (QUEST2_VAL j') = True
-    (QUEST3_VAL j)     == (QUEST3_VAL j') = True
-    (QUEST6_VAL j)     == (QUEST6_VAL j') = True
-    (PREP_VAL s1)      == (PREP_VAL s) = True
-    (PREPN_VAL s1)     == (PREPN_VAL s) = True
-    (PREPNPH_VAL s1)   == (PREPNPH_VAL s) = True
-    (PREPPH_VAL s1)    == (PREPPH_VAL s) = True
-    (YEAR_VAL s1)      == (YEAR_VAL s) = True
-    (SUPERPHSTART_VAL s1) == (SUPERPHSTART_VAL s) = True
-    (SUPER_VAL s1)     == (SUPER_VAL s) = True
-    (SUPERPH_VAL s1)   == (SUPERPH_VAL s) = True
-    _                  == _              = False
+    (VAL  _)           ==  (VAL  _)     = True
+    (MaxVal _)         ==  (MaxVal _)   = True
+    (RepVal _)         ==  (RepVal _)   = True
+    (Res _)            ==  (Res _)      = True
+    (B_OP _)           ==  (B_OP _)     = True
+    (U_OP _)           ==  (U_OP _)     = True
+    (SENT_VAL _)       ==  (SENT_VAL _) = True
+    (NOUNCLA_VAL _)    ==  (NOUNCLA_VAL _) = True
+    (VERBPH_VAL _)     ==  (VERBPH_VAL _) = True
+    (ADJ_VAL _)        ==  (ADJ_VAL _) = True
+    (TERMPH_VAL _)     ==  (TERMPH_VAL _) = True
+    (DET_VAL _)        ==  (DET_VAL _) = True
+    (VERB_VAL _)       ==  (VERB_VAL _) = True
+    (RELPRON_VAL _)    ==  (RELPRON_VAL _) = True
+    (NOUNJOIN_VAL _)   ==  (NOUNJOIN_VAL _) = True
+    (VBPHJOIN_VAL _)   ==  (VBPHJOIN_VAL _) = True
+    (TERMPHJOIN_VAL _) ==  (TERMPHJOIN_VAL _) = True
+    (LINKINGVB_VAL _)  ==  (LINKINGVB_VAL _) = True
+    (SENTJOIN_VAL _)   ==  (SENTJOIN_VAL _) = True
+    (DOT_VAL _)        ==  (DOT_VAL _) = True
+    (QM_VAL _)         ==  (QM_VAL _) = True
+    (QUEST_VAL _)      ==  (QUEST_VAL _) = True
+    (QUEST1_VAL _)     ==  (QUEST1_VAL _) = True
+    (QUEST2_VAL _)     ==  (QUEST2_VAL _) = True
+    (QUEST3_VAL _)     ==  (QUEST3_VAL _) = True
+    (QUEST6_VAL _)     ==  (QUEST6_VAL _) = True
+    (PREP_VAL _)      ==  (PREP_VAL _) = True
+    (PREPN_VAL _)     ==  (PREPN_VAL _) = True
+    (PREPNPH_VAL _)   ==  (PREPNPH_VAL _) = True
+    (PREPPH_VAL _)    ==  (PREPPH_VAL _) = True
+    (YEAR_VAL _)      ==  (YEAR_VAL _) = True
+    (SUPERPHSTART_VAL _) ==  (SUPERPHSTART_VAL _) = True
+    (SUPER_VAL _)     ==  (SUPER_VAL _) = True
+    (SUPERPH_VAL _)   ==  (SUPERPH_VAL _) = True
+    _                  ==  _              = False
 
 
 
@@ -536,55 +539,37 @@ instance Eq AttValue where
 
 --------- *********************** --------------
 -- needs to be simplified --
-setAtt (MaxVal s1)   (MaxVal s)       = [MaxVal s]
-setAtt (MaxVal s1)   (SubVal s)       = [MaxVal s]
-setAtt (MaxVal s1)   (RepVal s)       = [MaxVal s]
-setAtt (MaxVal s1)   (VAL s)          = [MaxVal s]
-setAtt (MaxVal s1)   (ErrorVal s)     = [ErrorVal s]
+--This seems to be used in the "left hand side" "right hand side" code... interpret arg1 as LHS and arg2 as RHS
+--if attempting to assign arg2 to arg1, only do it if the rules match
 
-setAtt (SubVal s1)   (MaxVal s)       = [SubVal s]
-setAtt (SubVal s1)   (SubVal s)       = [SubVal s]
-setAtt (SubVal s1)   (RepVal s)       = [SubVal s]
-setAtt (SubVal s1)   (VAL s)          = [SubVal s]
-setAtt (SubVal s1)   (ErrorVal s)     = [ErrorVal s]
+setAtt (MaxVal _)   (MaxVal s)       = [MaxVal s]
+setAtt (RepVal _)   (RepVal s)       = [RepVal s]
+setAtt (VAL _)      (VAL s)          = [VAL s]
+setAtt (Res _)      (Res s)          = [Res s]
 
-setAtt (RepVal s1)   (MaxVal s)       = [RepVal s]
-setAtt (RepVal s1)   (SubVal s)       = [RepVal s]
-setAtt (RepVal s1)   (RepVal s)       = [RepVal s]
-setAtt (RepVal s1)   (VAL s)          = [RepVal s]
-setAtt (RepVal s1)   (ErrorVal s)     = [ErrorVal s]
+setAtt (NOUNCLA_VAL _)  (NOUNCLA_VAL s)    = [NOUNCLA_VAL s]
+setAtt (ADJ_VAL _)      (ADJ_VAL s)        = [ADJ_VAL s]
+setAtt (TERMPH_VAL _)   (TERMPH_VAL s)     = [TERMPH_VAL s]
+setAtt (VERBPH_VAL _)   (VERBPH_VAL s)     = [VERBPH_VAL s]
+setAtt (SENT_VAL   _)   (SENT_VAL   s)     = [SENT_VAL s]
+setAtt (QUEST_VAL  _)   (QUEST_VAL  s)     = [QUEST_VAL s]
+setAtt (QUEST1_VAL  _)   (QUEST1_VAL  s)     = [QUEST1_VAL s]
+setAtt (QUEST2_VAL  _)   (QUEST2_VAL  s)     = [QUEST2_VAL s]
+setAtt (QUEST3_VAL  _)   (QUEST3_VAL  s)     = [QUEST3_VAL s]
+setAtt (QUEST6_VAL  _)   (QUEST6_VAL  s)     = [QUEST6_VAL s]
 
-setAtt (VAL s1)   (VAL s)          = [VAL s]
-setAtt (VAL s1)   (MaxVal s)       = [VAL s]
-setAtt (VAL s1)   (SubVal s)       = [VAL s]
-setAtt (VAL s1)   (RepVal s)       = [VAL s]
-setAtt (VAL s1)   (ErrorVal s)     = [ErrorVal s]
+setAtt (PREP_VAL _) (PREP_VAL s) = [PREP_VAL s]
+setAtt (PREPN_VAL _) (PREPN_VAL s) = [PREPN_VAL s]
+setAtt (PREPNPH_VAL _) (PREPNPH_VAL s) = [PREPNPH_VAL s]
+setAtt (PREPPH_VAL _) (PREPPH_VAL s) = [PREPPH_VAL s]
+setAtt (YEAR_VAL _) (YEAR_VAL s) = [YEAR_VAL s]
 
+setAtt (SUPERPHSTART_VAL _) (SUPERPHSTART_VAL s) = [SUPERPHSTART_VAL s]
+setAtt (SUPER_VAL _) (SUPER_VAL s) = [SUPER_VAL s]
+setAtt (SUPERPH_VAL _) (SUPERPH_VAL s) = [SUPERPH_VAL s]
 
-setAtt (Res s1)      (Res s)        = [Res s]
-setAtt (Res s1)      (ErrorVal s)   = [ErrorVal s]
-setAtt (ErrorVal s1) (ErrorVal s)   = [ErrorVal s]
-
-setAtt (NOUNCLA_VAL s1)  (NOUNCLA_VAL s)    = [NOUNCLA_VAL s]
-setAtt (ADJ_VAL s1)      (ADJ_VAL s)        = [ADJ_VAL s]
-setAtt (TERMPH_VAL s1)   (TERMPH_VAL s)     = [TERMPH_VAL s]
-setAtt (VERBPH_VAL s1)   (VERBPH_VAL s)     = [VERBPH_VAL s]
-setAtt (SENT_VAL   s1)   (SENT_VAL   s)     = [SENT_VAL s]
-setAtt (QUEST_VAL  s1)   (QUEST_VAL  s)     = [QUEST_VAL s]
-setAtt (QUEST1_VAL  s1)   (QUEST1_VAL  s)     = [QUEST1_VAL s]
-setAtt (QUEST2_VAL  s1)   (QUEST2_VAL  s)     = [QUEST2_VAL s]
-setAtt (QUEST3_VAL  s1)   (QUEST3_VAL  s)     = [QUEST3_VAL s]
-setAtt (QUEST6_VAL  s1)   (QUEST6_VAL  s)     = [QUEST6_VAL s]
-
-setAtt (PREP_VAL s1) (PREP_VAL s) = [PREP_VAL s]
-setAtt (PREPN_VAL s1) (PREPN_VAL s) = [PREPN_VAL s]
-setAtt (PREPNPH_VAL s1) (PREPNPH_VAL s) = [PREPNPH_VAL s]
-setAtt (PREPPH_VAL s1) (PREPPH_VAL s) = [PREPPH_VAL s]
-setAtt (YEAR_VAL s1) (YEAR_VAL s) = [YEAR_VAL s]
-
-setAtt (SUPERPHSTART_VAL s1) (SUPERPHSTART_VAL s) = [SUPERPHSTART_VAL s]
-setAtt (SUPER_VAL s1) (SUPER_VAL s) = [SUPER_VAL s]
-setAtt (SUPERPH_VAL s1) (SUPERPH_VAL s) = [SUPERPH_VAL s]
+--appears that ErrorVal is used as a sort of sentinel value -- all things that attempt to set to this should be treated as an error
+setAtt _ (ErrorVal s)   = [ErrorVal s]
 --------- *********************** --------------
 
 
