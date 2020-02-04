@@ -172,4 +172,12 @@ interpret' input = do
 evaluate rtriples interp startState = do
   return $ State.runState (TypeAg2.getSem interp rtriples) startState
 
+runQuery interp = do
+    let g = TypeAg2.getGetts interp
+    let flatQueries = TypeAg2.flattenGetts g
+    let optQueries = TypeAg2.flatOptimize flatQueries
+    rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
+    (out, _) <- evaluate rtriples interp Map.empty
+    return out
+
 interpret''' input = interpret' input >>= TIO.putStrLn
