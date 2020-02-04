@@ -223,7 +223,8 @@ make_year' = make_pnoun' . tshow
 
 make_year = make_pnoun . tshow
 
-in' = make_prep ["location", "year"]
+in_loc' = make_prep ["location"]
+in_year' = make_prep ["year"]
 
 --TODO: verify "subject" and identity here.  should not be introducing more info...
 --to = (\nph -> (["subject"], intersect_fdbr' nph)) >|< id
