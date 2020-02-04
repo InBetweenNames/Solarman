@@ -60,6 +60,13 @@ instance TripleStore [Triple] where
     getts_triples_entevprop ev_data propNames evs = 
       return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` ("type":propNames)) ev_data
     
+    --TODO: can getts_triples_members just be implemented in terms of getts_triples_entevprop_type?
+    --getts_triples_members ev_data set = getts_triples_entevprop_type ev_data ["subject", "object"] "membership"
+    --yes.  Actually, triplestore retrieval really only needs getts_triples_entevprop_type.
+    --but note this increases bandwidth requirements as the entire membership relation is needed
+    --perhaps could extend _type with a constraint in the future?
+    --the pure functions still need all three, I think (maybe not _members...)
+
     getts_triples_members ev_data set = do
       let evs_with_set_as_object = getts_1 ev_data ("?", "object", set)
       let evs_with_type_membership = getts_1 ev_data ("?", "type", "membership")
@@ -69,7 +76,7 @@ instance TripleStore [Triple] where
       return $ triples
 
 --TODO: note, the pure versions do NOT need to include type information
-
+--TODO: ev_data should come last, not first
 pure_getts_triples_entevprop_type ev_data propNames ev_type =
   pure_getts_triples_entevprop ev_data propNames evs_with_type_ev_type
   where

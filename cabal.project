@@ -1,3 +1,7 @@
 packages: .
 optional-packages:
   cross-deps/{comonad,distributive}
+  /home/shane/cabal-deps/{MissingH,rdf4h}
+
+--profiling: True
+--profiling-detail: all-functions

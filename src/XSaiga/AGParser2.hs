@@ -22,9 +22,11 @@ Finished improvements:
     * Cassini no longer refers to the wrong entry voyager_2
     * superterminals, needed for dictionaryless pnouns, cnouns, adjs
     * disambiguated grammar for years and locations
+    * Decouple TypeAg2 from AGParser2 (parameterize AttValue)
 
 TODO Improvements:
-    * Decouple TypeAg2 from AGParser2 (parameterize AttValue)
+    
+    * Find another way to signal an error for slot mismatch (S1/S3 given and S1/S2 requested)
     * Find another way to find "equivalence" between AttValues.  See TypeAg2 where the annoying bit is with instance Eq
     * Move data Id to here from TypeAg2
     * Use a hashmap instead of a red/black tree map (requires hashable MemoL)
@@ -62,49 +64,51 @@ type Instance = (SorI, Id)
 data Useless  = OF|ISEQUALTO  deriving (Show, Eq)
                 -- for decorating the semantic rules
 
-type Atts     = [AttValue] -- [(AttType, AttValue)] 
+type Error = T.Text
 
-type InsAttVals = [(Instance,Atts)]
+type Atts att   = [att] -- [(AttType, AttValue)] 
 
-type Start    = ((Int,InsAttVals), [T.Text]) --What purpose does this T.text serve?
+type InsAttVals att = [(Instance,Atts att)]
+
+type Start att    = ((Int,InsAttVals att), [T.Text]) --What purpose does this T.text serve?
 
 type Context  = ([MemoL],[(Int,[(MemoL, Int)])])
 
 --These are the same??
-type Start1   = (Int, InsAttVals)
-type End      = (Int, InsAttVals)
+type Start1 att  = (Int, InsAttVals att)
+type End att    = Start1 att
 
-data Tree = Leaf (MemoL,Instance)
-            | SubNode ((MemoL, Instance), (Start1,End))
-            | Branch [Tree] 
+data Tree att = Leaf (MemoL,Instance)
+            | SubNode ((MemoL, Instance), (Start1 att,End att))
+            | Branch [Tree att] 
               deriving (Show)
 
-type Result   = [((Start1, End),[Tree])]
+type Result att  = [((Start1 att, End att),[Tree att])]
 
 --Also called an "MTable" or "State" originally
-type MemoTable = Map.Map MemoL [(Start1,(Context,Result))]
+type MemoTable att = Map.Map MemoL [(Start1 att,(Context,Result att))]
 
-type M = Start -> Context -> State MemoTable (Context, Result)
+type M att = Start att -> Context -> State (MemoTable att) (Context, Result att)
 
-type NTType  = Id -> InsAttVals -> M
+type NTType att = Id -> (InsAttVals att) -> (M att)
 
-type SemRule = (Instance, (InsAttVals, Id) -> InsAttVals)
+type SemRule att = (Instance, (InsAttVals att, Id) -> InsAttVals att)
 
-type SeqType = Id -> InsAttVals -> [SemRule] -> Result -> M
+type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M att)
 
 ------------
 
 
 --------------- ******************************************** ---------------------------
 
-(<|>) :: NTType -> NTType -> NTType
+(<|>) :: NTType att -> NTType att -> NTType att
 (p <|> q) idx inhx ((i,a),inp) c 
  = do (l1,m) <- p idx inhx ((i,[]),inp) c 
       (l2,n) <- q idx inhx ((i,[]),inp) c
       return ((union (fst l1) (fst l2),[]) ,(m ++ n))
 
 --------------------------------------------------------
-(*>) :: SeqType -> SeqType -> SeqType
+(*>) :: SeqType att -> SeqType att -> SeqType att
 (p *> q) idx inhx semx resx 
                  ((i,a),inp) cc 
  = do (l,m) <- p idx inhx semx resx 
@@ -178,13 +182,13 @@ addToBranch (q1,[Leaf (x2,i2)])
 
 
 empty_cuts = ([],[])                   
-empty :: InsAttVals -> M
+empty :: InsAttVals att -> M att
 empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
 --a3 = [MemoL]
 -- ((Int, b1), t a1) appears twice (appears to be Start)
 -- a2 = MemoL
-memoize :: MemoL -> (Id -> InsAttVals -> M) -> Id -> InsAttVals -> M
+memoize :: (Eq att) => MemoL -> (Id -> InsAttVals att -> M att) -> Id -> InsAttVals att -> M att
 memoize name f id downAtts ((inp,dAtts),dInput) context 
  = do s <- get
       case (lookupT name inp (snd context) s) of   
@@ -258,15 +262,15 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 
-lookupT :: MemoL -> Int -> [(Int,[(MemoL, Int)])] -> MemoTable -> Maybe (Context,Result)
+lookupT :: MemoL -> Int -> [(Int,[(MemoL, Int)])] -> MemoTable att -> Maybe (Context,Result att)
 lookupT name inp context mTable = do
     res_in_table <- Map.lookup name mTable
     checkUsability inp context (lookupRes inp res_in_table)
 
-lookupRes :: Int -> [(Start1,(Context,Result))] -> Maybe (Context, Result)
+lookupRes :: Int -> [(Start1 att,(Context,Result att))] -> Maybe (Context, Result att)
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
-checkUsability :: Int -> [(Int,[(MemoL, Int)])] -> Maybe (Context, Result) -> Maybe (Context, Result)
+checkUsability :: Int -> [(Int,[(MemoL, Int)])] -> Maybe (Context, Result att) -> Maybe (Context, Result att)
 checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
   where
   --Want Nothing to be the case if list is empty or the inp could not be found
@@ -275,7 +279,7 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Ju
   empty :: [(MemoL, Int)] -> Maybe [(MemoL, Int)]
   empty [] = Nothing
   empty x  = Just x
-  checkUsability_ :: Maybe [(MemoL, Int)] -> Maybe [(MemoL, Int)] -> (Context, Result) -> Maybe (Context, Result)
+  checkUsability_ :: Maybe [(MemoL, Int)] -> Maybe [(MemoL, Int)] -> (Context, Result att) -> Maybe (Context, Result att)
   checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
   checkUsability_ Nothing  _       _       = Nothing    -- if cc at j is empty then don't re-use
   checkUsability_ (Just ccs) (Just scs) scres  | and $ condCheck ccs scs = Just scres
@@ -287,10 +291,10 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Ju
 
 {-nub (dA ++ dAtts)-}
 --udt == "update table"?
-udt :: (Context, Result) -> MemoL -> Start1 -> MemoTable -> MemoTable
+udt :: (Eq att) => (Context, Result att) -> MemoL -> Start1 att -> MemoTable att -> MemoTable att
 udt res name (inp, dAtts) = replaceSnd' name [((inp,dAtts),res)] (my_merge (inp,nub dAtts) res)
 
-replaceSndG :: Int -> (Start1, (Context, Result)) -> [(Start1, (Context, Result))] -> [(Start1, (Context, Result))]
+replaceSndG :: Int -> (Start1 att, (Context, Result att)) -> [(Start1 att, (Context, Result att))] -> [(Start1 att, (Context, Result att))]
 replaceSndG key def list
   = before ++ replaceFirst replacePoint
   where
@@ -298,7 +302,7 @@ replaceSndG key def list
     replaceFirst [] = [def]
     replaceFirst ((a, b):nc) = def:nc                           
 
-my_merge :: Start1 -> (Context, Result) -> [(Start1, (Context, Result))] -> [(Start1, (Context, Result))]
+my_merge :: Start1 att -> (Context, Result att) -> [(Start1 att, (Context, Result att))] -> [(Start1 att, (Context, Result att))]
 my_merge (inp,ndAtts) res = replaceSndG inp ((inp,ndAtts),res) 
 
 {-
@@ -316,39 +320,39 @@ my_merge (inp,ndAtts) res (((i,dA), es):rest)
 --use "f" to determine if a token may make a suitable terminal
 --Nothing -> means throw it out
 --Just a -> use it
-superterminal :: MemoL -> (T.Text -> Maybe Atts) -> Id -> InsAttVals -> M
+superterminal :: (Eq att) => MemoL -> (T.Text -> Maybe (Atts att)) -> Id -> InsAttVals att -> M att
 superterminal key f = memoize key (superterminal' f)
 
-superterminal' :: (T.Text -> Maybe Atts) -> Id -> InsAttVals -> M
+superterminal' :: (Eq att) => (T.Text -> Maybe (Atts att)) -> Id -> InsAttVals att -> M att
 superterminal' f id _ q@((r,a),dInp)
  = term q --trace ((show $ T.intercalate " " dInp) ++ show q) $ term q
     where
     inst = (S, id)
     instAttVals atts =  [(inst,atts)]
-    term :: M --NTType
+    --term :: M att --NTType
     term ((r,a),dInp) _ = if r - 1 == length dInp then return (empty_cuts,[]) else let str = dInp!!(r - 1) in case f str of
         Nothing -> return (empty_cuts, [])
         Just atts -> return (empty_cuts,[(((r,[]),(r+1,instAttVals atts)),[Leaf (ALeaf str, inst)])])
 
-terminal :: T.Text -> Atts -> Id -> InsAttVals -> M
+terminal :: (Eq att) => T.Text -> Atts att -> Id -> InsAttVals att -> M att
 terminal str semRules id _ ((i,a),inp)
  = (term str) ((i,[]),inp)
     where
     inst = (S, id)
     atts = [(inst,semRules)]
-    term :: T.Text -> M
+    --term :: T.Text -> M att
     term str ((r,a),dInp) _ 
      |r - 1 == length dInp       = return (empty_cuts,[])
      |dInp!!(r - 1) == str       = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
      |otherwise                  = return (empty_cuts,[])  
 
-nt :: NTType -> Id -> SeqType
+nt :: NTType att -> Id -> SeqType att
 nt fx idx id inhAtts semRules altFromSibs 
  = let groupRule'' inst       = map snd $ filter ((inst ==) . fst) semRules
        ownInheritedAtts       = mapInherited (groupRule'' (I, idx)) altFromSibs inhAtts id 
    in fx idx ownInheritedAtts 
 
-parser :: SeqType -> [SemRule] -> Id -> InsAttVals -> M
+parser :: SeqType att -> [SemRule att] -> Id -> InsAttVals att -> M att
 parser synRule semRules id inhAtts i c
  =      do
            s <- get
@@ -410,36 +414,37 @@ rule s_or_i typ oF pID isEq userFun listOfExp
  = let formAtts  id spec =  (id, (forNode id . spec))
        forNode   id atts = [(id, atts)]
        resType           = userFun  listOfExp
-   in  formAtts (s_or_i,pID) (setAtt (typ undefined) . resType)
+   in  formAtts (s_or_i,pID) (\x -> [resType x])
 
 ---- **** -----
 
 synthesized = valOf S
 inherited   = valOf I
 
-valOf :: SorI -> (a -> AttValue) -> Useless -> Id -> InsAttVals ->  Id -> Atts
+valOf :: (Eq att) => SorI -> (a -> att) -> Useless -> Id -> InsAttVals att ->  Id -> Atts att
 valOf ud typ o_f x  ivs x' | x == LHS   = getAttVals (ud , x') ivs typ
                            | otherwise  = getAttVals (ud , x ) ivs typ
 
 --TODO: Whoa!!!!  not cool! 
-getAttVals :: Instance -> InsAttVals -> (a -> AttValue) -> Atts
+--This appears to be invoked if an Id is requested and not used
+getAttVals :: (Eq att) => Instance -> InsAttVals att -> (a -> att) -> Atts att
 getAttVals x ((i,v):ivs) typ =
  let getAttVals_ typ (t:tvs) = if (typ undefined) == t then (t :getAttVals_ typ tvs)
                                else getAttVals_ typ tvs                
      getAttVals_ typ []      = [] -- ErrorVal {-- 100 --} "ERROR id found but no value"
  in  
      if(i == x) then getAttVals_ typ v else   getAttVals x ivs typ
-getAttVals x [] typ          = [ErrorVal {-- 200 --} "ERROR no id"]
+--getAttVals x [] typ          = [ErrorVal {-- 200 --} "ERROR no id"] --TODO: note, the error being reported would be here.  this is the ONLY case of error reporting...
 
  
 -------- ************************************** ------------
 
 ------------------------- user functions ------------------   
-apply :: InsAttVals -> Id -> (InsAttVals -> Id -> AttValue) -> Int
+apply :: InsAttVals att -> Id -> (InsAttVals att -> Id -> AttValue) -> Int
 apply  y i x   = getAVAL (x y i)
 apply_ y i x   = getB_OP (x y i)
 
-apply__ :: InsAttVals -> Id -> (InsAttVals -> Id -> AttValue) -> DisplayTree
+apply__ :: InsAttVals att -> Id -> (InsAttVals att -> Id -> AttValue) -> DisplayTree
 apply__ y i x  = getRVAL (x y i)
 
 applyMax  y i x   = getAVAL (foldr getMax (MaxVal 0) (x y i))
@@ -552,14 +557,14 @@ op   = memoize Op
 --The nastiest list comprehension I have ever seen in my life     
 --The unformatted parse tree
 
-attsFinalAlt :: MemoL -> Int -> MemoTable -> [[[Atts]]]
+attsFinalAlt :: MemoL -> Int -> MemoTable att -> [[[Atts att]]]
 attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup key t)
     where
         allTrees sr = [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ]
               
 --Using a start, end, and memoization key, locate all valid parses that match.  In the case of ambiguity, there may be more than one result.
 --These three conditions are sufficient to guarantee the result is unique and valid.
-lookupTable :: MemoL -> Int -> Int -> MemoTable -> [Tree]
+lookupTable :: MemoL -> Int -> Int -> MemoTable att -> [Tree att]
 lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
     where allTrees sr = concat $ concat $ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start]
 
@@ -601,7 +606,7 @@ findAllParseTreesFormatted formatTree key end t = map (\(x, y) -> (x, formatTree
 findAllParseTreesFormatted' = findAllParseTreesFormatted syntaxTreeToLinearGeneric'
 
 --Compare trees up until Atts.  We're looking for a syntactic match and cannot compare atts meaningfully.
-eqAmb :: Tree -> Tree -> Bool
+eqAmb :: (Eq att) => Tree att -> Tree att -> Bool
 eqAmb (Leaf x) (Leaf y) = x == y
 eqAmb (SubNode x) (SubNode y) = x == y
 eqAmb (Branch []) (Branch []) = True
@@ -647,7 +652,7 @@ diffTree (SyntaxTreeNT (t1:ts1)) a@(SyntaxTreeNT (t2:ts2)) = diffTree t1 t2 ++ d
 --discover (a moon) = SyntaxTreeNT [SyntaxTreeT "discover", SyntaxTree NT[SyntaxTreeT "a", SyntaxTree "moon"]]
 
 --The unformatted flattened parse trees
-formatAttsFinalAlt :: MemoL -> Int -> MemoTable -> Atts
+formatAttsFinalAlt :: MemoL -> Int -> MemoTable att -> Atts att
 formatAttsFinalAlt key e t =  concat $ concat $ concat $ attsFinalAlt key e t
 
 meaning_of p dInp key
@@ -673,9 +678,9 @@ formFinal key ePoint t = maybe [] final $ Map.lookup key t
                                                     |((i,inAt1),((cs,ct),rs)) <- sr ]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
-test :: (Start -> Context -> State MemoTable (Context, Result))
+test :: (Start att -> Context -> State (MemoTable att) (Context, Result att))
     -> [T.Text]
-    -> ((Context, Result), MemoTable)
+    -> ((Context, Result att), MemoTable att)
 test p input = runState (p ((1,[]),input) ([],[])) Map.empty
 
 --formatParseIO = mapM id . map showio . parse

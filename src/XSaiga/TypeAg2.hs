@@ -400,7 +400,6 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)}
               | U_OP            {getU_OP    ::   (Int -> Int)}
               | SENT_VAL        {getSV      ::   TFMemo FDBR }
-              | ErrorVal        {getEVAL    ::   Text}
               | NOUNCLA_VAL     {getAVALS   ::   TFMemo FDBR }
               | VERBPH_VAL      {getAVALS   ::   TFMemo FDBR }
               | ADJ_VAL         {getAVALS   ::   TFMemo FDBR }
@@ -532,16 +531,12 @@ instance Eq AttValue where
     (SUPERPH_VAL _)   ==  (SUPERPH_VAL _) = True
     _                  ==  _              = False
 
-
-
-
-
-
 --------- *********************** --------------
 -- needs to be simplified --
 --This seems to be used in the "left hand side" "right hand side" code... interpret arg1 as LHS and arg2 as RHS
 --if attempting to assign arg2 to arg1, only do it if the rules match
 
+{-
 setAtt (MaxVal _)   (MaxVal s)       = [MaxVal s]
 setAtt (RepVal _)   (RepVal s)       = [RepVal s]
 setAtt (VAL _)      (VAL s)          = [VAL s]
@@ -567,9 +562,10 @@ setAtt (YEAR_VAL _) (YEAR_VAL s) = [YEAR_VAL s]
 setAtt (SUPERPHSTART_VAL _) (SUPERPHSTART_VAL s) = [SUPERPHSTART_VAL s]
 setAtt (SUPER_VAL _) (SUPER_VAL s) = [SUPER_VAL s]
 setAtt (SUPERPH_VAL _) (SUPERPH_VAL s) = [SUPERPH_VAL s]
+-}
 
 --appears that ErrorVal is used as a sort of sentinel value -- all things that attempt to set to this should be treated as an error
-setAtt _ (ErrorVal s)   = [ErrorVal s]
+--setAtt _ (ErrorVal s)   = [ErrorVal s]
 --------- *********************** --------------
 
 

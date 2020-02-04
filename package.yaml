@@ -43,6 +43,7 @@ dependencies:
   - cgi
   - fastcgi
   - random
+  - data-constructors
 
 default-extensions:
   - DoAndIfThenElse

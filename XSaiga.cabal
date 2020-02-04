@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 12f71fda6d0aaf4babd5702cd927cb93841a2aa1a6e9e6b8fdd7c284d88e5d1c
+-- hash: b5272645c88000145e3c641f326acf1744b6e64ccfd2ce2e5b7fade50eee4721
 
 name:           XSaiga
 version:        1.6.1.0
@@ -58,6 +58,7 @@ library
     , bytestring
     , cgi
     , containers >=0.5
+    , data-constructors
     , fastcgi
     , hsparql >=0.3.6
     , mtl
@@ -82,6 +83,7 @@ executable solarman.cgi
     , bytestring
     , cgi
     , containers >=0.5
+    , data-constructors
     , fastcgi
     , hsparql >=0.3.6
     , mtl
