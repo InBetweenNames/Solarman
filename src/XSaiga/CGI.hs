@@ -158,9 +158,9 @@ interpret' input = do
         rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
         (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) sems --TODO: save the state for later?  paper opportunity
         let formatted = T.intercalate "\n<br/><br/>\n" $
-                List.zipWith3 (\syntax -> \getts -> \res -> T.intercalate "<br/>\n"
-                    [T.append "result: " res, T.append "syntax: " syntax, T.append "getts: " $ TypeAg2.treeToParsedSentence getts])
-                    trees (List.map TypeAg2.getGetts sems) outs
+                List.zipWith (\syntax -> \res -> T.intercalate "<br/>\n"
+                    [T.append "<b>result:</b> " res, T.append "<b>syntax:</b> " syntax])--, T.append "getts: " $ TypeAg2.treeToParsedSentence getts])
+                    trees {-}(List.map TypeAg2.getGetts sems)-} outs
         if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
     else return firstpass
     where
