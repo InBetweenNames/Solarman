@@ -1,0 +1,160 @@
+#JSGF V1.0;
+
+grammar com.speechweb.solarman;
+
+<adjs> = <adj> [<adjs>];
+
+<snouncla> = <Cnoun> | <adjs> <Cnoun>;
+
+<relnouncla> = <snouncla> <relpron> <joinvbph> | <snouncla>;
+
+<nouncla> = <relnouncla> <nounjoin> <nouncla> | <relnouncla> <relpron> <linkingvb> <nouncla> | <nouncla>;
+
+<detph> = <indefpron> | <det> <nouncla>;
+
+<transvbph> = <transvb>
+    | <transvb> <preps>
+    | <transvb> <jointermph>
+    | <transvb> <jointermph> <preps>
+    | <transvb> <superph>
+    | <transvb> <superph> <preps>
+    | <linkingvb> <transvb>
+    | <linkingvb> <transvb> <preps>
+    | <linkingvb> <jointermph> <transvb>
+    | <linkingvb> <jointermph> <transvb> <preps>;
+
+<superph> = <superph_start> <super> <nouncla>;
+
+<preps> = <prepph> [<preps>];
+
+<joinyear> = <year> | <joinyear> <termphjoin> <joinyear>;
+
+<prepph> = <prep> <jointermph>
+        | <prepnph> <joinvbph>
+        | <prepyear> <joinyear>
+        | <prep> <superph>;
+
+<verbph> = <transvbph> | <intransvb> | <linkingvb> <det> <nouncla>;
+
+<termph> = <pnoun> | <detph>;
+
+<jointermph> = <jointermph> <termphjoin> <jointermph> | <termph>;
+
+<joinvbph> = <verbph> <verbphjoin> <joinvbph> | <verbph>;
+
+<sent> = <jointermph> <joinvbph>;
+
+<two_sent> = <sent> <sentjoin> <sent>;
+
+<question = <quest1> <sent>
+        | <quest5> <quest1> <sent>
+        | <quest6> <quest1> <sent>
+        | <quest2> <joinvbph>
+        | <quest5> <joinvbph>
+        | <quest3> <nouncla> <joinvbph>
+        | <quest4> <nouncla> <joinvbph>
+        | <two_sent>
+        | <sent>;
+
+<quest4> = <quest4a> <quest4b>;
+
+public <query> = <question> | <opener>;
+
+/*TERMINALS*/
+<prepn> = with | in | at | by | using | to;
+
+<prepnph> = to;
+
+<prepyear> = in;
+
+<transvb> = discover | discovers | discovered | orbit | orbited | orbits | use | used | uses;
+
+<indefpron> = anyone | anything | anybody | someone | something | somebody | everyone | everything | everybody;
+
+<quest5> = where | when | how;
+
+<quest4b> = many;
+
+<sentjoin> = and;
+
+<linkingvb> = is | was | are | were;
+
+<nounjoin> = and | or;
+
+<verbphjoin> = and | or;
+
+<quest3> = which | what;
+
+<det> = the | a | one | an | some | any | every | all | two | most;
+
+<superph_start> = the;
+
+<super> = most;
+
+<termphjoin> = and | or;
+
+<quest6> = what;
+
+<intransvb> = exist | exists | spin | spins;
+
+<pnoun> = bernard | bond | venus | cassini | dollfus | Fouuntain | galileo | hall | herschel | huygens | kowal | kuiper | larsen | lassell | melotte | nicholson | perrine | pickering | almathea | ariel | callisto | charon | deimos | dione | earth | enceladus | europa | ganymede | hyperion | iapetus | io | janus | jupiter | jupiter eighth | jupiter eleventh | jupiter fourteenth | jupiter ninth | jupiter seventh | jupiter sixth | jupiter tenth | jupiter thirteenth | jupiter twelfth | luna | mars | mercury | mimas | miranda | neptune | nereid | oberon | phobos | phoebe | pluto | rhea | saturn | saturn first | sol | tethys | titan | titania | triton | umbriel | uranus | venus | cassegrain telescope | hooker telescope | schmidt telescope | subaru reflector telescope | canada france hawaii telescope | aerial telescope one | bruce astrograph | telescope one | hale telescope | hubble space telescope | blanco telescope | crossley reflector telescope | refractor telescope one | refractor telescope two | refractor telescope three | refractor telescope four | reflector telescope one | reflector telescope two | reflector telescope three | reflector telescope four | ground based telescope one | ground based telescope two | ground based telescope three | galilean telescope one | voyager science team | cassini imaging science team | science team one | science team two | science team three | science team four | science team five | science team six | science team seven | science team eight | science team nine | science team ten | science team eleven | science team twelve | science team thirteen | science team fourteen | science team fifteen | science team sixteen | science team seventeen | science team eighteen | science team nineteen | science team twenty | science team twenty one | larson | fountain | scotti | spahr | mcmillan | montani | gleason | gehrels | roemer | sheppard | jewitt | fernandez | magnier | kleyna | gladman | kavelaars | petit | allen | laques | lecacheux | smith | reitsema | pascu | seidelmann | baum | currie | showalter | scholl | holman | marsden | burns | milisavljevic | grav | karkoschka | lissauer | fraser | christy | weaver | stern | mutchler | steffl | buie | merline | spencer | young e f | young l a | hamilton | soummer | throop | voyager one | voyager two | cassini | mt hopkins | fort davis | cerro tololo | us naval observatory | padua | mt hamilton | greenwich | mt wilson | mt palomar | kitt peak | mauna kea | slough | paris | the hague | cambridge | liverpool | arequipa | pic du midi | flagstaff | la silla | himalia | elara | pasiphae | sinope | lysithea | carme | ananke | leda | thebe | adrastea | metis | callirrhoe | themisto | megaclite | taygete | chaldene | harpalyke | kalyke | iocaste | erinome | isonoe | praxidike | autonoe | thyone | hermippe | aitne | eurydome | euanthe | euporie | orthosie | sponde | kale | pasithee | hegemone | mneme | aoede | thelxinoe | arche | kallichore | helike | carpo | eukelade | cyllene | kore | herse | epimetheus | helene | telesto | calypso | atlas | prometheus | pandora | pan | ymir | paaliaq | tarvos | ijiraq | suttungr | kiviuq | mundilfari | albiorix | skathi | erriapus | siarnaq | thrymr | narvi | methone | pallene | polydeuces | daphnis | aegir | bebhionn | bergelmir | bestla | farbauti | fenrir | fornjot | hati | hyrrokkin | kari | loge | skoll | surtur | anthe | jarnsaxa | greip | tarqeq | aegaeon | cordelia | ophelia | bianca | cressida | desdemona | juliet | portia | rosalind | belinda | puck | caliban | sycorax | prospero | setebos | stephano | trinculo | francisco | margaret | ferdinand | perdita | mab | cupid | triton | naiad | thalassa | despina | galatea | larissa | proteus | halimede | psamathe | sao | laomedeia | neso | nix | hydra | kerberos | styx;
+
+<quest2> = what | who;
+
+<quest1> = does | did | do;
+
+<quest4a> = how;
+
+<cnoun> = thing | things | planets | planet | person | sun | moon | moons | satellite | satellites | human | discoverer | discoverers | humans | people | telescope | telescopes | team | teams | spacecraft | spacecrafts | place | places;
+
+<adj> = atmospheric | blue | blue | solid | brown | gaseous | green | red | ringed | vacuumous;
+
+<relpron> = that | who | which;
+
+//TODO: number pronunciations
+/*YEARS*/
+
+<year> = <under_ten_thousand> | <tens> <tens>;
+
+/*Terminals*/
+<ones> = one | two | three | four | five | six | seven | eight | nine;
+<teens> = ten | eleven | twelve | thirteen | fourteen | fifteen | sixteen | seventeen | eighteen | nineteen;
+<tens_place> = twenty | thirty | forty | fifty | sixty | seventy | eighty | ninety;
+
+/*Non-Terminals*/
+<tens> = <teens> | [<tens_place>] <ones>;
+<hundreds> = [<ones> hundred and] <tens>;
+<thousands> = [<ones> thousand] <hundreds>;
+<under_ten_thousand> = <thousands>;
+
+<opener> =
+      ask them to be quiet
+    | introduce yourself solar man
+    | what can i say
+    | hi
+    | hello
+    | hello there
+    | hello solar man
+    | goodbye
+    | goodbye solar man
+    | fine thanks
+    | thanks
+    | thanks solar man
+    | yes please
+    | what is your name
+    | who are you
+    | where do you live
+    | what do you know
+    | how old are you
+    | who made you
+    | what is your favorite band
+    | who is the vice president at the university of windsor
+    | who is the president at the university of windsor
+    | who is the dean of science at the university of windsor
+    | tell me a poem
+    | know any poems
+    | tell me a joke
+    | know any jokes
+    | who is judy
+    | who is monty
+    | who do you know;

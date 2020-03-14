@@ -1,0 +1,105 @@
+#JSGF V1.0;
+
+grammar com.speechweb.solarman;
+
+<adjs> = <Adj> [<adjs>];
+
+<snouncla> = <Cnoun> | <adjs> <Cnoun>;
+
+<spnoun> = <Pnoun> | <adjs> <Pnoun>;
+
+<detph> = <Indefpron>
+                        | <Det> <spnoun>
+                        | <Det> <snouncla>;
+
+<prepph> = <Prepn> <jointermph>;
+
+<transph_base> = <Relpron> <Transvb>
+                        | <Relpron> <Linkingvb> <Transvb>;
+<transph> = <transph_base> [<prepph>];
+
+<termph> = <detph> [<transph>];
+
+<jointermph> = <termph> [<Termphjoin>] <jointermph> | <termph>;
+
+<verbph> = <Transvb>
+                        | <Linkingvb> <Transvb> [<prepph>]
+                        | <detph> [<transph>];
+
+<joinvbph> = <verbph> [<Verbphjoin>] <joinvbph> | <verbph>;
+
+//-----
+
+<sent> = <jointermph> <joinvbph>;
+
+<two_sent> = <sent> <Sentjoin> <sent>;
+
+<question> = <Quest1> <sent>
+                        | <Quest6> <Quest1> <sent>
+                        | <Quest5> <Quest1> <sent>
+                        | <Quest2> <joinvbph>
+                        | <Quest5> <Linkingvb> <joinvbph>
+                        | <Quest3> <snouncla>
+                        | <Quest3> <snouncla> <joinvbph>
+                        | <Quest4> <snouncla> <joinvbph>
+                        | <two_sent>
+                        | <sent>;
+
+public <query> = <question>;
+
+/*TERMINALS*/
+<Prepn> = with | in | at | by;
+
+<Transvb> = discover | discovers | discovered | orbit | orbited | orbits;
+
+<Indefpron> = anyone | anything | anybody | someone | something | somebody | everyone | everything | everybody;
+
+<Quest5> = where | when | how;
+
+<Quest4b> = many;
+
+<Sentjoin> = and;
+
+<Linkingvb> = is | was | are | were;
+
+<Nounjoin> = and | or;
+
+<Verbphjoin> = and | or;
+
+<Quest3> = which | what;
+
+<Det> = the | a | one | an | some | any | every | all | two;
+
+<Termphjoin> = and | or;
+
+<Quest6> = what;
+
+<Intransvb> = exist | exists | spin | spins | orbit | orbits;
+
+<Pnoun> = bernard | bond | venus | cassini | dollfus | Fouuntain | galileo | hall | herschel | huygens | kowal | kuiper | larsen | lassell | melotte | nicholson | perrine | pickering | almathea | ariel | callisto | charon | deimos | dione | earth | enceladus | europa | ganymede | hyperion | iapetus | io | janus | jupiter | jupiter eighth | jupiter eleventh | jupiter fourteenth | jupiter ninth | jupiter seventh | jupiter sixth | jupiter tenth | jupiter thirteenth | jupiter twelfth | luna | mars | mercury | mimas | miranda | neptune | nereid | oberon | phobos | phoebe | pluto | rhea | saturn | saturn first | sol | tethys | titan | titania | triton | umbriel | uranus | venus | cassegrain telescope | hooker telescope | schmidt telescope | subaru reflector telescope | canada france hawaii telescope | aerial telescope one | bruce astrograph | telescope one | hale telescope | hubble space telescope | blanco telescope | crossley reflector telescope | refractor telescope one | refractor telescope two | refractor telescope three | refractor telescope four | reflector telescope one | reflector telescope two | reflector telescope three | reflector telescope four | ground based telescope one | ground based telescope two | ground based telescope three | galilean telescope one | voyager science team | cassini imaging science team | science team one | science team two | science team three | science team four | science team five | science team six | science team seven | science team eight | science team nine | science team ten | science team eleven | science team twelve | science team thirteen | science team fourteen | science team fifteen | science team sixteen | science team seventeen | science team eighteen | science team nineteen | science team twenty | science team twenty one | larson | fountain | scotti | spahr | mcmillan | montani | gleason | gehrels | roemer | sheppard | jewitt | fernandez | magnier | kleyna | gladman | kavelaars | petit | allen | laques | lecacheux | smith | reitsema | pascu | seidelmann | baum | currie | showalter | scholl | holman | marsden | burns | milisavljevic | grav | karkoschka | lissauer | fraser | christy | weaver | stern | mutchler | steffl | buie | merline | spencer | young e f | young l a | hamilton | soummer | throop | voyager one | voyager two | cassini | mt hopkins | fort davis | cerro tololo | us naval observatory | padua | mt hamilton | greenwich | mt wilson | mt palomar | kitt peak | mauna kea | slough | paris | the hague | cambridge | liverpool | arequipa | pic du midi | flagstaff | la silla | himalia | elara | pasiphae | sinope | lysithea | carme | ananke | leda | thebe | adrastea | metis | callirrhoe | themisto | megaclite | taygete | chaldene | harpalyke | kalyke | iocaste | erinome | isonoe | praxidike | autonoe | thyone | hermippe | aitne | eurydome | euanthe | euporie | orthosie | sponde | kale | pasithee | hegemone | mneme | aoede | thelxinoe | arche | kallichore | helike | carpo | eukelade | cyllene | kore | herse | epimetheus | helene | telesto | calypso | atlas | prometheus | pandora | pan | ymir | paaliaq | tarvos | ijiraq | suttungr | kiviuq | mundilfari | albiorix | skathi | erriapus | siarnaq | thrymr | narvi | methone | pallene | polydeuces | daphnis | aegir | bebhionn | bergelmir | bestla | farbauti | fenrir | fornjot | hati | hyrrokkin | kari | loge | skoll | surtur | anthe | jarnsaxa | greip | tarqeq | aegaeon | cordelia | ophelia | bianca | cressida | desdemona | juliet | portia | rosalind | belinda | puck | caliban | sycorax | prospero | setebos | stephano | trinculo | francisco | margaret | ferdinand | perdita | mab | cupid | triton | naiad | thalassa | despina | galatea | larissa | proteus | halimede | psamathe | sao | laomedeia | neso | nix | hydra | kerberos | styx;
+
+<Quest2> = what | who;
+
+<Quest1> = does | did | do;
+
+<Quest4a> = how;
+
+<Cnoun> = thing | things | planets | planet | person | sun | moon | moons | satellite | satellites | human | discoverer | discoverers | humans | people | telescope | telescopes | team | teams | spacecraft | spacecrafts | place | places;
+
+<Adj> = atmospheric | blue | blue | solid | brown | gaseous | green | red | ringed | vacuumous;
+
+<Relpron> = that | who | which;
+
+/*YEARS*/
+<year> = <under_ten_thousand> | <tens> <tens>;
+
+/*Terminals*/
+<Ones> = one | two | three | four | five | six | seven | eight | nine;
+<Teens> = ten | eleven | twelve | thirteen | fourteen | fifteen | sixteen | seventeen | eighteen | nineteen;
+<Tens_place> = twenty | thirty | forty | fifty | sixty | seventy | eighty | ninety;
+
+/*Non-Terminals*/
+<tens> = <Teens> | [<Tens_place>] <Ones>;
+<hundreds> = [<Ones> hundred and] <Tens>;
+<thousands> = [<Ones> thousand] <hundreds>;
+<under_ten_thousand> = <thousands>;

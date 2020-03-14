@@ -1,0 +1,138 @@
+#JSGF V1.0;
+
+grammar solarman;
+public <s> = <linkingvb> <termphrase_verbphrase>  |
+             is <pnoun> <pnoun>   |
+             is <pnoun> a <nouncla>   |
+             is <pnoun> a <nouncla> or a <nouncla>   |
+                 <quest1> <sent>  |
+         ( who )<animate_verbph>  |
+       ( what )<inanimate_verbph> |
+( which | how many )<nouncla_verbph> |
+                           <simple> ;
+
+
+
+<simple> =  what can i say
+           | ask them to be quiet
+           | please introduce yourself
+           | hello there
+           | hello solar man
+           | goodbye
+           | goodbye solar man
+           | fine thanks 
+           | thanks
+           | thanks solar man
+           | yes please
+           | what is your name
+           | who are you
+           | where do you live
+           | what do you know
+           | who do you know
+           | how old are you
+           | who made you
+           | what is your favorite band
+           | who is the vice president at the university of windsor
+           | who is the president at the university of windsor
+           | who is the executive dean of science at the university of windsor
+           | who is the dean of science at the university of windsor
+           | tell me a poem
+           | know any poems
+           | tell me a joke
+           | know any jokes
+           | who is judy
+           | who is monty
+	   | go back;
+
+
+
+<termphrase_verbphrase> = <nonhuman_termph_planet> <transvb_by_termph> |
+       <nonhuman_termph_moon> <animate_transvb> by <human_termph>;
+
+
+
+
+<transvb_by_termph> = <animate_transvb> by <human_termph> |
+                 <inanimate_transvb> by <nonhuman_termph_moon> ;
+
+
+
+<sent> = <human_termph> <animate_verbph> |
+         <nonhuman_termph_moon> <inanimate_verbph_active> |
+         <nonhuman_termph_planet> <inanimate_verbph_passive> ;
+<nouncla_verbph> = <human_nouncla> <animate_verbph> |
+                  <nonhuman_nouncla_moon> <animate_verbph_passive>| 
+                <nonhuman_nouncla_moon> <inanimate_verbph_active>|   
+             <nonhuman_nouncla_planet> <inanimate_verbph_passive> ;
+<inanimate_verbph> = <inanimate_verbph_active> |
+                     <inanimate_verbph_passive> ;
+<human_stermph> = <human_pnoun> | <human_detph> ;
+<nonhuman_stermph_planet> = <nonhuman_pnoun_planet> |
+                            <nonhuman_detph_planet> ;
+<nonhuman_stermph_moon> = <nonhuman_pnoun_moon> |
+                          <nonhuman_detph_moon> ;
+<human_termph> = <human_stermph> | 
+           <human_stermph> ( and | or ) <human_stermph> ;
+<nonhuman_termph_planet> = <nonhuman_stermph_planet> | 
+   <nonhuman_stermph_planet> ( and | or ) <nonhuman_stermph_planet> ;
+<nonhuman_termph_moon> = <nonhuman_stermph_moon> | 
+       <nonhuman_stermph_moon> ( and | or ) <nonhuman_stermph_moon> ;
+
+
+<animate_verbph> = <animate_transvbph> ;
+<inanimate_verbph_active> = <inanimate_transvbph_active> | <intransvb>;
+<inanimate_verbph_passive> = <inanimate_transvbph_passive> |
+                     <intransvb> | <inanimate_transvb> sun ;
+
+
+<animate_verbph_passive> = <linkingvb> <animate_transvb> by <human_termph>;
+           
+ 
+<animate_transvbph> = <animate_transvb> ( <nonhuman_termph_planet>|
+                                          <nonhuman_termph_moon> );
+           
+<inanimate_transvbph_active>=<inanimate_transvb><nonhuman_termph_planet>;
+<inanimate_transvbph_passive> = <linkingvb> <inanimate_transvb> 
+                                      by <nonhuman_termph_moon> ;
+<human_detph> = <det> <human_nouncla> ;
+<nonhuman_detph_planet> = <det> <nonhuman_nouncla_planet> ;
+<nonhuman_detph_moon> = <det> <nonhuman_nouncla_moon> ;
+<human_nouncla> = <adj> <human_cnoun> | <human_cnoun> ;
+<nonhuman_nouncla_planet> = <adj> <nonhuman_cnoun_planet> |
+                                  <nonhuman_cnoun_planet> ;
+<nonhuman_nouncla_moon> = <adj> <nonhuman_cnoun_moon> |
+                                <nonhuman_cnoun_moon> ;
+
+<nouncla> = <human_nouncla> | <nonhuman_nouncla_planet> |
+             <nonhuman_nouncla_moon>;
+<human_cnoun> = man | men | person ;
+<nonhuman_cnoun_planet> = planet | planets ;
+<nonhuman_cnoun_moon> = moon | moons ;
+<adj> = atmospheric | blue | blue | solid | brown | gaseous | green | red | ringed | vacuumous ;
+<intransvb> = spin | spins | orbit | orbits | orbited | exist ;
+ 
+<animate_transvb> = discover | discovers | discovered ;
+<inanimate_transvb> = orbit | orbits | orbited ; 
+<linkingvb> = is | was | are | were ;
+<quest1> = did | do | does ;
+<det> = a | an | every | one | two | three | four | five ;
+<nonhuman_pnoun_planet> = earth | jupiter | mars | mercury | neptune | 
+                   pluto | saturn | uranus | venus ; 
+<nonhuman_pnoun_moon> = almathea | ariel | callisto | charon | deimos |
+                   dione | enceladus | europa | ganymede | hyperion | 
+                   iapetus | io |janus | jupitereighth | 
+                   jupitereleventh | jupiterfourteenth | 
+                   jupiterninth | jupiterseventh | jupitersixth |
+                   jupitertenth | jupiterthirteenth | 
+                   jupitertwelfth |luna |mimas | miranda | nereid| 
+                   oberon | phobos | phoebe | rhea | saturnfirst | 
+                   tethys | titan | titania | triton | umbriel ; 
+        
+<human_pnoun> = bernard | bond | cassini | dollfus | fountain | 
+                galileo | hall | herschel | huygens | kowal | 
+                 kuiper | larsen | lassell | melotte | 
+                nicholson | perrine | pickering ;
+
+<pnoun> = <nonhuman_pnoun_planet> | <nonhuman_pnoun_moon> |
+            <human_pnoun> ;
+ 
