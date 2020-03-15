@@ -210,7 +210,7 @@
                 { query: $("#query").val().toLowerCase(), key: 0 },
                 function(data, textStatus)
                 {
-                    if (data.isArray())
+                    if (Array.isArray(data))
                     {
                         data.forEach(function(item, index) {
                                 var builder = "";
