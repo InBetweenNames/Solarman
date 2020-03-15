@@ -1,0 +1,67 @@
+var SpeechRecognition;
+var SpeechGrammarList;
+var SpeechRecognitionEvent;
+
+var recognition;
+var speechRecognitionList;
+
+var synth;
+var voices;
+
+
+$(document).ready(function(){
+    synth = window.speechSynthesis;
+
+    $.ajax({ url: "grammar.jsgf", success: loadGrammar, dataType: "text", beforeSend: function ( xhr ) { xhr.overrideMimeType("text/plain; charset=x-user-defined"); } } );
+    //loadGrammar("grammar.jsgf");
+})
+
+
+
+function loadGrammar(grammar)
+{
+    SpeechRecognition = SpeechRecognition || webkitSpeechRecognition
+    SpeechGrammarList = SpeechGrammarList || webkitSpeechGrammarList
+    SpeechRecognitionEvent = SpeechRecognitionEvent || webkitSpeechRecognitionEvent
+    
+    recognition = new SpeechRecognition();
+    speechRecognitionList = new SpeechGrammarList();
+
+    speechRecognitionList.addFromString(grammar, 1);
+
+    recognition.grammars = speechRecognitionList;
+    recognition.continuous = false;
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    //console.log(grammar);
+
+    recognition.onnomatch = function(event) {
+        console.log("No match: ", event.results);
+    }
+
+    recognition.onresult = function(event) {
+
+        var text = event.results[0][0].transcript;
+        $("#query").val(text);
+
+        console.log('Confidence: ' + event.results[0][0].confidence);
+
+        if (event.results[0].isFinal)
+        {
+            send();
+        }
+    }
+
+    recognition.onerror = function(event) {
+        console.log('Error: ', event.error);
+        console.log('Error info: ', event.message);
+    }
+}
+
+function speechButton(event)
+{
+    recognition.start();
+}
+
