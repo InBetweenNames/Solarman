@@ -189,10 +189,10 @@
     <script type="text/javascript">
         function removeFeedback()
         {
-            $("#querygroup").removeClass("has-danger");
-            $("#query").removeClass("form-control-danger");
-            $("#querygroup").removeClass("has-success");
-            $("#query").removeClass("form-control-success");
+            //$("#querygroup").removeClass("has-danger");
+            $("#query").removeClass("is-invalid");
+            //$("#querygroup").removeClass("has-success");
+            $("#query").removeClass("is-valid");
 
             if (!(typeof window.speechSynthesis === 'undefined'))
             {
@@ -243,6 +243,7 @@
                     {
                         var res = data.resConversation;
                         $("#result").html(res);
+                        $("#query").addClass("is-invalid");
 
                         if (!(typeof window.speechSynthesis === 'undefined'))
                         {
