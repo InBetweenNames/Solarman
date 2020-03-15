@@ -222,8 +222,16 @@
                                 
                                 if (!(typeof window.speechSynthesis === 'undefined'))
                                 {
-                                    var utterThis = new SpeechSynthesisUtterance("result " + (index + 1) + ": " + item.res + ".");
-                                    window.speechSynthesis.speak(utterThis);
+                                    if (data.length == 1)
+                                    {
+                                        var utterThis = new SpeechSynthesisUtterance(item.res);
+                                        window.speechSynthesis.speak(utterThis);
+                                    }
+                                    else
+                                    {
+                                        var utterThis = new SpeechSynthesisUtterance("result " + (index + 1) + ": " + item.res + ".");
+                                        window.speechSynthesis.speak(utterThis);
+                                    }
                                 }
                             });
                     }
