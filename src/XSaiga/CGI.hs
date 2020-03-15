@@ -1,14 +1,18 @@
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module XSaiga.CGI where
 import qualified XSaiga.SolarmanTriplestore as App
 import Network.FastCGI
 import qualified Data.List as List
 import Data.Text as T
-import Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.ByteString.Lazy.Char8 as BLIO
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString as BS
 import Data.Text.Encoding as E
+import Data.Text.Lazy.Encoding as EL
 --import qualified XSaiga.LocalData as Local
 import qualified XSaiga.Getts as Getts
 import qualified XSaiga.TypeAg2 as TypeAg2
@@ -16,6 +20,35 @@ import qualified Control.Monad.State.Strict as State
 import qualified Data.Map.Strict as Map
 import qualified Control.Monad as M
 import qualified XSaiga.ShowText as ShowText
+
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Text as AesonText
+
+import Data.Maybe
+
+import GHC.Generics
+
+data XSaigaResult = XSaigaResult {
+    res :: T.Text,
+    syntax :: T.Text
+} deriving (Generic, Show)
+
+data XSaigaConversationResult = XSaigaConversationResult {
+    resConversation :: T.Text
+} deriving (Generic, Show)
+
+data XSaigaParseError = XSaigaParseError {
+    resError :: T.Text
+} deriving (Generic, Show)
+
+instance Aeson.ToJSON XSaigaResult where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.ToJSON XSaigaConversationResult where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.ToJSON XSaigaParseError where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
 --change between remoteData and localData
 --dataStore = Local.localData
@@ -29,26 +62,26 @@ cgiMain :: CGI CGIResult
 cgiMain = do
     query <- getInputFPS "query"
     case query of
-      Nothing -> outputFPS $ BL.fromStrict $ E.encodeUtf8 $ "error"
+      Nothing -> outputFPS $ EL.encodeUtf8 "error"
       Just input -> do
         out <- liftIO $ interpret' $ E.decodeUtf8 $ BL.toStrict input
         setHeader "Content-type" "text/plain; charset=utf-8"
-        outputFPS $ BL.fromStrict $ E.encodeUtf8 out
+        outputFPS out
 
 main :: IO ()
 main = runFastCGIorCGI (handleErrors cgiMain)
 
 interpret "ask them to be quiet" 
-     = "Hello. Quiet please. My "
+     = Just $ "Hello. Quiet please. My "
        `T.append` "masters are going to talk. Quiet please."
 
 interpret "introduce yourself solar man" 
-     =  "Hello. Hello. My name is Solar man."
+     =  Just $ "Hello. Hello. My name is Solar man."
         `T.append` " Thank you for coming to my party."
         `T.append` " I am very pleased to meet you."
 
 interpret "what can i say" 
-      = "You can say. hello there. what is your name."
+      = Just $ "You can say. hello there. what is your name."
         `T.append` " you can ask me about the moons and the planets."
     `T.append` " such as, who discovered a moon."
     `T.append` " who discovered two moons."
@@ -64,63 +97,63 @@ interpret "what can i say"
         `T.append` " who is the president at the university of windsor." 
         `T.append` " who is the dean of science at the university of windsor."
 
-interpret "hi"              = "Hi there. My name is solar man"
-interpret "hello"           = "hello. My name is solar man."
-interpret "hello there"     = "Good day to you"
-interpret "hello solar man" = "hello. How are you"
-interpret "goodbye"         = "goodbye. See you in the stars."
+interpret "hi"              = Just $ "Hi there. My name is solar man"
+interpret "hello"           = Just $ "hello. My name is solar man."
+interpret "hello there"     = Just $ "Good day to you"
+interpret "hello solar man" = Just $ "hello. How are you"
+interpret "goodbye"         = Just $ "goodbye. See you in the stars."
 interpret "goodbye solar man" = interpret "goodbye"
-interpret "fine thanks" = "Good, so am I. Except for a bit of back ache"
-interpret "thanks" = "you are welcome"
-interpret "thanks solar man" = "you are most welcome"
-interpret "yes please" = "yes please? What did you want? My memory is getting bad"
-interpret "what is your name" = "My name is solar man."
+interpret "fine thanks" = Just $ "Good, so am I. Except for a bit of back ache"
+interpret "thanks" = Just $ "you are welcome"
+interpret "thanks solar man" = Just $ "you are most welcome"
+interpret "yes please" = Just $ "yes please? What did you want? My memory is getting bad"
+interpret "what is your name" = Just $ "My name is solar man."
 interpret "who are you" 
-   = "My name is solar man. I know about the planets and the"
+   = Just $ "My name is solar man. I know about the planets and the"
      `T.append` " moons, and the people who discovered them"
 interpret "where do you live" 
-    = "I live in a dark cold computer. "
+    = Just $ "I live in a dark cold computer. "
        `T.append` "The center of my universe is Lambton Tower, at the University of Windsor."
 interpret "what do you know" 
-   = "Not much I am afraid. I am just beginning to learn. I know a bit about "
+   = Just $ "Not much I am afraid. I am just beginning to learn. I know a bit about "
      `T.append` "the planets, the moons, and the people who discovered them. "
      `T.append` "My master will teach me some more when he gets another grant "
 interpret "how old are you"
-  = "older than you think. And much older than my friends Judy and Monty."
+  = Just $ "older than you think. And much older than my friends Judy and Monty."
 interpret "who made you" 
-   = "I. B. M. and Opera Software made my ears and vocal chords. William Ma connected my "
+   = Just $ "I. B. M. and Opera Software made my ears and vocal chords. William Ma connected my "
      `T.append` "ears to my brain, and Doctor Frost, master of the universe, made "
      `T.append` "my brain"
 
 interpret "what is your favorite band"
-   = "Pink Floyd. I love, dark side of the moon"
+   = Just $ "Pink Floyd. I love, Dark Side of the Moon"
 
 interpret "who is the vice president at the university of windsor" 
-  = "Douglas Kneale"
+  =Just $ "Douglas Kneale"
 
 interpret "who is the president at the university of windsor" 
-  = "Doctor Robert Gordon."
+  = Just $ "Doctor Robert Gordon."
 
 interpret "who is the dean of science at the university of windsor"
-  = "Doctor Chris Houser"
+  = Just $ "Doctor Chris Houser"
 
-interpret "tell me a poem" = "do not know any poems. But my friend, Judy, does"
+interpret "tell me a poem" = Just $ "do not know any poems. But my friend, Judy, does"
 
 
-interpret "know any poems" = "no but my friend, Judy does;"
+interpret "know any poems" = Just $ "no but my friend, Judy does;"
 
 
 interpret "tell me a joke" 
-    = "did you hear about the Computer Scientist who thought his computer"
+    = Just $ "did you hear about the Computer Scientist who thought his computer"
       `T.append` "was a car. He had a hard drive home every day"
 
 interpret "know any jokes" 
-       = "just one. My friend Monty knows one too."
+       = Just $ "just one. My friend Monty knows one too."
 
-interpret "who is judy" = "She is my friend. She knows about poetry"
+interpret "who is judy" = Just $ "She is my friend. She knows about poetry"
 
 interpret "who is monty"   
-   = "Monty is my friend. He is a student"
+   = Just $ "Monty is my friend. He is a student"
      `T.append` " at the university of Windsor."
 
 {-
@@ -138,31 +171,30 @@ interpret "can I talk to solar man"
 
 -}
 
-interpret "who do you know" = "i only know three people. Judy, Monty, and Solarman."
+interpret "who do you know" = Just $ "i only know three people. Judy, Monty, and Solarman."
 
-interpret _ = "BLANKVALNOTUSED"
+interpret _ = Nothing
 
 interpret'' = TypeAg2.getQUVAL . List.head . App.parse
 
 --TODO: multiple interpretations!  need to optimize these!
 interpret' input = do
     let firstpass = interpret input
-    if firstpass == "BLANKVALNOTUSED" then do
-        let attTrees = App.parseTree input
-        let atts = Prelude.map fst attTrees
-        let trees = Prelude.map snd attTrees
-        let sems = List.map TypeAg2.getQUVAL atts
-        --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
-        let flatQueries = Prelude.foldr mergeFlat ([],[]) sems
-        let optQueries = TypeAg2.flatOptimize flatQueries
-        rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
-        (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) sems --TODO: save the state for later?  paper opportunity
-        let formatted = T.intercalate "\n<br/><br/>\n" $
-                List.zipWith (\syntax -> \res -> T.intercalate "<br/>\n"
-                    [T.append "<b>result:</b> " res, T.append "<b>syntax:</b> " syntax])--, T.append "getts: " $ TypeAg2.treeToParsedSentence getts])
-                    trees {-}(List.map TypeAg2.getGetts sems)-} outs
-        if T.null formatted then return "Do not know that one yet, will work on it tonight" else return $ formatted
-    else return firstpass
+    case firstpass of
+        Nothing -> do
+            let attTrees = App.parseTree input
+            let atts = Prelude.map fst attTrees
+            let trees = Prelude.map snd attTrees
+            let sems = List.map TypeAg2.getQUVAL atts
+            --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
+            let flatQueries = Prelude.foldr mergeFlat ([],[]) sems
+            let optQueries = TypeAg2.flatOptimize flatQueries
+            rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
+            (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) sems --TODO: save the state for later?  paper opportunity
+            if List.null attTrees
+                then return $ Aeson.encode $ XSaigaParseError "Do not know that one yet, will work on it tonight"
+                else return $ Aeson.encode $ List.zipWith XSaigaResult outs trees
+        Just result -> return $ Aeson.encode $ XSaigaConversationResult result
     where
         mergeFlat interp flatGetts = let g = TypeAg2.getGetts interp in TypeAg2.merge (TypeAg2.flattenGetts g) flatGetts
         nextInterp rtriples (txt, state) interp = do --TODO: improves by about 2 seconds on heavy workloads -- could be better!
@@ -180,4 +212,4 @@ runQuery interp = do
     (out, _) <- evaluate rtriples interp Map.empty
     return out
 
-interpret''' input = interpret' input >>= TIO.putStrLn
+interpret''' input = interpret' input >>= BLIO.putStrLn

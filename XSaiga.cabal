@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b5272645c88000145e3c641f326acf1744b6e64ccfd2ce2e5b7fade50eee4721
+-- hash: 16c64a13a401121d5c59ad4a0e9f622c15a16497758a5d928c3d010b92117dc6
 
 name:           XSaiga
 version:        1.6.1.0
@@ -53,7 +53,8 @@ library
       src
   default-extensions: DoAndIfThenElse OverloadedStrings FlexibleInstances NoMonomorphismRestriction
   build-depends:
-      base >=4.6 && <5
+      aeson
+    , base >=4.6 && <5
     , bifunctors
     , bytestring
     , cgi
@@ -78,6 +79,7 @@ executable solarman.cgi
   default-extensions: DoAndIfThenElse OverloadedStrings FlexibleInstances NoMonomorphismRestriction
   build-depends:
       XSaiga
+    , aeson
     , base >=4.6 && <5
     , bifunctors
     , bytestring

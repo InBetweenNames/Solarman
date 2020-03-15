@@ -1,16 +1,26 @@
-var SpeechRecognition;
-var SpeechGrammarList;
-var SpeechRecognitionEvent;
+if (typeof SpeechRecognition === 'undefined')
+{
+    var SpeechRecognition;
+    var SpeechGrammarList;
+    var SpeechRecognitionEvent;
+
+    if (!(typeof webkitSpeechRecognition === 'undefined'))
+    {
+        SpeechRecognition = webkitSpeechRecognition
+        SpeechGrammarList = webkitSpeechGrammarList
+        SpeechRecognitionEvent = webkitSpeechRecognitionEvent
+    }
+}
 
 var recognition;
 var speechRecognitionList;
 
-var synth;
-var voices;
-
 
 $(document).ready(function(){
-    synth = window.speechSynthesis;
+    if (typeof SpeechRecognition === 'undefined')
+    {
+        return
+    }
 
     $.ajax({ url: "grammar.jsgf", success: loadGrammar, dataType: "text", beforeSend: function ( xhr ) { xhr.overrideMimeType("text/plain; charset=x-user-defined"); } } );
     //loadGrammar("grammar.jsgf");
@@ -20,10 +30,6 @@ $(document).ready(function(){
 
 function loadGrammar(grammar)
 {
-    SpeechRecognition = SpeechRecognition || webkitSpeechRecognition
-    SpeechGrammarList = SpeechGrammarList || webkitSpeechGrammarList
-    SpeechRecognitionEvent = SpeechRecognitionEvent || webkitSpeechRecognitionEvent
-    
     recognition = new SpeechRecognition();
     speechRecognitionList = new SpeechGrammarList();
 

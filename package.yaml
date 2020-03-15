@@ -44,6 +44,7 @@ dependencies:
   - fastcgi
   - random
   - data-constructors
+  - aeson
 
 default-extensions:
   - DoAndIfThenElse

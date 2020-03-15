@@ -193,6 +193,11 @@
             $("#query").removeClass("form-control-danger");
             $("#querygroup").removeClass("has-success");
             $("#query").removeClass("form-control-success");
+
+            if (!(typeof window.speechSynthesis === 'undefined'))
+            {
+                window.speechSynthesis.cancel();
+            }
         }
 
         function send()
@@ -202,24 +207,49 @@
             $("#result").html("<img src='loading.gif'></img>")
             $.post(
                 "demo_sparql/solarman.cgi",
-                { query: $("#query").val().toLowerCase(),
-            key: 0 },
+                { query: $("#query").val().toLowerCase(), key: 0 },
                 function(data, textStatus)
                 {
-                    if (data === "Do not know that one yet, will work on it tonight")
+                    if (data.isArray())
+                    {
+                        data.forEach(function(item, index) {
+                                var builder = "";
+                                builder += "<b>result:</b> " + item.res + "<br/>";
+                                builder += "<b>syntax:</b> " + item.syntax + "<br/>";
+                                builder += "<br/>";
+                                $("#result").append(builder);
+                                
+                                if (!(typeof window.speechSynthesis === 'undefined'))
+                                {
+                                    var utterThis = new SpeechSynthesisUtterance("result " + (index + 1) + ": " + item.res + ".");
+                                    window.speechSynthesis.speak(utterThis);
+                                }
+                            });
+                    }
+                    else if (!(typeof data.resError === 'undefined'))
                     {
                         $("#querygroup").addClass("has-danger");
                         $("#query").addClass("form-control-danger");
+                        $("#result").html(data.resError);
+                        
+                        if (!(typeof window.speechSynthesis === 'undefined'))
+                        {
+                            var utterThis = new SpeechSynthesisUtterance(data.resError);
+                            window.speechSynthesis.speak(utterThis);
+                        }
                     }
-                    else
+                    else if (!(typeof data.resConversation === 'undefined'))
                     {
-                        //$("#querygroup").addClass("has-success");
-                        //$("#query").addClass("form-control-success");
+                        var res = data.resConversation;
+
+                        if (!(typeof window.speechSynthesis === 'undefined'))
+                        {
+                            var utterThis = new SpeechSynthesisUtterance(res);
+                            window.speechSynthesis.speak(utterThis);
+                        }
                     }
-                    $("#result").html(data)
-                    var utterThis = new SpeechSynthesisUtterance(data);
-                    synth.speak(utterThis);
-                }
+                },
+                "json"
             );
         }
         </script>
