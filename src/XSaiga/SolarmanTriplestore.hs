@@ -270,6 +270,7 @@ when' = make_prop_termphrase "year"
 how' = make_prop_termphrase "with_implement"
 
 findFirstObj (GettsIntersect _ _ y) = findFirstObj y
+findFirstObj (GettsUnion _ _ y) = findFirstObj y
 findFirstObj (GettsTP _ (_,_,object) _) = object
 
 --needs special handling due to semantics requiring info from getts

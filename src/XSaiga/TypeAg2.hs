@@ -294,6 +294,7 @@ instance Show (TF Text) where
 --apply over the intersect_entevimages, remember evs of im2 are preserved and im1 are discarded
 gettsAttachP :: T.Text -> GettsTree -> GettsTree
 gettsAttachP prop (GettsIntersect t x y) = GettsIntersect t x (gettsAttachP prop y)
+gettsAttachP prop (GettsUnion t x y) = GettsUnion t x (gettsAttachP prop y)
 gettsAttachP prop (GettsTP p rel sub) = GettsTP p rel ((GettsPrep [prop] Nothing GettsNone):sub) --is this correct?  should i go back to the old way?  does cardinality have to match?
 --TODO MEMO -- altering tree may affect identity for memoization
 --IDEA!!  create a GettsAttachP node instead and only during flattening will it have any effect -- prevents altering trees

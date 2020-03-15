@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+    <style>
+    legend {
+        position: absolute !important;
+        top: -9999px !important;
+        left: -9999px !important;
+    }
+    code {
+        color: #bd4147;
+        background-color: #f7f7f9;
+    }
+    .btn-primary
+    {
+        background-color: #0275d8;
+        border-color: #0275d8;
+    }
+    </style>
+    <title>WINDSWEQ - The WINDsor Semantic Web English Query Interface - Live Demo with RDF Triplestore</title>
+</head>
+
+<body>
+    <div class="container">
+        <div class="jumbotron">
+            <!--h1>Accommodating prepositional phrases in a highly modular natural language query interface
+                to Semantic Web triplestores using a novel event-based denotational semantics for English
+                and a set of parser combinators</h1-->
+            <!--h1>Live Demo - New Semantics - SPARQL version - Natural Language Interface</h1-->
+            <!--h1 class="display-4">WINDSWEQ: The WINDsor Semantic Web English Query Interface</h1-->
+            <!--h1 class="display-4">Live Demo of a Natural Language Interface to the Semantic Web using an Event-Based Denotational Semantics</h1-->
+            <h1 class="display-3 text-center">Solarman:</h1>
+            <h2 class="text-center"><small>Live Demo of an Event-Based Denotational Semantics for the Semantic Web</small></h2>
+            <hr>
+            <h3 class="text-center">Natural Language Interface</h3>
+        </div>
+	<!--div class="alert alert-success text-xs-center">
+		Featured at WEBIST 2019!  See our presentation <a href="talk_for_WEBIST_SEPTEMBER2019.pptx">here</a>
+	</div-->
+
+	<h2><small>A demonstration of our new event-based denotational semantics using a SPARQL endpoint as the triplestore</small></h2>
+        <p class="lead">
+            This is a live demo of the Solarman application for Natural Language queries to event based semantic web data. Previously
+            our demonstration used an in-program triplestore. To demonstrate the real-world applicability of our semantics,
+            we have redesigned our demo to use a SPARQL endpoint instead as its triplestore. This improved version is faster
+            and now operates directly on the semantic web.
+        </p>
+        <p class="lead">
+            NEW:To see a version of this that is able to run on a Linksys router, see <a href="https://solarman.inbetweennames.net/">click here</a>.
+        </p>
+
+	    <div class="row">
+            <form onsubmit="return false;" class="col-md-10 offset-md-1">
+                <fieldset class="form-group input-group" id="querygroup">
+                    <legend>Query interface</legend>
+                    <label class="sr-only" for="query">Query</label>
+                    <div class="input-group">
+                        <input class="form-control" id="query" type="text" placeholder="Enter query here" data-trigger="manual" data-placement="top"
+                            data-title="Completions" oninput="removeFeedback()">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-secondary" type="button" id="start_button" onclick="speechButton(event)"><i class="fa fa-microphone"></i></button>
+                        </div>
+                    </div>
+                    <!--oninput="updateCompletions()"-->
+                </fieldset>
+                <fieldset class="form-group">
+                    <legend>Query result</legend>
+                    <div id="result" class="text-sm-center">
+                    </div>
+                </fieldset>
+            <button class="btn btn-primary col-lg-2 offset-lg-5" onclick="send()">Run Query</button>
+            </form>
+        </div>
+        <p>
+            <strong>Examples:</strong>
+            <p><code>which moons orbit jupiter</code></p>
+            <p><code>who discovered a moon in 1877</code> <p>
+        </p>
+        <a class="btn btn-outline-primary" href="examples.html">More Examples</a>
+
+        <hr>
+        <h3>Novel additions</h3>
+        <p>
+            In addition to these changes, we demonstrate our support for chained prepositional phrases in our semantics here. We
+            also demonstrate a novel way to handle the word <code>by</code>, as used in the passive form of a verb (e.g., <code>discovered
+            by</code>), by treating it directly as a preposition. In doing this, we can support queries such as <code>which moon was
+            discovered in 1877 by hall</code> without any added complexity to the semantics.
+        </p>
+        <h3>Query interface</h3>
+        <p>
+            In the input field above, you may type and run any valid query using the semantic functions.
+        </p>
+        <p>
+            Queries are written in lower case English with no punctuation.
+        </p>
+
+        <!--p>You can also access the endpoint via a speech front end, on Windows or Android by installing the JavaScript version of
+            speech browser. You can install the browser here <a href="http://speechweb.cs.uwindsor.ca/index.php?page=install_guide">here</a>,
+            and then <a href="http://speechweb2.cs.uwindsor.ca/solarman2/demo_sparql/"> access the speech app</a>.
+        </p-->
+
+        <p><a href="http://speechweb2.cs.uwindsor.ca/sparql">Link to our SPARQL endpoint</a></p>
+
+        <p><a href="http://speechweb2.cs.uwindsor.ca/sparql?default-graph-uri=http%3A%2F%2Fsolarman.richard.myweb.cs.uwindsor.ca&amp;query=select+*+where+%7B+%3Fevent+%3Frelation+%3Fvalue+%7D+order+by+(%3Fevent)&amp;format=text%2Fhtml&amp;debug=on&amp;timeout=">List of triples in the graph</a>
+            <a></a>
+        </p>
+	<p><a href="http://hackage.haskell.org/package/XSaiga">Link to Source Code on Hackage</a></p>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+    
+    <!--script type="text/javascript">
+        $(function () {
+           $('#query').popover({offset: "10 0"})
+        });
+
+        $(document).click(function(event) {
+        if(!$(event.target).closest('#query').length) {
+            $("#query").popover("dispose");
+        }
+        });
+
+     </script-->
+
+    <script src="speech.js" crossorigin="anonymous"></script>
+
+    <script type="text/javascript">
+
+    function textMetrics(el) {
+
+    var h = 0, w = 0;
+
+    var div = document.createElement('pre');
+    document.body.appendChild(div);
+    $(div).css({
+    position: 'absolute',
+    left: -1000,
+    top: -1000,
+    display: 'none'
+    });
+
+    $(div).html($(el).val());
+    var styles = ['font-size','font-style', 'font-weight', 'font-family','line-height', 'text-transform', 'letter-spacing'];
+    $(styles).each(function() {
+    var s = this.toString();
+    $(div).css(s, $(el).css(s));
+    });
+
+    h = $(div).outerHeight();
+    w = $(div).outerWidth();
+
+    $(div).remove();
+
+    var ret = {
+    height: h,
+    width: w
+    };
+
+    return ret;
+    }
+
+    function updateCompletions()
+    {
+        if (!$("#query").val()) {
+            $('#query').popover('dispose');
+            return;
+        }
+        if ($(".popover-content").length == 0) {
+            $('#query').popover('show');
+        }
+
+        var popover = $(".popover-content");
+        var x = Math.floor(textMetrics($("#query")).width) + 50;
+        var textWidth = $("#query").outerWidth();
+        $(".popover").css("margin-left", (-(textWidth / 2) + x) + "px")
+        popover.html(x);
+
+    }
+    </script>
+
+    <script type="text/javascript">
+        function removeFeedback()
+        {
+            $("#querygroup").removeClass("has-danger");
+            $("#query").removeClass("form-control-danger");
+            $("#querygroup").removeClass("has-success");
+            $("#query").removeClass("form-control-success");
+        }
+
+        function send()
+        {
+            removeFeedback();
+            //$('#query').popover('dispose');
+            $("#result").html("<img src='loading.gif'></img>")
+            $.post(
+                "demo_sparql/solarman.cgi",
+                { query: $("#query").val().toLowerCase(),
+            key: 0 },
+                function(data, textStatus)
+                {
+                    if (data === "Do not know that one yet, will work on it tonight")
+                    {
+                        $("#querygroup").addClass("has-danger");
+                        $("#query").addClass("form-control-danger");
+                    }
+                    else
+                    {
+                        //$("#querygroup").addClass("has-success");
+                        //$("#query").addClass("form-control-success");
+                    }
+                    $("#result").html(data)
+                    var utterThis = new SpeechSynthesisUtterance(data);
+                    synth.speak(utterThis);
+                }
+            );
+        }
+        </script>
+
+</body>
+
+</html>
