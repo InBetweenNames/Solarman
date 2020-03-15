@@ -232,6 +232,7 @@
                         $("#querygroup").addClass("has-danger");
                         $("#query").addClass("form-control-danger");
                         $("#result").html(data.resError);
+                        $("#query").addClass("is-invalid");
                         
                         if (!(typeof window.speechSynthesis === 'undefined'))
                         {
@@ -243,7 +244,6 @@
                     {
                         var res = data.resConversation;
                         $("#result").html(res);
-                        $("#query").addClass("is-invalid");
 
                         if (!(typeof window.speechSynthesis === 'undefined'))
                         {
