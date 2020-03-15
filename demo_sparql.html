@@ -212,6 +212,7 @@
                 {
                     if (Array.isArray(data))
                     {
+                        $("#result").html("");
                         data.forEach(function(item, index) {
                                 var builder = "";
                                 builder += "<b>result:</b> " + item.res + "<br/>";
@@ -241,6 +242,7 @@
                     else if (!(typeof data.resConversation === 'undefined'))
                     {
                         var res = data.resConversation;
+                        $("#result").html(res);
 
                         if (!(typeof window.speechSynthesis === 'undefined'))
                         {
