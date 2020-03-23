@@ -23,8 +23,16 @@ For wasm:
 * Some notes:
   * I had to add cross-deps/hs-certificate/{x509,x509-store,x509-system,x509-util,x509-validation}, latest versions from
       Git
-  * I also had to add html-entities from latest git, but I'm not sure why this worked.  Now it stopped working again.
+  * I also had to add `html-entities` from latest git, but I'm not sure why this worked.  Now it stopped working again.
       Argh!  For some reason I built it once with `-v` and it worked.  Bleh.  Okay.  Keep trying with `-v`.  It will
       work.
   * I had to add `--constraint "cryptonite -integer-gmp"` to the command line for cryptonite to work
-  * I got `html-entities` building after adding `--disable-shared` to the Cabal command line as shown above
+
+
+To run:
+
+~~~
+stack exec ahc-dist -- --browser --input-exe dist-newstyle/build/x86_64-linux/ghc-8.8.3/XSaiga-1.6.1.0/x/solarman.cgi/build/solarman.cgi/solarman.cgi
+~~~
+
+Change `--browser` to `--run` if you want to run it on the command line
