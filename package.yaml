@@ -45,6 +45,8 @@ dependencies:
   - random
   - data-constructors
   - aeson
+  - hashable
+  - unordered-containers
 
 default-extensions:
   - DoAndIfThenElse

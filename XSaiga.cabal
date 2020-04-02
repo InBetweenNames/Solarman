@@ -61,6 +61,7 @@ library
     , containers >=0.5
     , data-constructors
     , fastcgi
+    , hashable
     , hsparql >=0.3.6
     , mtl
     , network
@@ -68,6 +69,7 @@ library
     , random
     , rdf4h >=1.2
     , text >=0.11
+    , unordered-containers
   default-language: Haskell2010
 
 executable solarman.cgi
@@ -87,6 +89,7 @@ executable solarman.cgi
     , containers >=0.5
     , data-constructors
     , fastcgi
+    , hashable
     , hsparql >=0.3.6
     , mtl
     , network
@@ -94,4 +97,5 @@ executable solarman.cgi
     , random
     , rdf4h >=1.2
     , text >=0.11
+    , unordered-containers
   default-language: Haskell2010
