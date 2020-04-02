@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 
 module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
@@ -13,6 +14,8 @@ import Control.Monad.State.Strict
 import Data.Constructors.EqC
 
 import qualified Data.Map.Strict as Map
+import qualified Data.Map.Lazy as MapLazy
+import qualified Data.HashMap.Lazy as HashMap.Lazy
 
 import Debug.Trace
 
@@ -102,7 +105,7 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 --------------- ******************************************** ---------------------------
 
 (<|>) :: NTType att -> NTType att -> NTType att
-(p <|> q) idx inhx ((i,a),inp) c 
+(p <|> q) idx inhx ((i,_),inp) c 
  = do (l1,m) <- p idx inhx ((i,[]),inp) c 
       (l2,n) <- q idx inhx ((i,[]),inp) c
       return ((union (fst l1) (fst l2),[]) ,(m ++ n))
@@ -336,7 +339,7 @@ superterminal' f id _ q@((r,a),dInp)
 
 terminal :: (Eq att) => T.Text -> Atts att -> Id -> InsAttVals att -> M att
 terminal str semRules id _ ((i,a),inp)
- = (term str) ((i,[]),inp)
+ = term str ((i,[]),inp)
     where
     inst = (S, id)
     atts = [(inst,semRules)]
@@ -345,6 +348,21 @@ terminal str semRules id _ ((i,a),inp)
      |r - 1 == length dInp       = return (empty_cuts,[])
      |dInp!!(r - 1) == str       = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
      |otherwise                  = return (empty_cuts,[])  
+
+--NOTE: This takes into account multiple rules as if (terminal b x <|> terminal a z) were used
+terminalSet :: (Eq att) => MemoL -> HashMap.Lazy.HashMap (MemoL,T.Text) [Atts att] -> Id -> InsAttVals att -> Start att -> Context -> State (MemoTable att) (Context, Result att)
+terminalSet key hashMap id _ ((i,_),inp)
+ =  actualTerm
+    where
+    selectedSemRules | i - 1 == length inp = Nothing
+                     | otherwise = HashMap.Lazy.lookup (key,word) hashMap
+    word = (inp!!(i - 1)) --shouldn't be evaled until needed
+    actualTerm _ = case selectedSemRules of
+        Just semRulesList ->
+            let inst = (S, id) in
+            let gen = (\semRules -> let atts = [(inst,semRules)] in (((i,[]),(i+1,atts)),[Leaf (ALeaf word, inst)])) in
+                return (empty_cuts, map gen semRulesList)
+        Nothing -> return (empty_cuts,[])
 
 nt :: NTType att -> Id -> SeqType att
 nt fx idx id inhAtts semRules altFromSibs 

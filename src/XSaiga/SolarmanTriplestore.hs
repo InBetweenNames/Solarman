@@ -1,6 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE BangPatterns #-}
 
 module XSaiga.SolarmanTriplestore where
 
@@ -19,6 +20,7 @@ import Control.Applicative hiding ((*>), (<|>))
 import Data.Biapplicative
 import Data.Bifunctor
 import qualified Data.Map.Strict as Map
+import qualified Data.HashMap.Lazy as HashMap.Lazy
 import Control.Monad.State.Strict
 import qualified Data.Ord as Ord
 import qualified Data.Maybe as Maybe
@@ -800,11 +802,21 @@ year = superterminal Year $ \t -> case TR.decimal t of
     Right (y, _) -> Just [YEAR_VAL $ y]
     Left _ -> Nothing
 
+--TODO: space leak here?  May be the foldr1, may be something else.  Stack needs 33KB.  Want to reduce it to 1KB
+{-memoize_terminals_from_dictionary key
+    = let key_words              = filter (\(_,type',_) -> type' == key) dictionary
+          list_of_terms          = map (\(a, _, z) -> terminal a z) key_words
+          altTerminals           = foldr1 (<|>) list_of_terms
+    in  memoize key altTerminals-}
+
+--Fixed space leak by just having it use a hashmap
+memoize_terminals_from_dictionary :: MemoL -> Id -> InsAttVals AttValue -> M AttValue
 memoize_terminals_from_dictionary key
-  = let key_words              = filter (\(_,type',_) -> type' == key) dictionary
-        list_of_terms          = map (\(a, _, z) -> terminal a z) key_words
-        altTerminals           = foldr1 (<|>) list_of_terms
+  = let altTerminals           = terminalSet key dictionary'''
+        --TODO: do we need to memoize this even?
+        --TODO: if we need to memoize it, we should roll it into a higher level of abstraction
     in  memoize key altTerminals
+    --in altTerminals
 
 {-
 test p = runState (p ((1,[]),input) ([],[])) []
@@ -1365,6 +1377,33 @@ truefalse [x] atts = QUEST_VAL $ _truefalse (getAtts getSV atts x) -- fmap (\fdb
 discover_rel = ("discover_ev","subject","object")
 orbit_rel = ("orbit_ev", "subject", "object")
 use_rel = ("discover_ev", "subject", "with_implement")
+
+--TODO:
+{-
+Note the following case:
+    ("hall",               Pnoun,     [TERMPH_VAL $ make_pnoun "hall"]),
+    ("hall",               Pnoun,     [TERMPH_VAL $ make_pnoun "hall2"]),
+
+!!! Any refactorings need to preserve the semantics that both "hall"s are tried! !!!
+This is NOT the same as ("hall", Pnoun, [TERMPH_VAL $ make_pnoun "hall", TERMPH_VAL $ make_pnoun "hall2"]),
+which will (seemingly) use the first TERMPH_VAL and ignore the second completely.
+
+NOTE2: Map needs to be lazy in the values or else the parser will loop indefinitely with meaning_of: map from dict, evaluate meaning_of, which needs to use map from dict, which evaluates meaning of
+NOTE3: It seems like having a lazy map as a value of a strict map retains the property needed to avoid a loop?
+TODO: HashMap seems like a big win, make AGParser use it too
+
+NOTE4: so fromListWith in HashMap is actually *NOT* strict in the values!  That means lazy evaluation is still happening!
+
+https://medium.com/@aleksandrasays/brief-normal-forms-explanation-with-haskell-cd5dfa94a157
+
+seq only peels off first layer.  need deepseq to force head normal form.
+
+-}
+
+--Try to retain old semantics: collect AttValues of multiple definitions together and unpack them later
+--Use Lazy hashmap to ensure meaning_of still works!
+dictionary''' :: HashMap.Lazy.HashMap (MemoL,T.Text) [[AttValue]]
+dictionary''' = HashMap.Lazy.fromListWith (flip (++)) $ map (\(t,m,atts) -> ((m,t),[atts])) dictionary
 
 dictionary :: [(T.Text, MemoL, [AttValue])]
 dictionary = [
