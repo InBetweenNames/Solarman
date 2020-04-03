@@ -25,6 +25,7 @@ import Control.Monad.State.Strict
 import qualified Data.Ord as Ord
 import qualified Data.Maybe as Maybe
 import Data.Foldable
+import qualified Data.Vector as Vector
 
 --copied from gangster_v4: utility functions for making lists unique
 subset s t = (s \\ t) == []
@@ -1049,6 +1050,7 @@ termph
    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S2]]
    )
 
+--TODO: space leak here?
 ------------------------------------------------------------------------------------
 -- public <jointermph> = <jointermph> <termphjoin> <jointermph> | <termph>;
 jointermph
@@ -1886,12 +1888,16 @@ syntaxTreeToLinear' :: SyntaxTree -> T.Text
 syntaxTreeToLinear' (SyntaxTreeT x) = x
 syntaxTreeToLinear' (SyntaxTreeNT ts) = intercalateBrackets $ concatMap syntaxTreeToLinear ts
 
-parse i = formatAttsFinalAlt Question ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
-parseTree i = findAllParseTreesFormatted syntaxTreeToLinear' Question ((length $ T.words i)+1) $ snd $ test (question T0 []) (T.words i)
+parse i = formatAttsFinalAlt Question (Vector.length vWords + 1) $ snd $ test (question T0 []) (vWords)
+    where
+        vWords = Vector.fromList $ T.words i
+parseTree i = findAllParseTreesFormatted syntaxTreeToLinear' Question (Vector.length vWords + 1) $ snd $ test (question T0 []) (vWords)
+    where
+        vWords = Vector.fromList $ T.words i
 
 headParse = getQUVAL . head . parse
 
-input = T.words i1
+input = Vector.fromList $ T.words i1
 
 i1 = "which moons that were discovered by hall orbit mars" -- OK
 i2 = "who discovered a moon that orbits mars" -- OK

@@ -13,9 +13,13 @@ import Control.Applicative hiding ((<|>), (*>))
 import Control.Monad.State.Strict
 import Data.Constructors.EqC
 
-import qualified Data.Map.Strict as Map
-import qualified Data.Map.Lazy as MapLazy
+--import qualified Data.Map.Strict as Map
 import qualified Data.HashMap.Lazy as HashMap.Lazy
+import qualified Data.Map.Strict as Map --should probably just be a strict map
+import qualified Data.Set as Set
+
+import qualified Data.Foldable as Fold
+import qualified Data.Vector as Vector
 
 import Debug.Trace
 
@@ -39,6 +43,7 @@ TODO Improvements:
     * New name for the parser.  XSaiga-NG?
     * Decouple error reporting from AttValue
     * okay so memoized and unmemoized return the same type... but unmemoized never seems to work?  need type level correction
+    * Need to find all instances where empty lists are used to denote "not found" and singletons are used to denote "found" and replace with Maybe
     *** Cnouns, pnouns should not need to be in dictionary.  should be able to "try" a terminal as a pnoun or cnoun as needed.
     *** "or" and "and" should not be ambiguous except when used with each other.  for example
         "hall or phobos or deimos and hall or kuiper or galileo" should only be ambiguous around the "and":
@@ -73,9 +78,9 @@ type Atts att   = [att] -- [(AttType, AttValue)]
 
 type InsAttVals att = [(Instance,Atts att)]
 
-type Start att    = ((Int,InsAttVals att), [T.Text]) --What purpose does this T.text serve?
+type Start att    = ((Int,InsAttVals att), Vector.Vector T.Text) --What purpose does this T.text serve?
 
-type Context  = ([MemoL],[(Int,[(MemoL, Int)])])
+type Context  = (Set.Set MemoL,[(Int, Map.Map MemoL Int)])
 
 --These are the same??
 type Start1 att  = (Int, InsAttVals att)
@@ -108,8 +113,10 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 (p <|> q) idx inhx ((i,_),inp) c 
  = do (l1,m) <- p idx inhx ((i,[]),inp) c 
       (l2,n) <- q idx inhx ((i,[]),inp) c
-      return ((union (fst l1) (fst l2),[]) ,(m ++ n))
+      return ((Set.union (fst l1) (fst l2),[]), (m ++ n))
 
+--TODO: space leak here?
+--TODO: change lists of attributes to vectors or something that's not a list
 --------------------------------------------------------
 (*>) :: SeqType att -> SeqType att -> SeqType att
 (p *> q) idx inhx semx resx 
@@ -121,16 +128,22 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
              else empty_cuts
           mergeCuts e prev new 
            = if e == i 
-             then (union prev new) 
+             then (Set.union prev new) 
              else prev  
+
+          combiner q l cc r (l2,n) = do
+                (l1,m) <- q `add_P` (r,cc)
+                return ((Set.union (fst l1) (fst l2),[]),(m ++ n))
+
+          apply_to_all q rs l cc = Fold.foldrM (combiner q l cc) (((fst l,[]),[])) rs
        
-          apply_to_all q [] l cc  
+          apply_to_all' q [] l cc  
            = return ((fst l,[]),[])
    
-          apply_to_all q (r:rs) l cc 
+          apply_to_all' q (r:rs) l cc 
             = do (l1,m) <- q `add_P` (r,cc)
                  (l2,n) <- apply_to_all q rs l cc
-                 return ((union (fst l1) (fst l2),[]),( m ++  n))
+                 return ((Set.union (fst l1) (fst l2),[]),( m ++  n))
               
           q `add_P` (rp,cc) 
             = do let e  = pickEnd rp
@@ -184,7 +197,7 @@ addToBranch (q1,[Leaf (x2,i2)])
 -------- ************* ---------------
 
 
-empty_cuts = ([],[])                   
+empty_cuts = (Set.empty,[])                   
 empty :: InsAttVals att -> M att
 empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
@@ -199,8 +212,8 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
                        return (fst lRes,lookUpRes)
        Nothing
            | funccount (snd context) inp name > (length dInput) - inp + 1
-               -> return (([name],[]),[])
-           | otherwise -> do let iC = ([],(addNT name inp $ snd context))
+               -> return ((Set.singleton name,[]),[])
+           | otherwise -> do let iC = (Set.empty,(addNT name inp $ snd context))
                              (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC 
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
                              let l1          = makeContext (fst l) (findContext inp (snd context))
@@ -208,9 +221,10 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
                              let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 
                              let newFoundRes = addNode name (S, id) (inp,downAtts) newRes
                              put udtTab
-                             return ( l1 ,newFoundRes)
+                             return (l1 ,newFoundRes)
 
-findWithFst key    = find ((== key) . fst)
+--findWithFst key    = find ((== key) . fst)
+findWithFst key = Map.lookup key
 
 filterWithFst key  = filter ((== key) . fst)
 
@@ -225,7 +239,9 @@ replaceSnd key def f list
   where
     (before, replacePoint) = break ((== key) . fst) list
     replaceFirst [] = [(key, def)]
-    replaceFirst ((a, b):nc) = (a, f b):nc 
+    replaceFirst ((a, b):nc) = (a, f b):nc
+
+--replaceSnd'' key def f hashMap = Map.insertWith (\new_value -> \old_value -> f old_value) key def hashMap
     
 {-replaceSnd' :: MemoL
     -> [(Start1,(Context, Result))]
@@ -236,19 +252,30 @@ replaceSnd key def f list
 replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map 
 
 --TODO: Should this return all matches?  why return a list?
-findContext inp = maybeToList . findWithFst inp
+findWithFst_orig key = find ((== key) . fst)
+findContext = findWithFst_orig
 
+funccount :: [(Int, Map.Map MemoL Int)] -> Int -> MemoL -> Int
 funccount list inp name = fromMaybe 0 $ do
-  (_, funcp) <- findWithFst inp list
-  (_, fc)    <- findWithFst name funcp
+  (_, funcp) <- findWithFst_orig inp list
+  fc         <- findWithFst name funcp
   return fc
 
-makeContext [] _          = empty_cuts
-makeContext rs []         = (rs, [])
-makeContext rs [(st,ncs)] = (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
+makeContext :: Set.Set MemoL -> Maybe (Int, Map.Map MemoL Int) -> Context
+makeContext rs js | Set.null rs     = empty_cuts
+                  | Just (st,ncs) <- js = (rs, [(st, Map.filterWithKey (\k _ -> k `elem` rs) ncs)]) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
+                  | otherwise           = (rs, [])
+
+--makeContext [] _          = empty_cuts
+--makeContext rs Nothing    = (rs, [])
+--makeContext rs (Just (st,ncs)) = (rs, [(st, Map.filterWithKey (\k _ -> k `elem` rs) ncs)]) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
+
+--Map.filterWithKey (\k _ -> k `elem` rs) ncs
 
 --Merged with incContext
-addNT name inp = replaceSnd inp [(name,1)] $ replaceSnd name 1 (+1)
+--[(Int,[(MemoL, Int)])] is the type of the last argument in the outer invocation
+--[(MemoL, Int)] is the type of the inner
+addNT name inp = replaceSnd inp (Map.singleton name 1) $ replaceSnd' name 1 (+1)
 
 addNode name id (s',dA) [] = []  
 
@@ -265,7 +292,7 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 
-lookupT :: MemoL -> Int -> [(Int,[(MemoL, Int)])] -> MemoTable att -> Maybe (Context,Result att)
+lookupT :: MemoL -> Int -> [(Int, Map.Map MemoL Int)] -> MemoTable att -> Maybe (Context,Result att)
 lookupT name inp context mTable = do
     res_in_table <- Map.lookup name mTable
     checkUsability inp context (lookupRes inp res_in_table)
@@ -273,24 +300,22 @@ lookupT name inp context mTable = do
 lookupRes :: Int -> [(Start1 att,(Context,Result att))] -> Maybe (Context, Result att)
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
-checkUsability :: Int -> [(Int,[(MemoL, Int)])] -> Maybe (Context, Result att) -> Maybe (Context, Result att)
+checkUsability :: Int -> [(Int, Map.Map MemoL Int)] -> Maybe (Context, Result att) -> Maybe (Context, Result att)
 checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
   where
   --Want Nothing to be the case if list is empty or the inp could not be found
-  findInp :: Int -> [(Int,[(MemoL, Int)])] -> Maybe [(MemoL, Int)]
-  findInp inp sc = findWithFst inp sc >>= (empty . snd)
-  empty :: [(MemoL, Int)] -> Maybe [(MemoL, Int)]
-  empty [] = Nothing
-  empty x  = Just x
-  checkUsability_ :: Maybe [(MemoL, Int)] -> Maybe [(MemoL, Int)] -> (Context, Result att) -> Maybe (Context, Result att)
+  findInp :: Int -> [(Int, Map.Map MemoL Int)] -> Maybe (Map.Map MemoL Int)
+  findInp inp sc = findWithFst_orig inp sc >>= (return . snd)
+  
+  checkUsability_ :: Maybe (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int) -> (Context, Result att) -> Maybe (Context, Result att)
   checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
   checkUsability_ Nothing  _       _       = Nothing    -- if cc at j is empty then don't re-use
-  checkUsability_ (Just ccs) (Just scs) scres  | and $ condCheck ccs scs = Just scres
+  checkUsability_ (Just ccs) (Just scs) scres  | condCheck ccs scs = Just scres
                                                | otherwise = Nothing
-  condCheck :: [(MemoL, Int)] -> [(MemoL, Int)] -> [Bool]
-  condCheck ccs = map (condCheck_ ccs)
-  condCheck_ :: [(MemoL, Int)] -> (MemoL, Int) -> Bool
-  condCheck_ ccs (n1, cs1) = maybe False (\(_, cs) -> cs >= cs1) $ findWithFst n1 ccs 
+  condCheck :: (Map.Map MemoL Int) -> (Map.Map MemoL Int) -> Bool
+  condCheck ccs = Map.foldrWithKey (condCheck_ ccs) True
+  condCheck_ :: (Map.Map MemoL Int) -> MemoL -> Int -> Bool -> Bool
+  condCheck_ ccs n1 cs1 b = (maybe False (\cs -> cs >= cs1) $ findWithFst n1 ccs) && b
 
 {-nub (dA ++ dAtts)-}
 --udt == "update table"?
@@ -333,7 +358,7 @@ superterminal' f id _ q@((r,a),dInp)
     inst = (S, id)
     instAttVals atts =  [(inst,atts)]
     --term :: M att --NTType
-    term ((r,a),dInp) _ = if r - 1 == length dInp then return (empty_cuts,[]) else let str = dInp!!(r - 1) in case f str of
+    term ((r,a),dInp) _ = if r - 1 == Vector.length dInp then return (empty_cuts,[]) else let str = Vector.unsafeIndex dInp (r - 1) in case f str of
         Nothing -> return (empty_cuts, [])
         Just atts -> return (empty_cuts,[(((r,[]),(r+1,instAttVals atts)),[Leaf (ALeaf str, inst)])])
 
@@ -345,9 +370,9 @@ terminal str semRules id _ ((i,a),inp)
     atts = [(inst,semRules)]
     --term :: T.Text -> M att
     term str ((r,a),dInp) _ 
-     |r - 1 == length dInp       = return (empty_cuts,[])
-     |dInp!!(r - 1) == str       = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
-     |otherwise                  = return (empty_cuts,[])  
+     |r - 1 == Vector.length dInp            = return (empty_cuts,[])
+     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
+     |otherwise                              = return (empty_cuts,[])  
 
 --NOTE: This takes into account multiple rules as if (terminal b x <|> terminal a z) were used
 terminalSet :: (Eq att) => MemoL -> HashMap.Lazy.HashMap (MemoL,T.Text) [Atts att] -> Id -> InsAttVals att -> Start att -> Context -> State (MemoTable att) (Context, Result att)
@@ -356,7 +381,7 @@ terminalSet key hashMap id _ ((i,_),inp)
     where
     selectedSemRules | i - 1 == length inp = Nothing
                      | otherwise = HashMap.Lazy.lookup (key,word) hashMap
-    word = (inp!!(i - 1)) --shouldn't be evaled until needed
+    word = Vector.unsafeIndex inp (i - 1) --shouldn't be evaled until needed
     actualTerm _ = case selectedSemRules of
         Just semRulesList ->
             let inst = (S, id) in
@@ -449,11 +474,11 @@ getAttVals :: (Eq att) => Instance -> InsAttVals att -> (a -> att) -> Atts att
 getAttVals x ((i,v):ivs) typ =
  let getAttVals_ typ (t:tvs) = if (typ undefined) == t then (t :getAttVals_ typ tvs)
                                else getAttVals_ typ tvs                
-     getAttVals_ typ []      = [] -- ErrorVal {-- 100 --} "ERROR id found but no value"
+     getAttVals_ typ []      = error "ERROR id found but no value" -- ErrorVal {-- 100 --} "ERROR id found but no value"
  in  
      if(i == x) then getAttVals_ typ v else   getAttVals x ivs typ
 --getAttVals x [] typ          = [ErrorVal {-- 200 --} "ERROR no id"] --TODO: note, the error being reported would be here.  this is the ONLY case of error reporting...
-
+getAttVals x [] typ = error "ERROR no id"
  
 -------- ************************************** ------------
 
@@ -604,7 +629,7 @@ lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
 --To "unpack" a SubNode, you must traverse the MemoTable and find the entry corresponding to the start, end, and key
 
 --But there is a problem with this.
---TODO: it looks like traversing this way will guarantee that the AttValues retrieved later during formatAttsFinalAlt will be in the same order as the returned trees
+--NOTE: it looks like traversing this way will guarantee that the AttValues retrieved later during formatAttsFinalAlt will be in the same order as the returned trees
 --(so that the trees will map correspondingly to their attvalues).  But I haven't proved this at all!  It would be sure nice if the tree were embedded somehow in the actual parse.
 data SyntaxTree = SyntaxTreeNT [SyntaxTree] | SyntaxTreeT T.Text deriving (Show)
 
@@ -674,14 +699,14 @@ formatAttsFinalAlt :: MemoL -> Int -> MemoTable att -> Atts att
 formatAttsFinalAlt key e t =  concat $ concat $ concat $ attsFinalAlt key e t
 
 meaning_of p dInp key
- = let dInput     = T.words dInp
-       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[])) Map.empty
+ = let dInput     = Vector.fromList $ T.words dInp
+       appParser  = runState (p T0 [] ((1,[]), dInput) empty_cuts) Map.empty
        upperBound = (length dInput) + 1
    in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ p dInp key
- = let dInput     = T.words dInp
-       appParser  = runState (p T0 [] ((1,[]), dInput) ([],[]))  Map.empty
+ = let dInput     = Vector.fromList $ T.words dInp
+       appParser  = runState (p T0 [] ((1,[]), dInput) empty_cuts) Map.empty
        upperBound = (length dInput) + 1
    in  (snd $ appParser)
 
@@ -697,9 +722,9 @@ formFinal key ePoint t = maybe [] final $ Map.lookup key t
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
 test :: (Start att -> Context -> State (MemoTable att) (Context, Result att))
-    -> [T.Text]
+    -> Vector.Vector T.Text
     -> ((Context, Result att), MemoTable att)
-test p input = runState (p ((1,[]),input) ([],[])) Map.empty
+test p input = runState (p ((1,[]),input) empty_cuts) Map.empty
 
 --formatParseIO = mapM id . map showio . parse
 
