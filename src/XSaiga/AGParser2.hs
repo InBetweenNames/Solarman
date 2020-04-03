@@ -80,7 +80,7 @@ type InsAttVals att = [(Instance,Atts att)]
 
 type Start att    = ((Int,InsAttVals att), Vector.Vector T.Text) --What purpose does this T.text serve?
 
-type Context  = (Set.Set MemoL,[(Int, Map.Map MemoL Int)])
+type Context  = (Set.Set MemoL, Map.Map Int (Map.Map MemoL Int))
 
 --These are the same??
 type Start1 att  = (Int, InsAttVals att)
@@ -113,7 +113,7 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 (p <|> q) idx inhx ((i,_),inp) c 
  = do (l1,m) <- p idx inhx ((i,[]),inp) c 
       (l2,n) <- q idx inhx ((i,[]),inp) c
-      return ((Set.union (fst l1) (fst l2),[]), (m ++ n))
+      return ((Set.union (fst l1) (fst l2),Map.empty), (m ++ n))
 
 --TODO: space leak here?
 --TODO: change lists of attributes to vectors or something that's not a list
@@ -133,9 +133,9 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 
           combiner q l cc r (l2,n) = do
                 (l1,m) <- q `add_P` (r,cc)
-                return ((Set.union (fst l1) (fst l2),[]),(m ++ n))
+                return ((Set.union (fst l1) (fst l2),Map.empty),(m ++ n))
 
-          apply_to_all q rs l cc = Fold.foldrM (combiner q l cc) (((fst l,[]),[])) rs
+          apply_to_all q rs l cc = Fold.foldrM (combiner q l cc) (((fst l,Map.empty),[])) rs
        
           apply_to_all' q [] l cc  
            = return ((fst l,[]),[])
@@ -197,7 +197,7 @@ addToBranch (q1,[Leaf (x2,i2)])
 -------- ************* ---------------
 
 
-empty_cuts = (Set.empty,[])                   
+empty_cuts = (Set.empty,Map.empty)                   
 empty :: InsAttVals att -> M att
 empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
 
@@ -212,12 +212,12 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
                        return (fst lRes,lookUpRes)
        Nothing
            | funccount (snd context) inp name > (length dInput) - inp + 1
-               -> return ((Set.singleton name,[]),[])
+               -> return ((Set.singleton name,Map.empty),[])
            | otherwise -> do let iC = (Set.empty,(addNT name inp $ snd context))
                              (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC 
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
                              let l1          = makeContext (fst l) (findContext inp (snd context))
-                             s1             <- get
+                             s1              <- get
                              let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 
                              let newFoundRes = addNode name (S, id) (inp,downAtts) newRes
                              put udtTab
@@ -252,19 +252,22 @@ replaceSnd key def f list
 replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map 
 
 --TODO: Should this return all matches?  why return a list?
+--Answer: because before, empty/singleton lists were treated like Maybe
 findWithFst_orig key = find ((== key) . fst)
-findContext = findWithFst_orig
 
-funccount :: [(Int, Map.Map MemoL Int)] -> Int -> MemoL -> Int
+--TODO: we have a map of maps, can we combine them?  Seems like key of outer map gets copied into the inner map
+--This is why findContext is a bit complicated
+findContext key map = findWithFst key map >>= (\val -> return (key,val))
+
+funccount :: Map.Map Int (Map.Map MemoL Int) -> Int -> MemoL -> Int
 funccount list inp name = fromMaybe 0 $ do
-  (_, funcp) <- findWithFst_orig inp list
-  fc         <- findWithFst name funcp
-  return fc
+  funcp     <- findWithFst inp list
+  findWithFst name funcp
 
 makeContext :: Set.Set MemoL -> Maybe (Int, Map.Map MemoL Int) -> Context
 makeContext rs js | Set.null rs     = empty_cuts
-                  | Just (st,ncs) <- js = (rs, [(st, Map.filterWithKey (\k _ -> k `elem` rs) ncs)]) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
-                  | otherwise           = (rs, [])
+                  | Just (st,ncs) <- js = (rs, Map.singleton st (Map.filterWithKey (\k _ -> k `elem` rs) ncs)) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
+                  | otherwise           = (rs, Map.empty)
 
 --makeContext [] _          = empty_cuts
 --makeContext rs Nothing    = (rs, [])
@@ -275,7 +278,7 @@ makeContext rs js | Set.null rs     = empty_cuts
 --Merged with incContext
 --[(Int,[(MemoL, Int)])] is the type of the last argument in the outer invocation
 --[(MemoL, Int)] is the type of the inner
-addNT name inp = replaceSnd inp (Map.singleton name 1) $ replaceSnd' name 1 (+1)
+addNT name inp = replaceSnd' inp (Map.singleton name 1) $ replaceSnd' name 1 (+1)
 
 addNode name id (s',dA) [] = []  
 
@@ -292,7 +295,7 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 
-lookupT :: MemoL -> Int -> [(Int, Map.Map MemoL Int)] -> MemoTable att -> Maybe (Context,Result att)
+lookupT :: MemoL -> Int -> Map.Map Int (Map.Map MemoL Int) -> MemoTable att -> Maybe (Context,Result att)
 lookupT name inp context mTable = do
     res_in_table <- Map.lookup name mTable
     checkUsability inp context (lookupRes inp res_in_table)
@@ -300,12 +303,12 @@ lookupT name inp context mTable = do
 lookupRes :: Int -> [(Start1 att,(Context,Result att))] -> Maybe (Context, Result att)
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
-checkUsability :: Int -> [(Int, Map.Map MemoL Int)] -> Maybe (Context, Result att) -> Maybe (Context, Result att)
+checkUsability :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Context, Result att) -> Maybe (Context, Result att)
 checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
   where
   --Want Nothing to be the case if list is empty or the inp could not be found
-  findInp :: Int -> [(Int, Map.Map MemoL Int)] -> Maybe (Map.Map MemoL Int)
-  findInp inp sc = findWithFst_orig inp sc >>= (return . snd)
+  findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int)
+  findInp inp sc = findWithFst inp sc
   
   checkUsability_ :: Maybe (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int) -> (Context, Result att) -> Maybe (Context, Result att)
   checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
