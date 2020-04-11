@@ -436,7 +436,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 --            | RESULT [sys_message]
 --Also called a "NodeName"
 --TODO: Split ALeaf out from here, and make this an enum!  ALeaf is used for terminals
-data MemoL    = Start | Tree | Num | Emp | ALeaf Text | Expr | Op  | ET
+data MemoL    = Start | Tree | Num | Emp | ALeaf !Text | Expr | Op  | ET
               | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Super|Superph|SuperphStart|Prepn|Prepnph|Prepyear|Joinyear|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
               | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6
                 deriving (Eq,Ord,Show,Generic)

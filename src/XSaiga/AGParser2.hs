@@ -223,57 +223,26 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
                              put udtTab
                              return (l1 ,newFoundRes)
 
---findWithFst key    = find ((== key) . fst)
-findWithFst key = Map.lookup key
-
-filterWithFst key  = filter ((== key) . fst)
-
-{-replaceSnd :: MemoL
-    -> [(Start1,(Context, Result))]
-    -> ([(Start1,(Context,Result))] -> [(Start1,(Context,Result))])
-    -> [(MemoL,[(Start1,(Context,Result))])]
-    -> [(MemoL,[(Start1,(Context,Result))])]
--}
-replaceSnd key def f list
-  = before ++ replaceFirst replacePoint
-  where
-    (before, replacePoint) = break ((== key) . fst) list
-    replaceFirst [] = [(key, def)]
-    replaceFirst ((a, b):nc) = (a, f b):nc
-
---replaceSnd'' key def f hashMap = Map.insertWith (\new_value -> \old_value -> f old_value) key def hashMap
-    
-{-replaceSnd' :: MemoL
-    -> [(Start1,(Context, Result))]
-    -> ([(Start1,(Context,Result))] -> [(Start1,(Context,Result))])
-    -> MemoTable
-    -> MemoTable
--}
 replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map 
 
 --TODO: Should this return all matches?  why return a list?
---Answer: because before, empty/singleton lists were treated like Maybe
-findWithFst_orig key = find ((== key) . fst)
+--findWithFst_orig key = find ((== key) . fst)
+--Answer: because before, empty/singleton lists were treated like Maybe, and lists of pairs are treated like maps
 
 --TODO: we have a map of maps, can we combine them?  Seems like key of outer map gets copied into the inner map
 --This is why findContext is a bit complicated
-findContext key map = findWithFst key map >>= (\val -> return (key,val))
+findContext key map = Map.lookup key map >>= (\val -> return (key,val))
 
 funccount :: Map.Map Int (Map.Map MemoL Int) -> Int -> MemoL -> Int
 funccount list inp name = fromMaybe 0 $ do
-  funcp     <- findWithFst inp list
-  findWithFst name funcp
+  funcp     <- Map.lookup inp list
+  Map.lookup name funcp
 
 makeContext :: Set.Set MemoL -> Maybe (Int, Map.Map MemoL Int) -> Context
 makeContext rs js | Set.null rs     = empty_cuts
                   | Just (st,ncs) <- js = (rs, Map.singleton st (Map.filterWithKey (\k _ -> k `elem` rs) ncs)) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
                   | otherwise           = (rs, Map.empty)
 
---makeContext [] _          = empty_cuts
---makeContext rs Nothing    = (rs, [])
---makeContext rs (Just (st,ncs)) = (rs, [(st, Map.filterWithKey (\k _ -> k `elem` rs) ncs)]) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
-
---Map.filterWithKey (\k _ -> k `elem` rs) ncs
 
 --Merged with incContext
 --[(Int,[(MemoL, Int)])] is the type of the last argument in the outer invocation
@@ -308,7 +277,7 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Ju
   where
   --Want Nothing to be the case if list is empty or the inp could not be found
   findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int)
-  findInp inp sc = findWithFst inp sc
+  findInp inp sc = Map.lookup inp sc
   
   checkUsability_ :: Maybe (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int) -> (Context, Result att) -> Maybe (Context, Result att)
   checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
@@ -318,7 +287,7 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Ju
   condCheck :: (Map.Map MemoL Int) -> (Map.Map MemoL Int) -> Bool
   condCheck ccs = Map.foldrWithKey (condCheck_ ccs) True
   condCheck_ :: (Map.Map MemoL Int) -> MemoL -> Int -> Bool -> Bool
-  condCheck_ ccs n1 cs1 b = (maybe False (\cs -> cs >= cs1) $ findWithFst n1 ccs) && b
+  condCheck_ ccs n1 cs1 b = (maybe False (\cs -> cs >= cs1) $ Map.lookup n1 ccs) && b
 
 {-nub (dA ++ dAtts)-}
 --udt == "update table"?
