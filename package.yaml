@@ -47,6 +47,7 @@ dependencies:
   - aeson
   - hashable
   - unordered-containers
+  - vector
 
 default-extensions:
   - DoAndIfThenElse
