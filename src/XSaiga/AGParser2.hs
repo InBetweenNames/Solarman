@@ -30,6 +30,9 @@ Finished improvements:
     * superterminals, needed for dictionaryless pnouns, cnouns, adjs
     * disambiguated grammar for years and locations
     * Decouple TypeAg2 from AGParser2 (parameterize AttValue)
+    * Using a vector of T.Text instead of a list for faster indexing (O(1))
+    * Using a set for the set of MemoL's instead of a list acting as a set
+    * Using maps for context (undecided exactly which scheme to use)
 
 TODO Improvements:
     
@@ -76,6 +79,7 @@ type Error = T.Text
 
 type Atts att   = [att] -- [(AttType, AttValue)] 
 
+--TODO: make this a map!  these are supposed to be unique.
 type InsAttVals att = [(Instance,Atts att)]
 
 type Start att    = ((Int,InsAttVals att), Vector.Vector T.Text) --What purpose does this T.text serve?
@@ -204,6 +208,7 @@ empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0
 --a3 = [MemoL]
 -- ((Int, b1), t a1) appears twice (appears to be Start)
 -- a2 = MemoL
+--TODO: space leak here?
 memoize :: (Eq att) => MemoL -> (Id -> InsAttVals att -> M att) -> Id -> InsAttVals att -> M att
 memoize name f id downAtts ((inp,dAtts),dInput) context 
  = do s <- get
@@ -216,41 +221,54 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
            | otherwise -> do let iC = (Set.empty,(addNT name inp $ snd context))
                              (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC 
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
-                             let l1          = makeContext (fst l) (findContext inp (snd context))
-                             s1              <- get
-                             let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 
-                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes
+                             let l1          = makeContext (fst l) inp (Map.findWithDefault (Map.empty) inp (snd context))
+                             s1             <- get
+                             let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 --NOTE: "f" above may alter the memo table, so we need s1 here
+                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNote always adds S?  shouldn't it support inherited atts?
                              put udtTab
                              return (l1 ,newFoundRes)
 
-replaceSnd' key def f map = Map.insertWith (\new_value -> \old_value -> f old_value) key def map 
+--TODO: must preserve strictness with replaceSnd'!
+replaceSnd' !key def f map = Map.insertWith (\_ -> \old_value -> f old_value) key def map
 
---TODO: Should this return all matches?  why return a list?
+
+--NOTE: Should this return all matches?  why return a list?
 --findWithFst_orig key = find ((== key) . fst)
 --Answer: because before, empty/singleton lists were treated like Maybe, and lists of pairs are treated like maps
 
---TODO: we have a map of maps, can we combine them?  Seems like key of outer map gets copied into the inner map
---This is why findContext is a bit complicated
-findContext key map = Map.lookup key map >>= (\val -> return (key,val))
-
+--NOTE: findWithDefault resolved it the space leak here using Map.lookup!
+--NOTE: funccount needs name to be strict to not have a space leak
+--NOTE: using Maybe also seems to cause a space leak, maybe because Maybe is lazy?
 funccount :: Map.Map Int (Map.Map MemoL Int) -> Int -> MemoL -> Int
-funccount list inp name = fromMaybe 0 $ do
-  funcp     <- Map.lookup inp list
-  Map.lookup name funcp
+funccount list inp !name = Map.findWithDefault 0 name $ Map.findWithDefault (Map.empty) inp list
 
+--NOTE: a singleton with an empty map is treated the same as an empty map anyway, in condCheck, so just unify the two cases
+--      i.e., passing a Just $ Map.empty from a Map.lookup in condCheck is the same thing as passing in Nothing.
+--NOTE: this differs from the original a bit -- the original could return a singleton with an empty map.  this one won't do that.
+--Implications: it seems before that (inp, Map.empty) was treated the same as not having inp in the map at all.  replaceSnd' treats both the same anyway.
+--NOTE: Be aware of this in case this broke something
+{-
+Old definition that for sure worked is as follows:
 makeContext :: Set.Set MemoL -> Maybe (Int, Map.Map MemoL Int) -> Context
 makeContext rs js | Set.null rs     = empty_cuts
                   | Just (st,ncs) <- js = (rs, Map.singleton st (Map.filterWithKey (\k _ -> k `elem` rs) ncs)) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
                   | otherwise           = (rs, Map.empty)
-
+-}
+makeContext :: Set.Set MemoL -> Int -> Map.Map MemoL Int -> Context
+makeContext rs st js = if Map.null memos then (rs, Map.empty) else (rs, Map.singleton st memos) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
+    where
+        memos = Map.restrictKeys js rs
 
 --Merged with incContext
 --[(Int,[(MemoL, Int)])] is the type of the last argument in the outer invocation
 --[(MemoL, Int)] is the type of the inner
+
+--NOTE: This looks kind of like a monad.  maps Map.singleton inp Map.empty and Map.empty both to the same Map.singleton inp (Map.singleton name 1)
 addNT name inp = replaceSnd' inp (Map.singleton name 1) $ replaceSnd' name 1 (+1)
 
 addNode name id (s',dA) [] = []  
 
+--TODO: more list incomprehensions
 addNode name id (s',dA)  oldResult -- ((((s,newIh),(e,atts)),t):rs)  
  = let res     = packAmb oldResult
        newSh x = [ ((sOri, snd id),attVal)| ((sOri, idOld),attVal)<- x]
@@ -273,27 +291,43 @@ lookupRes :: Int -> [(Start1 att,(Context,Result att))] -> Maybe (Context, Resul
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
 checkUsability :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Context, Result att) -> Maybe (Context, Result att)
-checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re then Just x else checkUsability_ (findInp inp context) (findInp inp sc) x)
+checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re || checkUsability_ (findInp inp context) (findInp inp sc) then Just x else Nothing )
   where
   --Want Nothing to be the case if list is empty or the inp could not be found
-  findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int)
-  findInp inp sc = Map.lookup inp sc
-  
-  checkUsability_ :: Maybe (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int) -> (Context, Result att) -> Maybe (Context, Result att)
-  checkUsability_  _       Nothing scres   = Just scres -- if lc at j is empty then re-use
-  checkUsability_ Nothing  _       _       = Nothing    -- if cc at j is empty then don't re-use
-  checkUsability_ (Just ccs) (Just scs) scres  | condCheck ccs scs = Just scres
-                                               | otherwise = Nothing
-  condCheck :: (Map.Map MemoL Int) -> (Map.Map MemoL Int) -> Bool
+  --findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int)
+  --findInp inp sc = Map.lookup inp sc
+
+  --TODO: ensure findImp is strict
+  findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Map.Map MemoL Int
+  findInp = Map.findWithDefault (Map.empty)
+
+  checkUsability_ :: (Map.Map MemoL Int) -> (Map.Map MemoL Int) -> Bool
+  checkUsability_ = condCheck
+
+  --NOTE: the use of Maybe in the original checkUsability complicates the logic for no reason.  The results are the same for Just Map.empty and Nothing. 
+
+  --checkUsability_  _         Nothing      = True -- if lc at j is empty then re-use
+  --checkUsability_ Nothing    _            = False    -- if cc at j is empty then don't re-use
+  --checkUsability_ (Just ccs) (Just scs)  | condCheck ccs scs = True
+  --                                       | otherwise = False
+  --TODO: this is really unoptimal!  this could be significantly improved
+  --The idea: each sc should have a corresponding cc that is greater than it
+  --NOTE: second arg was called scs
+  condCheck :: Map.Map MemoL Int -> Map.Map MemoL Int -> Bool
   condCheck ccs = Map.foldrWithKey (condCheck_ ccs) True
-  condCheck_ :: (Map.Map MemoL Int) -> MemoL -> Int -> Bool -> Bool
-  condCheck_ ccs n1 cs1 b = (maybe False (\cs -> cs >= cs1) $ Map.lookup n1 ccs) && b
+  condCheck_ :: Map.Map MemoL Int -> MemoL -> Int -> Bool -> Bool
+  --NOTE: findWithDefault set to -1 to avoid the Maybe, and -1 is strictly below any of the allowed values of cs1
+  condCheck_ ccs n1 cs1 b = (let cs = Map.findWithDefault (-1) n1 ccs in cs >= cs1) && b
 
 {-nub (dA ++ dAtts)-}
 --udt == "update table"?
+--TODO: nub is odd choice here, find out why it's needed.  seems to be used to remove duplicate attributes in the same slot (S1, S2... etc).  But why is this needed?
+--TODO: at the very least we should be using a map for those attributes to prevent this from happening!
 udt :: (Eq att) => (Context, Result att) -> MemoL -> Start1 att -> MemoTable att -> MemoTable att
 udt res name (inp, dAtts) = replaceSnd' name [((inp,dAtts),res)] (my_merge (inp,nub dAtts) res)
 
+--TODO: this absolutely sucks.  need to do this *right*.
+--NOTE: it looks like the Start1's inp is used as a unique key?  Perhaps we should do: Map.Map Int (InsAttVals, (Context, Result att)) instead?
 replaceSndG :: Int -> (Start1 att, (Context, Result att)) -> [(Start1 att, (Context, Result att))] -> [(Start1 att, (Context, Result att))]
 replaceSndG key def list
   = before ++ replaceFirst replacePoint
@@ -374,13 +408,10 @@ parser synRule semRules id inhAtts i c
            let ((e,altFromSibs),d)     =
                 let sRule                        = groupRule'' (S, LHS) semRules
                     ((l,newRes),st)              = runState ((synRule id inhAtts semRules altFromSibs) i c) s
-                    groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud]
+                    groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud] --TODO: way inefficient
                 in  ((l, mapSynthesize  sRule newRes inhAtts id),st)
            put d
            return (e,altFromSibs)
-      
-                          
-                                       
                      
 mapSynthesize []   res  downAtts id   = res
 mapSynthesize sems res  downAtts id
