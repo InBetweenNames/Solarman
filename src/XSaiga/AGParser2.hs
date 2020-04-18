@@ -84,7 +84,8 @@ type InsAttVals att = [(Instance,Atts att)]
 
 type Start att    = ((Int,InsAttVals att), Vector.Vector T.Text) --What purpose does this T.text serve?
 
-type Context  = (Set.Set MemoL, Map.Map Int (Map.Map MemoL Int))
+type ContextMap = Map.Map (Int,MemoL) Int
+type Context  = (Set.Set MemoL, ContextMap)
 
 --These are the same??
 type Start1 att  = (Int, InsAttVals att)
@@ -221,7 +222,7 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
            | otherwise -> do let iC = (Set.empty,(addNT name inp $ snd context))
                              (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC 
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
-                             let l1          = makeContext (fst l) inp (Map.findWithDefault (Map.empty) inp (snd context))
+                             let l1          = makeContext (fst l) inp (snd context)
                              s1             <- get
                              let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 --NOTE: "f" above may alter the memo table, so we need s1 here
                              let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNote always adds S?  shouldn't it support inherited atts?
@@ -239,8 +240,8 @@ replaceSnd' !key def f map = Map.insertWith (\_ -> \old_value -> f old_value) ke
 --NOTE: findWithDefault resolved it the space leak here using Map.lookup!
 --NOTE: funccount needs name to be strict to not have a space leak
 --NOTE: using Maybe also seems to cause a space leak, maybe because Maybe is lazy?
-funccount :: Map.Map Int (Map.Map MemoL Int) -> Int -> MemoL -> Int
-funccount list inp !name = Map.findWithDefault 0 name $ Map.findWithDefault (Map.empty) inp list
+funccount :: ContextMap -> Int -> MemoL -> Int
+funccount list !inp !name = Map.findWithDefault 0 (inp,name) list
 
 --NOTE: a singleton with an empty map is treated the same as an empty map anyway, in condCheck, so just unify the two cases
 --      i.e., passing a Just $ Map.empty from a Map.lookup in condCheck is the same thing as passing in Nothing.
@@ -254,17 +255,15 @@ makeContext rs js | Set.null rs     = empty_cuts
                   | Just (st,ncs) <- js = (rs, Map.singleton st (Map.filterWithKey (\k _ -> k `elem` rs) ncs)) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
                   | otherwise           = (rs, Map.empty)
 -}
-makeContext :: Set.Set MemoL -> Int -> Map.Map MemoL Int -> Context
-makeContext rs st js = if Map.null memos then (rs, Map.empty) else (rs, Map.singleton st memos) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
-    where
-        memos = Map.restrictKeys js rs
+makeContext :: Set.Set MemoL -> Int -> ContextMap -> Context
+makeContext rs st js = (rs, Map.restrictKeys js (Set.map (\q -> (st,q)) rs)) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
 
 --Merged with incContext
 --[(Int,[(MemoL, Int)])] is the type of the last argument in the outer invocation
 --[(MemoL, Int)] is the type of the inner
 
 --NOTE: This looks kind of like a monad.  maps Map.singleton inp Map.empty and Map.empty both to the same Map.singleton inp (Map.singleton name 1)
-addNT name inp = replaceSnd' inp (Map.singleton name 1) $ replaceSnd' name 1 (+1)
+addNT name inp = replaceSnd' (inp,name) 1 (1+)
 
 addNode name id (s',dA) [] = []  
 
@@ -282,7 +281,7 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 
-lookupT :: MemoL -> Int -> Map.Map Int (Map.Map MemoL Int) -> MemoTable att -> Maybe (Context,Result att)
+lookupT :: MemoL -> Int -> ContextMap -> MemoTable att -> Maybe (Context,Result att)
 lookupT name inp context mTable = do
     res_in_table <- Map.lookup name mTable
     checkUsability inp context (lookupRes inp res_in_table)
@@ -290,18 +289,14 @@ lookupT name inp context mTable = do
 lookupRes :: Int -> [(Start1 att,(Context,Result att))] -> Maybe (Context, Result att)
 lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
 
-checkUsability :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Context, Result att) -> Maybe (Context, Result att)
+checkUsability :: Int -> ContextMap -> Maybe (Context, Result att) -> Maybe (Context, Result att)
 checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re || checkUsability_ (findInp inp context) (findInp inp sc) then Just x else Nothing )
   where
-  --Want Nothing to be the case if list is empty or the inp could not be found
-  --findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Maybe (Map.Map MemoL Int)
-  --findInp inp sc = Map.lookup inp sc
-
   --TODO: ensure findImp is strict
-  findInp :: Int -> Map.Map Int (Map.Map MemoL Int) -> Map.Map MemoL Int
-  findInp = Map.findWithDefault (Map.empty)
+  findInp :: Int -> ContextMap -> ContextMap
+  findInp inp = Map.takeWhileAntitone (\(k,_) -> k == inp) . Map.dropWhileAntitone (\(k,_) -> k /= inp)
 
-  checkUsability_ :: (Map.Map MemoL Int) -> (Map.Map MemoL Int) -> Bool
+  checkUsability_ :: ContextMap -> ContextMap -> Bool
   checkUsability_ = condCheck
 
   --NOTE: the use of Maybe in the original checkUsability complicates the logic for no reason.  The results are the same for Just Map.empty and Nothing. 
@@ -313,9 +308,9 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re || chec
   --TODO: this is really unoptimal!  this could be significantly improved
   --The idea: each sc should have a corresponding cc that is greater than it
   --NOTE: second arg was called scs
-  condCheck :: Map.Map MemoL Int -> Map.Map MemoL Int -> Bool
-  condCheck ccs = Map.foldrWithKey (condCheck_ ccs) True
-  condCheck_ :: Map.Map MemoL Int -> MemoL -> Int -> Bool -> Bool
+  condCheck :: ContextMap -> ContextMap -> Bool
+  condCheck ccs = Map.foldrWithKey' (condCheck_ ccs) True
+  condCheck_ :: ContextMap -> (Int,MemoL) -> Int -> Bool -> Bool
   --NOTE: findWithDefault set to -1 to avoid the Maybe, and -1 is strictly below any of the allowed values of cs1
   condCheck_ ccs n1 cs1 b = (let cs = Map.findWithDefault (-1) n1 ccs in cs >= cs1) && b
 
@@ -477,7 +472,7 @@ getAttVals :: (Eq att) => Instance -> InsAttVals att -> (a -> att) -> Atts att
 getAttVals x ((i,v):ivs) typ =
  let getAttVals_ typ (t:tvs) = if (typ undefined) == t then (t :getAttVals_ typ tvs)
                                else getAttVals_ typ tvs                
-     getAttVals_ typ []      = error "ERROR id found but no value" -- ErrorVal {-- 100 --} "ERROR id found but no value"
+     getAttVals_ typ []      = [] -- ErrorVal {-- 100 --} "ERROR id found but no value" (TODO: this appears to be a *legitimate* case that is NOT AN ERROR for inherited atts!!!)
  in  
      if(i == x) then getAttVals_ typ v else   getAttVals x ivs typ
 --getAttVals x [] typ          = [ErrorVal {-- 200 --} "ERROR no id"] --TODO: note, the error being reported would be here.  this is the ONLY case of error reporting...
