@@ -169,8 +169,10 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
       (apply_to_all q m l cc) -- CHANGE cc HERE
 
 --TODO: Make the below readable
+pickEnd :: ((Start1 att, End att),[Tree att]) -> Start1 att
 pickEnd (((s,iA),(e,a)),t) = (e,[]) --NOTE: This is a Start1
 
+addP :: Result att -> ((Start1 att, End att), [Tree att]) -> Result att
 addP  [] ((s1,e1),t1)                    = []
 addP  ((((s2,inA2),(e2,synA2)),t2):restQ) (((s1,inA1),(e1,synA1)),t1)
  = (((s1,[]),(e2,[])),  a_P_Q_branch) : addP  restQ (((s1,inA1),(e1,synA1)),t1)
@@ -179,6 +181,7 @@ addP  ((((s2,inA2),(e2,synA2)),t2):restQ) (((s1,inA1),(e1,synA1)),t1)
    a_P_Q_branch = addToBranch (((s2,inA2),(e2,synA2)),t2)  (((s1,inA1),(e1,synA1)),t1)
 
 -------- ************* ---------------
+addToBranch :: ((Start1 att, End att), [Tree att]) -> ((Start1 att, End att), [Tree att]) -> [Tree att]
 addToBranch (q1,((SubNode (name2,q)):ts2))
             (p1,((SubNode (name1,p)):ts1))
                             = [Branch [(SubNode (name1,p)),(SubNode (name2,q))]]
@@ -214,6 +217,7 @@ addToBranch (q1,[Leaf (x2,i2)])
 -------- ************* ---------------
 
 
+empty_cuts :: Context
 empty_cuts = (Set.empty,Map.empty)
 empty :: InsAttVals att -> M att
 empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
@@ -247,7 +251,7 @@ replaceSnd' !key def f map = Map.insertWith (\_ -> \old_value -> f old_value) ke
 
 --NOTE: Should this return all matches?  why return a list?
 --findWithFst_orig key = find ((== key) . fst)
---Answer: because before, empty/singleton lists were treated like Maybe, and lists of pairs are treated like maps
+--Answer: No, because before, empty/singleton lists were treated like Maybe, and lists of pairs are treated like maps
 
 --NOTE: findWithDefault resolved it the space leak here using Map.lookup!
 --NOTE: funccount needs name to be strict to not have a space leak
@@ -277,6 +281,8 @@ makeContext rs st js = (rs, Map.restrictKeys js (Set.map (\q -> (st,q)) rs)) -- 
 --NOTE: This looks kind of like a monad.  maps Map.singleton inp Map.empty and Map.empty both to the same Map.singleton inp (Map.singleton name 1)
 addNT name inp = replaceSnd' (inp,name) 1 (1+)
 
+--NOTE: could be a Start1 att or and End att
+addNode :: Eq att => MemoL -> Instance -> (Int, InsAttVals att) -> Result att -> Result att
 addNode name id (s',dA) [] = []
 
 --TODO: more list incomprehensions
@@ -287,6 +293,7 @@ addNode name id (s',dA)  oldResult -- ((((s,newIh),(e,atts)),t):rs)
        | (((s,newIh),(e,atts)),t) <- oldResult]
 
 --NOTE: Does not seem to be used???  WAS referenced above but not used in addNode with let res = packAmb oldResult
+--NOTE: this seems broken somehow, as when it is used above instead of oldResult, it will skip valid parses.
 packAmb [] = []
 packAmb [x] = [x]
 packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:ys)
@@ -423,6 +430,7 @@ parser synRule semRules id inhAtts i c
            put d
            return (e,altFromSibs)
 
+mapSynthesize :: [(InsAttVals att, Id) -> InsAttVals att] -> Result att -> InsAttVals att -> Id -> Result att
 mapSynthesize []   res  downAtts id   = res
 mapSynthesize sems res  downAtts id
  = let appSems' [] vals        = []
@@ -435,10 +443,12 @@ mapSynthesize sems res  downAtts id
 --TODO: (vals,id) could be separate arguments without ANY real problem!!!!!
 --TODO: what do we do if the union of two InsAttVals maps contains a DUPLICATE VALUE?! before this was just a concatMap, would RETAIN duplicate KEYS
 --TODO: do we just join them together?!! WTF.  This may be related to the fact that a rule really returns just a regular old att instead of an InsAttVals att!!!!
+applySemantics :: InsAttVals att -> Id -> [((InsAttVals att, Id) -> InsAttVals att)] -> InsAttVals att
 applySemantics vals id = concatMap (\rule -> rule (vals, id))
 
 --NOTE: inherited atts have form OF Id that is NOT LHS
 --      synthesized atts have the form OF LHS.  Could this be part of what's going on here?
+mapInherited :: [((InsAttVals att, Id) -> InsAttVals att)] -> Result att -> InsAttVals att -> Id -> InsAttVals att
 mapInherited sems res [] id
   = concat [applySemantics (findAtts t) id sems | (((st,inAtts), (en,synAtts)),[t]) <- res]
 
@@ -461,6 +471,7 @@ groupAtts ((a,b):(_,b1):rest)  = (a,b++b1): groupAtts rest
 --------------------------------------
 --TODO: optimize!
 --TODO: what should happen if same instance is repeated? error?
+findAtts :: Tree att -> InsAttVals att
 findAtts (Branch ts)                  = concatMap findAtts ts
 findAtts (SubNode (_,((_,v'),(_,v)))) = v' ++ v --NOTE: it is likely that v' are the inherited atts and v are the synthesized atts
 findAtts (Leaf _)                     = []
@@ -477,8 +488,8 @@ rule_s          = rule S
 --Also, no matter the declared type, if the right hand side is ErrorVal, we get ErrorVal, full stop.
 --This thing has bitten me so many times... it would be nice to actually have it done right.
 --TODO: it seems like id is in both the outer and the inner? like (id, [(id, atts)])?  But why?  It seems wasteful and needlessly complicated
---TODO: the first argument is completely ignored?! *where is the type safety*?!!
-rule :: (Eq att) => SorI -> p1 -> Useless -> Id -> Useless -> ([InsAttVals att -> Id -> Atts att] -> (InsAttVals att, Id) -> att) -> [InsAttVals att -> Id -> Atts att] -> SemRule att
+--TODO: the second argument is completely ignored?! *where is the type safety*?!!
+rule :: (Eq att) => SorI -> ignored -> Useless -> Id -> Useless -> ([InsAttVals att -> Id -> Atts att] -> (InsAttVals att, Id) -> att) -> [InsAttVals att -> Id -> Atts att] -> SemRule att
 rule s_or_i typ oF pID isEq userFun listOfExp
  = let formAtts  id spec =  (id, (forNode id . spec))
        forNode   id atts = [(id, atts)]
@@ -518,31 +529,42 @@ apply_ y i x   = getB_OP (x y i)
 apply__ :: InsAttVals att -> Id -> (InsAttVals att -> Id -> AttValue) -> DisplayTree
 apply__ y i x  = getRVAL (x y i)
 
+applyMax :: InsAttVals att -> Id -> (InsAttVals att -> Id -> Atts AttValue) -> Int
 applyMax  y i x   = getAVAL (foldr getMax (MaxVal 0) (x y i))
+getMax :: AttValue -> AttValue -> AttValue
 getMax    x   y   = MaxVal  (max (getAVAL x) (getAVAL y))
 
+findMax :: [InsAttVals att -> Id -> Atts AttValue] -> (InsAttVals att, Id) -> AttValue
 findMax spec (atts,i) = MaxVal (foldr max 0 (map (applyMax atts i) spec))
 
+convertRep :: [InsAttVals att -> Id -> Atts AttValue] -> (InsAttVals att, Id) -> AttValue
 convertRep spec (atts,i) = RepVal (foldr max 0 (map (applyMax atts i) spec))
 
+makeTree :: [InsAttVals att -> Id -> AttValue] -> (InsAttVals att, Id) -> AttValue
 makeTree (x:xs) (atts,i) = Res (B (map (apply__ atts i) (x:xs)))
 
+mt :: [DisplayTree] -> DisplayTree
 mt [a,b,c] = (B [a,b,c])
 mt [a]     = (B [a])
 
 ----------- for arithmetic expr -----------------
+applyBiOp :: [InsAttVals AttValue -> Id -> Atts AttValue] -> (InsAttVals AttValue, Id) -> AttValue
 applyBiOp [e1,op,e2] atts = VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
+getAtts :: (att -> a) -> (InsAttVals att, Id) -> (InsAttVals att -> Id -> [att]) -> a
 getAtts f (y,i) x = f (head (x y i))  --NOTE: this ignores all other matching atts?!  This should return a *list*, it clearly says *atts*!!!!
 --at the very least it should be called getFirstAtt or something
 
 ----------- general copy ------------------------
-copy [b] (atts,i) = head (b atts i)
+copy :: [(InsAttVals att -> Id -> [att])] -> (InsAttVals att, Id) -> att
+copy [b] (atts,i) = head (b atts i) --NOTE: again, only the first att is returned!
+getTypVal :: Eq att => [(a -> att, att -> p)] -> att -> p --NOTE: this function is very unsafe, it has no base case.  Seems to apply a function to the first matching att.  It also does not seem to be used!
 getTypVal ((a,b):abs) t | a undefined == t = b t
                         | otherwise        = getTypVal abs t
 
 
 ----------- for arithmetic expr -----------------
 
+toTree :: [InsAttVals AttValue -> Id -> AttValue] -> (InsAttVals AttValue, Id) -> AttValue
 toTree [b] (atts,i) = Res (N ((map (apply atts i) [b])!!0))
 
 
