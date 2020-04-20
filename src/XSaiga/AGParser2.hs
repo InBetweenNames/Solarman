@@ -36,23 +36,32 @@ Finished improvements:
     * Merging Map of Maps into just a singular Map keyed over (Int,MemoL)
     * More types explicitly named and written out
     * Simplified logic for checking contexts
+    * Add more type annotations that explain what is going on a bit better
+    * Remove pointless atts attached to the input string.  They were ignored/not used at all anyway!
+    * terminalSet for efficient terminals
+    * superterminals to "try" a terminal of any sequence of characters
+    * Replace [Tree] with Tree in Result
 
 TODO Improvements:
 
+    * multi-terminal: a terminal consisting of N or more tokens.  Like "refractor telescope 1" or "asaph hall"
+    * Better representation for attributes.  In particular, synthesized and inherited atts should be separated, and they should have names.
+      Those names should be independent of the type.  Example. Rule.value = "100", Rule.size = 3 (for synthesized).  These names should not be hardcoded!
+      Also, if no duplicate instances are permitted, then we should make it a map and get rid of the lists.  Note that whatever is done, lazy evaluation must be permitted.
     * Elimination of all space leaks
     * Should we consider using HashMap?  Seems to do better in benchmarks
+    * Use Unboxed/Storable Vector/HashMap?
     * Find another way to signal an error for slot mismatch (S1/S3 given and S1/S2 requested)
     * Find another way to find "equivalence" between AttValues.  See TypeAg2 where the annoying bit is with instance Eq
     * Move data Id to here from TypeAg2
-    * Use a hashmap instead of a red/black tree map (requires hashable MemoL)
     * MemoL needs to be unique per memoize block, is this able to be generated automatically?
     * Move the example code to a new file (with the +-/* grammar), use the parameterized code to do this
     * Make a better syntax for the parser.  The list based syntax leaves a lot to be desired.
     * New name for the parser.  XSaiga-NG?
     * Decouple error reporting from AttValue
     * okay so memoized and unmemoized return the same type... but unmemoized never seems to work?  need type level correction
+        * REASON: terminals return Leafs, not SubNodes.  it's the memoization that creates the SubNode.  So terminal by itself, unmemoized, won't work due to findAtts only looking at SubNodes.
     * Need to find all instances where empty lists are used to denote "not found" and singletons are used to denote "found" and replace with Maybe
-    *** Cnouns, pnouns should not need to be in dictionary.  should be able to "try" a terminal as a pnoun or cnoun as needed.
     *** "or" and "and" should not be ambiguous except when used with each other.  for example
         "hall or phobos or deimos and hall or kuiper or galileo" should only be ambiguous around the "and":
         "(hall or (phobos or (deimos))) and (hall or (kuiper or (galileo)))"
@@ -70,7 +79,8 @@ TODO Improvements:
 
 ---- ************************************ -----------------------
 
-
+--TODO: NILL seems to be only used for "empty" which is a function that seems useful only for building recognizers?
+--and it seems like "empty" recognizes any terminal anyway?  what is the use of that?
 data SorI     = S | I | NILL  deriving (Eq,Ord,Show, Enum)
                 -- Synthesized or inherited or NILL
 
@@ -87,7 +97,7 @@ type Atts att   = [att] -- [(AttType, AttValue)]
 --TODO: make this a map!  these are supposed to be unique.
 type InsAttVals att = [(Instance,Atts att)]
 
-type Start att    = ((Int,InsAttVals att), Vector.Vector T.Text) --What purpose does this T.text serve?
+type Start     = (Int, Vector.Vector T.Text) --What purpose does this Int serve?
 
 --NOTE: may want to use HashMap instead: https://github.com/haskell-perf/dictionaries#from-list-int-keys
 type ContextMap = Map.Map (Int,MemoL) Int
@@ -102,18 +112,21 @@ data Tree att = Leaf (MemoL,Instance)
             | Branch [Tree att]
               deriving (Show)
 
-type Result att  = [((Start1 att, End att),[Tree att])]
+type Result att  = [((Start1 att, End att),Tree att)]
 
 type ParseResult att = (Context,Result att)
 
 --Also called an "MTable" or "State" originally
 type MemoTable att = Map.Map MemoL [(Start1 att,ParseResult att)]
 
-type M att = Start att -> Context -> State (MemoTable att) (ParseResult att)
+type M att = Start -> Context -> State (MemoTable att) (ParseResult att)
 
+--NOTE: the parser itself also returns this.  Parser sems to play the role of attaching semantics to syntactic rules.  Without parser, it just is a recognizer.
+--TODO: should these be labeled separately, even if they have the same type?
+--TODO: is nttype <|> parser (nt blah T0) [rules] valid?  would it work the same as if the atts were just copied?
 type NTType att = Id -> (InsAttVals att) -> (M att)
 
-type SemRule att = (Instance, (InsAttVals att, Id) -> InsAttVals att)
+type SemRule att = (Instance, (InsAttVals att, Id) -> att)
 
 type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M att)
 
@@ -123,19 +136,17 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 --------------- ******************************************** ---------------------------
 
 (<|>) :: NTType att -> NTType att -> NTType att
-(p <|> q) idx inhx ((i,_),inp) c
- = do (l1,m) <- p idx inhx ((i,[]),inp) c
-      (l2,n) <- q idx inhx ((i,[]),inp) c
+(p <|> q) idx inhx (i,inp) c
+ = do (l1,m) <- p idx inhx (i,inp) c
+      (l2,n) <- q idx inhx (i,inp) c
       return ((Set.union (fst l1) (fst l2),Map.empty), (m ++ n))
 
 --TODO: space leak here?
 --TODO: change lists of attributes to vectors or something that's not a list
 --------------------------------------------------------
 (*>) :: SeqType att -> SeqType att -> SeqType att
-(p *> q) idx inhx semx resx
-                 ((i,a),inp) cc
- = do (l,m) <- p idx inhx semx resx
-                 ((i,[]),inp) cc
+(p *> q) idx inhx semx resx (i,inp) cc
+ = do (l,m) <- p idx inhx semx resx (i,inp) cc
       let passCtxt  e
            = if e == i then cc
              else empty_cuts
@@ -146,7 +157,7 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 
           combiner q l cc r (l2,n) = do
                 (l1,m) <- q `add_P` (r,cc)
-                return ((Set.union (fst l1) (fst l2),Map.empty),(m ++ n))
+                return ((Set.union (l1) (fst l2),Map.empty),(m ++ n))
 
           apply_to_all q rs l cc = Fold.foldrM (combiner q l cc) (((fst l,Map.empty),[])) rs
 
@@ -163,16 +174,17 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 
           q `add_P` (rp,cc)
             = do let e  = pickEnd rp
-                 (l1,m) <- (q idx inhx semx resx (e,inp) (passCtxt (fst e)))
-                 return ((mergeCuts (fst e) (fst l) (fst l1),[]),(addP m rp))
+                 (l1,m) <- (q idx inhx semx resx (e,inp) (passCtxt e))
+                 return ((mergeCuts e (fst l) (fst l1)),(addP m rp))
 
       (apply_to_all q m l cc) -- CHANGE cc HERE
 
 --TODO: Make the below readable
-pickEnd :: ((Start1 att, End att),[Tree att]) -> Start1 att
-pickEnd (((s,iA),(e,a)),t) = (e,[]) --NOTE: This is a Start1
+pickEnd :: ((Start1 att, End att),Tree att) -> Int
+pickEnd (((s,iA),(e,a)),t) = e --NOTE: This is a Start1
 
-addP :: Result att -> ((Start1 att, End att), [Tree att]) -> Result att
+--NOTE: addP = addParse?
+addP :: Result att -> ((Start1 att, End att), Tree att) -> Result att
 addP  [] ((s1,e1),t1)                    = []
 addP  ((((s2,inA2),(e2,synA2)),t2):restQ) (((s1,inA1),(e1,synA1)),t1)
  = (((s1,[]),(e2,[])),  a_P_Q_branch) : addP  restQ (((s1,inA1),(e1,synA1)),t1)
@@ -181,38 +193,39 @@ addP  ((((s2,inA2),(e2,synA2)),t2):restQ) (((s1,inA1),(e1,synA1)),t1)
    a_P_Q_branch = addToBranch (((s2,inA2),(e2,synA2)),t2)  (((s1,inA1),(e1,synA1)),t1)
 
 -------- ************* ---------------
-addToBranch :: ((Start1 att, End att), [Tree att]) -> ((Start1 att, End att), [Tree att]) -> [Tree att]
-addToBranch (q1,((SubNode (name2,q)):ts2))
-            (p1,((SubNode (name1,p)):ts1))
-                            = [Branch [(SubNode (name1,p)),(SubNode (name2,q))]]
+--NOTE: it seems the top level Tree is simply a singleton?
+addToBranch :: ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att) -> Tree att
+addToBranch (q1,((SubNode (name2,q))))
+            (p1,((SubNode (name1,p))))
+                            = Branch [(SubNode (name1,p)),(SubNode (name2,q))]
 
-addToBranch (q1,((Branch t2):ts2))
-            (p1,((Branch t1):ts1))
-                            = [Branch (t1++t2)]
+addToBranch (q1,((Branch t2)))
+            (p1,((Branch t1)))
+                            = Branch (t1++t2)
 
-addToBranch (q1,((Branch t2):ts))
-            (p1,((SubNode (name1,p)):ts1))
-                            = [Branch ((SubNode (name1,p)):t2)]
+addToBranch (q1,((Branch t2)))
+            (p1,((SubNode (name1,p))))
+                            = Branch ((SubNode (name1,p)):t2)
 
-addToBranch (q1,((SubNode (name2,q)):ts2))
-            (p1,((Branch t1):ts))
-                            = [Branch (t1++[(SubNode (name2,q))])]
+addToBranch (q1,((SubNode (name2,q))))
+            (p1,((Branch t1)))
+                            = Branch (t1++[(SubNode (name2,q))])
 
 
-addToBranch (q1,((SubNode (name2,q)):ts2))
-            (p1,[Leaf (x,i)])
-                            = [Branch [(SubNode ((x,i) ,p1)),(SubNode (name2,q))]]
-addToBranch (q1,[Leaf (x,i)])
-            (p1,((SubNode (name1,p)):ts1))
-                            = [Branch [(SubNode (name1,p)),(SubNode ((x,i),q1))]]
-addToBranch (q1,((Branch t2):ts))
-            (p1,[Leaf (x,i)])
-                            = [Branch ((SubNode ((x,i),p1)):t2)]
-addToBranch (q1,[Leaf (x,i)])
-            (p1,((Branch t1):ts))
-                            = [Branch (t1++[(SubNode ((x,i),q1))])]
-addToBranch (q1,[Leaf (x2,i2)])
-            (p1,[Leaf (x1,i1)])                         = [Branch [(SubNode ((x1,i1),p1)),(SubNode ((x2,i2),q1))]]
+addToBranch (q1,((SubNode (name2,q))))
+            (p1,Leaf (x,i))
+                            = Branch [(SubNode ((x,i) ,p1)),(SubNode (name2,q))]
+addToBranch (q1,Leaf (x,i))
+            (p1,((SubNode (name1,p))))
+                            = Branch [(SubNode (name1,p)),(SubNode ((x,i),q1))]
+addToBranch (q1,((Branch t2)))
+            (p1,Leaf (x,i))
+                            = Branch ((SubNode ((x,i),p1)):t2)
+addToBranch (q1,Leaf (x,i))
+            (p1,((Branch t1)))
+                            = Branch (t1++[(SubNode ((x,i),q1))])
+addToBranch (q1,Leaf (x2,i2))
+            (p1,Leaf (x1,i1))                         = Branch [(SubNode ((x1,i1),p1)),(SubNode ((x2,i2),q1))]
 
 -------- ************* ---------------
 
@@ -220,14 +233,18 @@ addToBranch (q1,[Leaf (x2,i2)])
 empty_cuts :: Context
 empty_cuts = (Set.empty,Map.empty)
 empty :: InsAttVals att -> M att
-empty atts (x,_) l = return (empty_cuts,[((x,(fst x,atts)), [Leaf (Emp, (NILL,O0))])])
+empty atts (x,_) l = return (empty_cuts,[(((x,[]),(x,atts)), Leaf (Emp, (NILL,O0)))])
 
---a3 = [MemoL]
--- ((Int, b1), t a1) appears twice (appears to be Start)
--- a2 = MemoL
+
+--NOTE: this is used like: test (question T0 []) (vWords), so id and downAtts come from that!  The start, context from test come later.
+--      This evalutes to runState (question T0 [] ((1,[]),input) empty_cuts) Map.empty.
+--      Meaning id = T0, downAtts = [], inp = 1, dAtts = [], dInput = input, context = empty_cuts.
+--TODO: what is the difference between downAtts and dAtts?
+--TODO: remove dAtts entirely, nothing seems to use?  it just gets passed down to the terminals unaltered and is ignored
+--NOTE: dAtts is only passed to f.
 --TODO: space leak here?
-memoize :: (Eq att) => MemoL -> (Id -> InsAttVals att -> M att) -> Id -> InsAttVals att -> M att
-memoize name f id downAtts ((inp,dAtts),dInput) context
+memoize :: (Eq att) => MemoL -> NTType att -> NTType att
+memoize name f id downAtts (inp,dInput) context
  = do s <- get
       case (lookupT name inp (snd context) s) of
        Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd lRes)
@@ -236,12 +253,12 @@ memoize name f id downAtts ((inp,dAtts),dInput) context
            | funccount (snd context) inp name > (length dInput) - inp + 1
                -> return ((Set.singleton name,Map.empty),[])
            | otherwise -> do let iC = (Set.empty,(addNT name inp $ snd context))
-                             (l,newRes) <- f id downAtts ((inp,dAtts),dInput) iC
+                             (l,newRes) <- f id downAtts (inp,dInput) iC --NOTE: iC, inputContext?
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
                              let l1          = makeContext (fst l) inp (snd context)
                              s1             <- get
                              let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 --NOTE: "f" above may alter the memo table, so we need s1 here
-                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNote always adds S?  shouldn't it support inherited atts?
+                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNode seems to refer specifically to synthesized atts here
                              put udtTab
                              return (l1 ,newFoundRes)
 
@@ -287,20 +304,27 @@ addNode name id (s',dA) [] = []
 
 --TODO: more list incomprehensions
 addNode name id (s',dA)  oldResult -- ((((s,newIh),(e,atts)),t):rs)
- = let res     = packAmb oldResult --NOTE: never actually used
-       newSh x = [ ((sOri, snd id),attVal)| ((sOri, idOld),attVal)<- x]
-   in  [(((s,newIh),(e, newSh atts)),[SubNode ((name, id),((s,nub dA),(e, newSh atts)))])
-       | (((s,newIh),(e,atts)),t) <- oldResult]
+ = let --res     = packAmb oldResult --NOTE: never actually used.  Seems to have been an attempt to reconcile multiple attributes from different rules?
+       s_id = snd id
+       newSh x = [ ((sOri, s_id),attVal)| ((sOri, _),attVal)<- x]
+   in  [let newShAtts = newSh atts in (((s,newIh),(e, newShAtts)),SubNode ((name, id),((s,nub dA),(e, newShAtts))))
+       | (((s,newIh),(e,atts)),t) <- oldResult] --NOTE: here t is not enforced as a singleton list, but also note that t is thrown out
 
 --NOTE: Does not seem to be used???  WAS referenced above but not used in addNode with let res = packAmb oldResult
 --NOTE: this seems broken somehow, as when it is used above instead of oldResult, it will skip valid parses.
+--NOTE: it seems like this is only able to merge 2 things?  Was it intended to do more than that?  No reference in the literature.
+--NOTE: packAmb relies on there being a list of trees (for t1 ++ t2).  But it seems that singleton lists of trees are enforced in a lot of places.
+{-
+packAmb :: Result att -> Result att
 packAmb [] = []
 packAmb [x] = [x]
 packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:ys)
   where
+  packer :: ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att)
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
+  isEq :: ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att) -> Bool
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
-
+-}
 lookupT :: MemoL -> Int -> ContextMap -> MemoTable att -> Maybe (Context,Result att)
 lookupT name inp context mTable = do
     res_in_table <- Map.lookup name mTable
@@ -371,98 +395,108 @@ my_merge (inp,ndAtts) res (((i,dA), es):rest)
 --use "f" to determine if a token may make a suitable terminal
 --Nothing -> means throw it out
 --Just a -> use it
-superterminal :: (Eq att) => MemoL -> (T.Text -> Maybe (Atts att)) -> Id -> InsAttVals att -> M att
+superterminal :: (Eq att) => MemoL -> (T.Text -> Maybe (Atts att)) -> NTType att
 superterminal key f = memoize key (superterminal' f)
 
-superterminal' :: (Eq att) => (T.Text -> Maybe (Atts att)) -> Id -> InsAttVals att -> M att
-superterminal' f id _ q@((r,a),dInp)
+superterminal' :: (Eq att) => (T.Text -> Maybe (Atts att)) -> NTType att
+superterminal' f id _ q@(r,dInp)
  = term q --trace ((show $ T.intercalate " " dInp) ++ show q) $ term q
     where
     inst = (S, id)
     instAttVals atts =  [(inst,atts)]
     --term :: M att --NTType
-    term ((r,a),dInp) _ = if r - 1 == Vector.length dInp then return (empty_cuts,[]) else let str = Vector.unsafeIndex dInp (r - 1) in case f str of
+    term (r,dInp) _ = if r - 1 == Vector.length dInp then return (empty_cuts,[]) else let str = Vector.unsafeIndex dInp (r - 1) in case f str of
         Nothing -> return (empty_cuts, [])
-        Just atts -> return (empty_cuts,[(((r,[]),(r+1,instAttVals atts)),[Leaf (ALeaf str, inst)])])
+        Just atts -> return (empty_cuts,[(((r,[]),(r+1,instAttVals atts)),Leaf (ALeaf str, inst))])
 
-terminal :: (Eq att) => T.Text -> Atts att -> Id -> InsAttVals att -> M att
-terminal str semRules id _ ((i,a),inp)
- = term str ((i,[]),inp)
+terminal :: (Eq att) => T.Text -> Atts att -> NTType att
+terminal str semRules id _ (i,inp)
+ = term str ((i,[]),inp)  --NOTE: the downAtts are ignored regardless?
     where
     inst = (S, id)
     atts = [(inst,semRules)]
     --term :: T.Text -> M att
-    term str ((r,a),dInp) _
+    term str ((r,_),dInp) _
      |r - 1 == Vector.length dInp            = return (empty_cuts,[])
-     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,[]),(r+1,atts)),[Leaf (ALeaf str, inst)])])
+     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,[]),(r+1,atts)),Leaf (ALeaf str, inst))])
      |otherwise                              = return (empty_cuts,[])
 
 --NOTE: This takes into account multiple rules as if (terminal b x <|> terminal a z) were used
-terminalSet :: (Eq att) => MemoL -> HashMap.Lazy.HashMap (MemoL,T.Text) [Atts att] -> Id -> InsAttVals att -> Start att -> Context -> State (MemoTable att) (ParseResult att)
-terminalSet key hashMap id _ ((i,_),inp)
+terminalSet :: (Eq att) => MemoL -> HashMap.Lazy.HashMap (MemoL,T.Text) [Atts att] -> NTType att
+terminalSet key hashMap id _ (i,inp)
  =  actualTerm
     where
     selectedSemRules | i - 1 == length inp = Nothing
                      | otherwise = HashMap.Lazy.lookup (key,word) hashMap
     word = Vector.unsafeIndex inp (i - 1) --shouldn't be evaled until needed
     actualTerm _ = case selectedSemRules of
-        Just semRulesList ->
+        Just semRulesList -> --TODO: rename attValueList
             let inst = (S, id) in
-            let gen = (\semRules -> let atts = [(inst,semRules)] in (((i,[]),(i+1,atts)),[Leaf (ALeaf word, inst)])) in
+            let gen = (\semRules -> let atts = [(inst,semRules)] in (((i,[]),(i+1,atts)),Leaf (ALeaf word, inst))) in
                 return (empty_cuts, map gen semRulesList)
         Nothing -> return (empty_cuts,[])
 
 nt :: NTType att -> Id -> SeqType att
 nt fx idx id inhAtts semRules altFromSibs
- = let groupRule'' inst       = map snd $ filter ((inst ==) . fst) semRules
-       ownInheritedAtts       = mapInherited (groupRule'' (I, idx)) altFromSibs inhAtts id
+ = let groupRule'' inst       = filter ((inst ==) . fst) semRules
+       ownInheritedAtts       = mapInherited (groupRule'' (I, idx)) altFromSibs inhAtts id --NOTE: multiple rule_i allowed!
    in fx idx ownInheritedAtts
 
-parser :: SeqType att -> [SemRule att] -> Id -> InsAttVals att -> M att
+--NOTE: So it seems a terminal may contain one or more atts (multiple atts per slot, like S0, S1...)
+--      but it seems like a rule will always yield one att.
+--      multiple atts are therefore obtained from different rules.
+parser :: SeqType att -> [SemRule att] -> NTType att
 parser synRule semRules id inhAtts i c
  =      do
            s <- get
            let ((e,altFromSibs),d)     =
-                let sRule                        = groupRule'' (S, LHS) semRules
-                    ((l,newRes),st)              = runState ((synRule id inhAtts semRules altFromSibs) i c) s
-                    groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud] --TODO: way inefficient.  Need better representation for rules if we're going to do this!
+                let sRule                        = groupRule'' (S, LHS) semRules --NOTE: multiple rule_s allowed!
+                    ((l,newRes),st)              = runState ((synRule id inhAtts semRules altFromSibs) i c) s --NOTE: whoa. altFromSibs being used recursively.
+                    groupRule'' id rules         = [(id,rule) | (ud,rule) <- rules, id == ud] --TODO: way inefficient.  Need better representation for rules if we're going to do this!
                 in  ((l, mapSynthesize  sRule newRes inhAtts id),st)
            put d
            return (e,altFromSibs)
 
-mapSynthesize :: [(InsAttVals att, Id) -> InsAttVals att] -> Result att -> InsAttVals att -> Id -> Result att
+--NOTE: see note above.  a rule evaluates to a single att.  But here, we wrap it into a singleton list of atts.  We do the same with inherited atts.
+--TODO: why?  can we improve the InsAttVals representation with this?
+mapSynthesize :: [SemRule att] -> Result att -> InsAttVals att -> Id -> Result att
 mapSynthesize []   res  downAtts id   = res
 mapSynthesize sems res  downAtts id
- = let appSems' [] vals        = []
-       appSems' (r:rules) vals
-        = let [((ud, id'), atts)] = r (vals, id) --TODO: this is extremely dumb.  We need to do this right.
-          in  [((ud, id), atts)] ++ appSems' rules vals
-   in  [(((st,inAtts), (en,appSems' sems (findAtts t))),[t])
-       |(((st,inAtts), (en,synAtts)),[t]) <- res]
+ = let appSems' :: [SemRule att] -> InsAttVals att -> InsAttVals att
+       appSems' [] vals        = []
+       appSems' ((i,r):rules) vals
+        = let ((ud, _), atts) = (i, [r (vals, id)]) --NOTE: it's a singleton att, but terminals may have *multiple* atts.  TODO: it is POSSIBLE to have multiple rule_s.  They would each have the same instance!  Only the first one would be respected by default?
+          in  ((ud, id), atts) : appSems' rules vals
+   in  [(((st,inAtts), (en,appSems' sems (findAtts t))),t) --TODO: this may be why using nt without memoize doesn't work for terminals -- findAtts specifically checks SubNodes and not Leafs
+       |(((st,inAtts), (en,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
+           --NOTE: the actual synAtts are ignored entirely!  it expects the atts to be in t.  Note that each rule adds an element to the result.
 
 --TODO: (vals,id) could be separate arguments without ANY real problem!!!!!
 --TODO: what do we do if the union of two InsAttVals maps contains a DUPLICATE VALUE?! before this was just a concatMap, would RETAIN duplicate KEYS
 --TODO: do we just join them together?!! WTF.  This may be related to the fact that a rule really returns just a regular old att instead of an InsAttVals att!!!!
-applySemantics :: InsAttVals att -> Id -> [((InsAttVals att, Id) -> InsAttVals att)] -> InsAttVals att
-applySemantics vals id = concatMap (\rule -> rule (vals, id))
+--NOTE: terminals may have multiple atts, but a rule must always give a single att?
+applySemantics :: InsAttVals att -> Id -> [(Instance,(InsAttVals att, Id) -> att)] -> InsAttVals att
+applySemantics vals id = map (\(i,rule) -> (i,[rule (vals, id)])) --NOTE: it's a singleton att, but terminals may have *multiple* atts. TODO: separate representation for inherited atts?
 
 --NOTE: inherited atts have form OF Id that is NOT LHS
 --      synthesized atts have the form OF LHS.  Could this be part of what's going on here?
-mapInherited :: [((InsAttVals att, Id) -> InsAttVals att)] -> Result att -> InsAttVals att -> Id -> InsAttVals att
+mapInherited :: [(Instance,(InsAttVals att, Id) -> att)] -> Result att -> InsAttVals att -> Id -> InsAttVals att
 mapInherited sems res [] id
-  = concat [applySemantics (findAtts t) id sems | (((st,inAtts), (en,synAtts)),[t]) <- res]
+  = concat [applySemantics (findAtts t) id sems | (((st,inAtts), (en,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
 
 mapInherited sems []  downAtts id
   = applySemantics downAtts id sems -- concat ( map (appSems id sems) (group downAtts))
 
 mapInherited sems res downAtts id
   = concat [applySemantics (downAtts ++ synAtts ++ (findAtts t)) id sems
-              | (((st,inAtts), (en,synAtts)),[t]) <- res]
+              | (((st,inAtts), (en,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
 
 --NOTE: what is this even for??  why is the first thing in the second tuple completely ignored?  why does it work in pairs?????
 --NOTE: this function seems to not actually do anything meaningful!!!!  WAS used above in (groupAtts downAtts)
 --NOTE: when used above in (groupAtts downAtts), only the case [(a,b)] was actually hit
 --NOTE: this is referenced in packAmb where the other cases ARE hit.  But that function seems broken?
+--NOTE: the first thing in the tuple would have been the instance, which would have been (I, id).
+--Were they guaranteed to be the same?  Was this an attempt to merge attributes from different rule_i?
 groupAtts []                    = []
 groupAtts [(a,b)]               = [(a,b)]
 groupAtts [(a,b),(_,b1)]       = [(a,b++b1)]
@@ -487,23 +521,23 @@ rule_s          = rule S
 --not be defined by setAtt.  "typ undefined" is compared to resType, to see if the same data constructor was used.
 --Also, no matter the declared type, if the right hand side is ErrorVal, we get ErrorVal, full stop.
 --This thing has bitten me so many times... it would be nice to actually have it done right.
---TODO: it seems like id is in both the outer and the inner? like (id, [(id, atts)])?  But why?  It seems wasteful and needlessly complicated
---TODO: the second argument is completely ignored?! *where is the type safety*?!!
+--TODO: multiple rule_s are permitted, but the typ, the only disambiguating thing for rule differentation, is ignored.  Need to handle this.
 rule :: (Eq att) => SorI -> ignored -> Useless -> Id -> Useless -> ([InsAttVals att -> Id -> Atts att] -> (InsAttVals att, Id) -> att) -> [InsAttVals att -> Id -> Atts att] -> SemRule att
 rule s_or_i typ oF pID isEq userFun listOfExp
- = let formAtts  id spec =  (id, (forNode id . spec))
-       forNode   id atts = [(id, atts)]
+ = let formAtts  id spec =  (id, spec)
+       forNode   id atts = (id, atts)
        resType           = userFun  listOfExp
-   in  formAtts (s_or_i,pID) (\x -> [resType x]) --TODO: it's just a singleton att?! Why not just return the att?!!
+   in  formAtts (s_or_i,pID) resType --TODO: it's just a singleton att?! Why not just return the att?!!
 
 ---- **** -----
 
+synthesized :: Eq att => (a -> att) -> Useless -> Id -> InsAttVals att -> Id -> Atts att
 synthesized = valOf S
 inherited   = valOf I
 
 valOf :: (Eq att) => SorI -> (a -> att) -> Useless -> Id -> InsAttVals att ->  Id -> Atts att
-valOf ud typ o_f x  ivs x' | x == LHS   = getAttVals (ud , x') ivs typ --the inherited Id   (there should be type level enforcement here)
-                           | otherwise  = getAttVals (ud , x ) ivs typ --the synthesized id (there should be type level enforcement here)
+valOf ud typ o_f x  ivs x' | x == LHS   = getAttVals (ud , x') ivs typ --the inherited Id from parent? (there should be type level enforcement here)
+                           | otherwise  = getAttVals (ud , x ) ivs typ --the synthesized id? or inherited id from sibling? (there should be type level enforcement here)
 
 --TODO: Whoa!!!!  not cool!
 --This appears to be invoked if an Id is requested and not used
@@ -550,12 +584,12 @@ mt [a]     = (B [a])
 ----------- for arithmetic expr -----------------
 applyBiOp :: [InsAttVals AttValue -> Id -> Atts AttValue] -> (InsAttVals AttValue, Id) -> AttValue
 applyBiOp [e1,op,e2] atts = VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
-getAtts :: (att -> a) -> (InsAttVals att, Id) -> (InsAttVals att -> Id -> [att]) -> a
+getAtts :: (att -> a) -> (InsAttVals att, Id) -> (InsAttVals att -> Id -> Atts att) -> a
 getAtts f (y,i) x = f (head (x y i))  --NOTE: this ignores all other matching atts?!  This should return a *list*, it clearly says *atts*!!!!
 --at the very least it should be called getFirstAtt or something
 
 ----------- general copy ------------------------
-copy :: [(InsAttVals att -> Id -> [att])] -> (InsAttVals att, Id) -> att
+copy :: [(InsAttVals att -> Id -> Atts att)] -> (InsAttVals att, Id) -> att
 copy [b] (atts,i) = head (b atts i) --NOTE: again, only the first att is returned!
 getTypVal :: Eq att => [(a -> att, att -> p)] -> att -> p --NOTE: this function is very unsafe, it has no base case.  Seems to apply a function to the first matching att.  It also does not seem to be used!
 getTypVal ((a,b):abs) t | a undefined == t = b t
@@ -593,7 +627,7 @@ tree   = memoize Tree
                                                  synthesized  MaxVal OF T3
                                                ],
         rule_i   RepVal OF T1   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: seems that for inherited atts, the Ids may cause trouble if they're the same as the parent (T0 here)
-        rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS],
+        rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: i think you can inherit from siblings too
         rule_i   RepVal OF T3   ISEQUALTO convertRep    [inherited RepVal OF LHS]
        ]
  <|>
@@ -660,7 +694,7 @@ attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup key t)
 --These three conditions are sufficient to guarantee the result is unique and valid.
 lookupTable :: MemoL -> Int -> Int -> MemoTable att -> [Tree att]
 lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
-    where allTrees sr = concat $ concat $ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start]
+    where allTrees sr = concat $ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start]
 
 --The memo table itself must be "unravelled" to reveal the parse tree.  If there is only one valid parse, this is easy.
 --If there are multiple valid parses due to ambiguity, then we must return all valid trees.
@@ -749,17 +783,17 @@ diffTree (SyntaxTreeNT (t1:ts1)) a@(SyntaxTreeNT (t2:ts2)) = diffTree t1 t2 ++ d
 formatAttsFinalAlt :: MemoL -> Int -> MemoTable att -> Atts att
 formatAttsFinalAlt key e t =  concat $ concat $ concat $ attsFinalAlt key e t
 
-meaning_of :: NTType att -> T.Text -> MemoL -> [att]
+meaning_of :: NTType att -> T.Text -> MemoL -> Atts att
 meaning_of p dInp key
  = let dInput     = Vector.fromList $ T.words dInp
-       appParser  = runState (p T0 [] ((1,[]), dInput) empty_cuts) Map.empty
+       appParser  = runState (p T0 [] (1, dInput) empty_cuts) Map.empty
        upperBound = (length dInput) + 1
    in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ :: NTType att -> T.Text -> MemoL -> MemoTable att
 meaning_of_ p dInp key
  = let dInput     = Vector.fromList $ T.words dInp
-       appParser  = runState (p T0 [] ((1,[]), dInput) empty_cuts) Map.empty
+       appParser  = runState (p T0 [] (1, dInput) empty_cuts) Map.empty
        upperBound = (length dInput) + 1
    in  (snd $ appParser)
 
@@ -775,10 +809,12 @@ formFinal key ePoint t = maybe [] final $ Map.lookup key t
                                                     |((i,inAt1),((cs,ct),rs)) <- sr ]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
-test :: (Start att -> Context -> State (MemoTable att) (ParseResult att))
+test :: M att
     -> Vector.Vector T.Text
     -> ((ParseResult att), MemoTable att)
-test p input = runState (p ((1,[]),input) empty_cuts) Map.empty
+test p input = runState (p (1,input) empty_cuts) Map.empty
+--NOTE: above, (1,[]) is a Start1 and ((1,[]),input) is a Start.  The Start1 corresponds to the inherited atts to begin with?  But those are also supplied in p.
+--      context always starts empty.
 
 --formatParseIO = mapM id . map showio . parse
 
