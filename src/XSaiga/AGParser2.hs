@@ -44,6 +44,8 @@ Finished improvements:
 
 TODO Improvements:
 
+    * Alternative representation for table: instead of (Start1, End), use ((Start :: Int,End :: Int),[(InhAtts,SynAtts)]) and key on (Int,Int).  Each pair of atts is a valid parse.
+    * Simplified memotable list of results: it no longer stores inherited atts (Start1) beside the set of results, it just stores the start position (Int)
     * multi-terminal: a terminal consisting of N or more tokens.  Like "refractor telescope 1" or "asaph hall"
     * Better representation for attributes.  In particular, synthesized and inherited atts should be separated, and they should have names.
       Those names should be independent of the type.  Example. Rule.value = "100", Rule.size = 3 (for synthesized).  These names should not be hardcoded!
@@ -94,7 +96,8 @@ type Error = T.Text
 
 type Atts att   = [att] -- [(AttType, AttValue)]
 
---TODO: make this a map!  these are supposed to be unique.
+--TODO: make this a map!  these are supposed to be unique per parse.  Note that it is possible to get the same instance twice (e.g. multiple rule_s)
+--This is supposed to represent different synthesized attributes for the same production.
 type InsAttVals att = [(Instance,Atts att)]
 
 type Start     = (Int, Vector.Vector T.Text) --What purpose does this Int serve?
@@ -107,23 +110,26 @@ type Context  = (Set.Set MemoL, ContextMap)
 type Start1 att  = (Int, InsAttVals att)
 type End att    = Start1 att
 
+type StartEnd att = ((Int,Int),(InsAttVals att, InsAttVals att))
+
 data Tree att = Leaf (MemoL,Instance)
-            | SubNode ((MemoL, Instance), (Start1 att,End att))
+            | SubNode ((MemoL, Instance), StartEnd att)
             | Branch [Tree att]
               deriving (Show)
 
-type Result att  = [((Start1 att, End att),Tree att)]
+type Result att  = [(StartEnd att,Tree att)] --TODO: how is the StartEnd here different than the one in the Tree?
 
 type ParseResult att = (Context,Result att)
 
 --Also called an "MTable" or "State" originally
-type MemoTable att = Map.Map MemoL [(Start1 att,ParseResult att)]
+type MemoTable att = Map.Map MemoL [(Int,ParseResult att)] -- The "Int" corresponds to the Int of a Start1, that is the starting position
 
 type M att = Start -> Context -> State (MemoTable att) (ParseResult att)
 
 --NOTE: the parser itself also returns this.  Parser sems to play the role of attaching semantics to syntactic rules.  Without parser, it just is a recognizer.
 --TODO: should these be labeled separately, even if they have the same type?
 --TODO: is nttype <|> parser (nt blah T0) [rules] valid?  would it work the same as if the atts were just copied?
+--NOTE: this was called AltType before
 type NTType att = Id -> (InsAttVals att) -> (M att)
 
 type SemRule att = (Instance, (InsAttVals att, Id) -> att)
@@ -134,7 +140,7 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
 
 
 --------------- ******************************************** ---------------------------
-
+--Originally called AltType?
 (<|>) :: NTType att -> NTType att -> NTType att
 (p <|> q) idx inhx (i,inp) c
  = do (l1,m) <- p idx inhx (i,inp) c
@@ -155,7 +161,7 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
              then (Set.union prev new)
              else prev
 
-          combiner q l cc r (l2,n) = do
+          combiner q l cc r (l2,n) = do --TODO: "l" not actually used?  VERIFY ORIGINAL
                 (l1,m) <- q `add_P` (r,cc)
                 return ((Set.union (l1) (fst l2),Map.empty),(m ++ n))
 
@@ -180,21 +186,21 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
       (apply_to_all q m l cc) -- CHANGE cc HERE
 
 --TODO: Make the below readable
-pickEnd :: ((Start1 att, End att),Tree att) -> Int
-pickEnd (((s,iA),(e,a)),t) = e --NOTE: This is a Start1
+pickEnd :: (StartEnd att,Tree att) -> Int
+pickEnd (((s,e),(iA,a)),t) = e --NOTE: This is a Start1's Int
 
 --NOTE: addP = addParse?
-addP :: Result att -> ((Start1 att, End att), Tree att) -> Result att
+addP :: Result att -> (StartEnd att, Tree att) -> Result att
 addP  [] ((s1,e1),t1)                    = []
-addP  ((((s2,inA2),(e2,synA2)),t2):restQ) (((s1,inA1),(e1,synA1)),t1)
- = (((s1,[]),(e2,[])),  a_P_Q_branch) : addP  restQ (((s1,inA1),(e1,synA1)),t1)
+addP  ((((s2,e2),(inA2,synA2)),t2):restQ) (((s1,e1),(inA1,synA1)),t1)
+ = (((s1,e2),([],[])),  a_P_Q_branch) : addP  restQ (((s1,e1),(inA1,synA1)),t1)
 
    where
-   a_P_Q_branch = addToBranch (((s2,inA2),(e2,synA2)),t2)  (((s1,inA1),(e1,synA1)),t1)
+   a_P_Q_branch = addToBranch (((s2,e2),(inA2,synA2)),t2)  (((s1,e1),(inA1,synA1)),t1)
 
 -------- ************* ---------------
 --NOTE: it seems the top level Tree is simply a singleton?
-addToBranch :: ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att) -> Tree att
+addToBranch :: (StartEnd att, Tree att) -> (StartEnd att, Tree att) -> Tree att
 addToBranch (q1,((SubNode (name2,q))))
             (p1,((SubNode (name1,p))))
                             = Branch [(SubNode (name1,p)),(SubNode (name2,q))]
@@ -233,7 +239,7 @@ addToBranch (q1,Leaf (x2,i2))
 empty_cuts :: Context
 empty_cuts = (Set.empty,Map.empty)
 empty :: InsAttVals att -> M att
-empty atts (x,_) l = return (empty_cuts,[(((x,[]),(x,atts)), Leaf (Emp, (NILL,O0)))])
+empty atts (x,_) l = return (empty_cuts,[(((x,x),([],atts)), Leaf (Emp, (NILL,O0)))])
 
 
 --NOTE: this is used like: test (question T0 []) (vWords), so id and downAtts come from that!  The start, context from test come later.
@@ -250,14 +256,14 @@ memoize name f id downAtts (inp,dInput) context
        Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd lRes)
                        return (fst lRes,lookUpRes)
        Nothing
-           | funccount (snd context) inp name > (length dInput) - inp + 1
-               -> return ((Set.singleton name,Map.empty),[])
+           | funccount (snd context) inp name > (length dInput) - inp + 1 --NOTE: number of remaining input tokens is (length dInput) - inp + 1
+               -> return ((Set.singleton name,Map.empty),[]) --TODO: how to return a failed parse?  good opportunity for error values!
            | otherwise -> do let iC = (Set.empty,(addNT name inp $ snd context))
                              (l,newRes) <- f id downAtts (inp,dInput) iC --NOTE: iC, inputContext?
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
                              let l1          = makeContext (fst l) inp (snd context)
                              s1             <- get
-                             let udtTab      = udt (l1,newRes) name (inp,downAtts) s1 --NOTE: "f" above may alter the memo table, so we need s1 here
+                             let udtTab      = udt (l1,newRes) name inp s1 --NOTE: "f" above may alter the memo table, so we need s1 here
                              let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNode seems to refer specifically to synthesized atts here
                              put udtTab
                              return (l1 ,newFoundRes)
@@ -289,13 +295,11 @@ makeContext rs js | Set.null rs     = empty_cuts
                   | otherwise           = (rs, Map.empty)
 -}
 makeContext :: Set.Set MemoL -> Int -> ContextMap -> Context
-makeContext rs st js = (rs, Map.restrictKeys js (Set.map (\q -> (st,q)) rs)) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
+makeContext rs st js = (rs, memos)
+    where
+        memos = Map.restrictKeys js (Set.map (\q -> (st,q)) rs) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
 
 --Merged with incContext
---[(Int,[(MemoL, Int)])] is the type of the last argument in the outer invocation
---[(MemoL, Int)] is the type of the inner
-
---NOTE: This looks kind of like a monad.  maps Map.singleton inp Map.empty and Map.empty both to the same Map.singleton inp (Map.singleton name 1)
 addNT name inp = replaceSnd' (inp,name) 1 (1+)
 
 --NOTE: could be a Start1 att or and End att
@@ -307,8 +311,8 @@ addNode name id (s',dA)  oldResult -- ((((s,newIh),(e,atts)),t):rs)
  = let --res     = packAmb oldResult --NOTE: never actually used.  Seems to have been an attempt to reconcile multiple attributes from different rules?
        s_id = snd id
        newSh x = [ ((sOri, s_id),attVal)| ((sOri, _),attVal)<- x]
-   in  [let newShAtts = newSh atts in (((s,newIh),(e, newShAtts)),SubNode ((name, id),((s,nub dA),(e, newShAtts))))
-       | (((s,newIh),(e,atts)),t) <- oldResult] --NOTE: here t is not enforced as a singleton list, but also note that t is thrown out
+   in  [let newShAtts = newSh atts in (((s,e),(newIh, newShAtts)),SubNode ((name, id),((s,e),(nub dA, newShAtts))))
+       | (((s,e),(newIh,atts)),t) <- oldResult] --NOTE: here t is not enforced as a singleton list, but also note that t is thrown out
 
 --NOTE: Does not seem to be used???  WAS referenced above but not used in addNode with let res = packAmb oldResult
 --NOTE: this seems broken somehow, as when it is used above instead of oldResult, it will skip valid parses.
@@ -320,22 +324,22 @@ packAmb [] = []
 packAmb [x] = [x]
 packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:ys)
   where
-  packer :: ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att)
+  packer :: (StartEnd att, Tree att) -> (StartEnd att, Tree att) -> (StartEnd att, Tree att)
   packer ((s1, e1), t1) ((s2, e2), t2) = ((s2, (fst e2, groupAtts (snd e1 ++ snd e2))), t1 ++ t2)
-  isEq :: ((Start1 att, End att), Tree att) -> ((Start1 att, End att), Tree att) -> Bool
+  isEq :: (StartEnd att, Tree att) -> (StartEnd att, Tree att) -> Bool
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 -}
 lookupT :: MemoL -> Int -> ContextMap -> MemoTable att -> Maybe (Context,Result att)
 lookupT name inp context mTable = do
     res_in_table <- Map.lookup name mTable
-    checkUsability inp context (lookupRes inp res_in_table)
+    checkUsability inp context (lookupRes inp res_in_table) --TODO: lookupRes uses Maybe which might cause a space leak
 
 --TODO: another example right here of where a list is clearly used as a map!
-lookupRes :: Int -> [(Start1 att,(Context,Result att))] -> Maybe (ParseResult att)
-lookupRes inp res_in_table = find (\((i,_), _) -> i == inp) res_in_table >>= return . snd
+lookupRes :: Int -> [(Int,(Context,Result att))] -> Maybe (ParseResult att)
+lookupRes inp res_in_table = find (\(i, _) -> i == inp) res_in_table >>= return . snd
 
 checkUsability :: Int -> ContextMap -> Maybe (ParseResult att) -> Maybe (ParseResult att)
-checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re || checkUsability_ (findInp inp context) (findInp inp sc) then Just x else Nothing )
+checkUsability inp context res = res >>= (\x@((re,sc),_) -> if null re || checkUsability_ (findInp inp context) (findInp inp sc) then Just x else Nothing )
   where
   --NOTE: In old version, want Nothing to be the case if list is empty or the inp could not be found
   --TODO: ensure findImp is strict
@@ -364,21 +368,22 @@ checkUsability inp context res = res >>= (\x@((re,sc),res) -> if null re || chec
 --udt == "update table"?
 --TODO: nub is odd choice here, find out why it's needed.  seems to be used to remove duplicate attributes in the same slot (S1, S2... etc).  But why is this needed?
 --TODO: at the very least we should be using a map for those attributes to prevent this from happening!
-udt :: (Eq att) => (ParseResult att) -> MemoL -> Start1 att -> MemoTable att -> MemoTable att
-udt res name (inp, dAtts) = replaceSnd' name [((inp,dAtts),res)] (my_merge (inp,nub dAtts) res)
+udt :: (Eq att) => (ParseResult att) -> MemoL -> Int -> MemoTable att -> MemoTable att
+udt res name inp = replaceSnd' name [(inp,res)] (my_merge inp res)
 
 --TODO: this absolutely sucks.  need to do this *right*.
 --NOTE: it looks like the Start1's inp is used as a unique key?  Perhaps we should do: Map.Map Int (InsAttVals, (ParseResult att)) instead?
-replaceSndG :: Int -> (Start1 att, (ParseResult att)) -> [(Start1 att, (ParseResult att))] -> [(Start1 att, (ParseResult att))]
-replaceSndG key def list
+replaceSndG :: Int -> (ParseResult att) -> [(Int, (ParseResult att))] -> [(Int, (ParseResult att))]
+replaceSndG inp res list
   = before ++ replaceFirst replacePoint
   where
-    (before, replacePoint) = break ((== key) . fst . fst) list
+    (before, replacePoint) = break ((== inp) . fst) list
+    def = (inp,res)
     replaceFirst [] = [def]
     replaceFirst ((a, b):nc) = def:nc
 
-my_merge :: Start1 att -> (ParseResult att) -> [(Start1 att, (ParseResult att))] -> [(Start1 att, (ParseResult att))]
-my_merge (inp,ndAtts) res = replaceSndG inp ((inp,ndAtts),res)
+my_merge :: Int -> (ParseResult att) -> [(Int, (ParseResult att))] -> [(Int, (ParseResult att))]
+my_merge inp res = replaceSndG inp res
 
 {-
 my_merge (inp,ndAtts) res [] = [((inp,ndAtts), res)]
@@ -407,7 +412,7 @@ superterminal' f id _ q@(r,dInp)
     --term :: M att --NTType
     term (r,dInp) _ = if r - 1 == Vector.length dInp then return (empty_cuts,[]) else let str = Vector.unsafeIndex dInp (r - 1) in case f str of
         Nothing -> return (empty_cuts, [])
-        Just atts -> return (empty_cuts,[(((r,[]),(r+1,instAttVals atts)),Leaf (ALeaf str, inst))])
+        Just atts -> return (empty_cuts,[(((r,r+1),([],instAttVals atts)),Leaf (ALeaf str, inst))])
 
 terminal :: (Eq att) => T.Text -> Atts att -> NTType att
 terminal str semRules id _ (i,inp)
@@ -418,7 +423,7 @@ terminal str semRules id _ (i,inp)
     --term :: T.Text -> M att
     term str ((r,_),dInp) _
      |r - 1 == Vector.length dInp            = return (empty_cuts,[])
-     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,[]),(r+1,atts)),Leaf (ALeaf str, inst))])
+     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,r+1),([],atts)),Leaf (ALeaf str, inst))])
      |otherwise                              = return (empty_cuts,[])
 
 --NOTE: This takes into account multiple rules as if (terminal b x <|> terminal a z) were used
@@ -432,7 +437,7 @@ terminalSet key hashMap id _ (i,inp)
     actualTerm _ = case selectedSemRules of
         Just semRulesList -> --TODO: rename attValueList
             let inst = (S, id) in
-            let gen = (\semRules -> let atts = [(inst,semRules)] in (((i,[]),(i+1,atts)),Leaf (ALeaf word, inst))) in
+            let gen = (\semRules -> let atts = [(inst,semRules)] in (((i,i+1),([],atts)),Leaf (ALeaf word, inst))) in
                 return (empty_cuts, map gen semRulesList)
         Nothing -> return (empty_cuts,[])
 
@@ -507,7 +512,7 @@ groupAtts ((a,b):(_,b1):rest)  = (a,b++b1): groupAtts rest
 --TODO: what should happen if same instance is repeated? error?
 findAtts :: Tree att -> InsAttVals att
 findAtts (Branch ts)                  = concatMap findAtts ts
-findAtts (SubNode (_,((_,v'),(_,v)))) = v' ++ v --NOTE: it is likely that v' are the inherited atts and v are the synthesized atts
+findAtts (SubNode (_,((_,_),(v',v)))) = v' ++ v --NOTE: it is likely that v' are the inherited atts and v are the synthesized atts
 findAtts (Leaf _)                     = []
 
 --------------------------------------------------------
@@ -628,7 +633,7 @@ tree   = memoize Tree
                                                ],
         rule_i   RepVal OF T1   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: seems that for inherited atts, the Ids may cause trouble if they're the same as the parent (T0 here)
         rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: i think you can inherit from siblings too
-        rule_i   RepVal OF T3   ISEQUALTO convertRep    [inherited RepVal OF LHS]
+        rule_i   RepVal OF T3   ISEQUALTO convertRep    [inherited RepVal OF LHS]  --NOTE: possible to enter an infinite loop by referring to self
        ]
  <|>
             parser
@@ -688,13 +693,13 @@ op   = memoize Op
 attsFinalAlt :: MemoL -> Int -> MemoTable att -> [[[Atts att]]]
 attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup key t)
     where
-        allTrees sr = [ [ map snd synAtts | ((_,(end,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ]
+        allTrees sr = [ [ map snd synAtts | (((_,end),(_,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ]
 
 --Using a start, end, and memoization key, locate all valid parses that match.  In the case of ambiguity, there may be more than one result.
 --These three conditions are sufficient to guarantee the result is unique and valid.
 lookupTable :: MemoL -> Int -> Int -> MemoTable att -> [Tree att]
 lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
-    where allTrees sr = concat $ [ [ tree | ((_,(_end, _)), tree) <- results, end == _end] | ((_start, _), (_, results)) <- sr, start == _start]
+    where allTrees sr = concat $ [ [ tree | (((_,_end),_), tree) <- results, end == _end] | (_start, (_, results)) <- sr, start == _start]
 
 --The memo table itself must be "unravelled" to reveal the parse tree.  If there is only one valid parse, this is easy.
 --If there are multiple valid parses due to ambiguity, then we must return all valid trees.
@@ -716,11 +721,12 @@ lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
 --But there is a problem with this.
 --NOTE: it looks like traversing this way will guarantee that the AttValues retrieved later during formatAttsFinalAlt will be in the same order as the returned trees
 --(so that the trees will map correspondingly to their attvalues).  But I haven't proved this at all!  It would be sure nice if the tree were embedded somehow in the actual parse.
+--TODO: guarantee this behaviour!
 data SyntaxTree = SyntaxTreeNT [SyntaxTree] | SyntaxTreeT T.Text deriving (Show)
 
 findAllParseTrees t (Leaf (ALeaf str, _)) = [SyntaxTreeT str]
 --SubNodes introduce ambiguity?
-findAllParseTrees t (SubNode ((key, _), ((_start, _), (_end, _)))) = let trees = nubBy eqAmb (lookupTable key _start _end t) in concatMap (findAllParseTrees t) trees
+findAllParseTrees t (SubNode ((key, _), ((_start, _end), _))) = let trees = nubBy eqAmb (lookupTable key _start _end t) in concatMap (findAllParseTrees t) trees
 --nubBy eqAmb necessary for Branch?  Ambiguity?
 findAllParseTrees t (Branch tree) = map SyntaxTreeNT $ sequence $ map (findAllParseTrees t) tree
 
@@ -738,8 +744,6 @@ eqAmb :: (Eq att) => Tree att -> Tree att -> Bool
 eqAmb (Leaf x) (Leaf y) = x == y
 eqAmb (SubNode x) (SubNode y) = x == y
 eqAmb (Branch []) (Branch []) = True
-eqAmb (Branch []) _ = False
-eqAmb _ (Branch []) = False
 eqAmb (Branch (x:xs)) (Branch (y:ys)) = eqAmb x y && eqAmb (Branch xs) (Branch ys)
 eqAmb _ _ = False
 
@@ -800,13 +804,13 @@ meaning_of_ p dInp key
 --TODO: these are the same?!!
 formAtts key ePoint t = maybe [] allAtts $ Map.lookup key t
         where allAtts sr = concat $ concat $ concat [[[  val1 |(id1,val1)<-synAtts]
-                                                    |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
-                                                    |((i,inAt1),((cs,ct),rs)) <- sr ]
+                                                    |(((st,end),(inAtt2,synAtts)), ts)<-rs, st == 1 && end == ePoint]
+                                                    |(i,((cs,ct),rs)) <- sr ]
 
 formFinal key ePoint t = maybe [] final $ Map.lookup key t
     where final sr = concat $ concat $ concat $ [[[  val1 |(id1,val1)<-synAtts]
-                                                    |(((st,inAtt2),(end,synAtts)), ts)<-rs, st == 1 && end == ePoint]
-                                                    |((i,inAt1),((cs,ct),rs)) <- sr ]
+                                                    |(((st,end),(inAtt2,synAtts)), ts)<-rs, st == 1 && end == ePoint]
+                                                    |(i,((cs,ct),rs)) <- sr ]
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
 test :: M att
