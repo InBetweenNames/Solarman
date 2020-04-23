@@ -110,7 +110,7 @@ type Context  = (Set.Set MemoL, ContextMap)
 type Start1 att  = (Int, InsAttVals att)
 type End att    = Start1 att
 
-type StartEnd att = ((Int,Int),(InsAttVals att, InsAttVals att))
+type StartEnd att = ((Int,Int),(InsAttVals att, InsAttVals att)) --NOTE: want both start AND end recorded because need it later when computing parse tree
 
 data Tree att = Leaf (MemoL,Instance)
             | SubNode ((MemoL, Instance), StartEnd att)
@@ -122,7 +122,7 @@ type Result att  = [(StartEnd att,Tree att)] --TODO: how is the StartEnd here di
 type ParseResult att = (Context,Result att)
 
 --Also called an "MTable" or "State" originally
-type MemoTable att = Map.Map MemoL [(Int,ParseResult att)] -- The "Int" corresponds to the Int of a Start1, that is the starting position
+type MemoTable att = Map.Map (MemoL,Int) (ParseResult att) -- The "Int" corresponds to the Int of a Start1, that is the starting position
 
 type M att = Start -> Context -> State (MemoTable att) (ParseResult att)
 
@@ -161,22 +161,11 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
              then (Set.union prev new)
              else prev
 
-          combiner q l cc r (l2,n) = do --TODO: "l" not actually used?  VERIFY ORIGINAL
+          combiner q cc r (l2,n) = do
                 (l1,m) <- q `add_P` (r,cc)
                 return ((Set.union (l1) (fst l2),Map.empty),(m ++ n))
 
-          apply_to_all q rs l cc = Fold.foldrM (combiner q l cc) (((fst l,Map.empty),[])) rs
-
-       {-
-       --OLD CODE
-          apply_to_all' q [] l cc
-           = return ((fst l,[]),[])
-
-          apply_to_all' q (r:rs) l cc
-            = do (l1,m) <- q `add_P` (r,cc)
-                 (l2,n) <- apply_to_all q rs l cc
-                 return ((Set.union (fst l1) (fst l2),[]),( m ++  n))
-        -}
+          apply_to_all q rs l cc = Fold.foldrM (combiner q cc) (((fst l,Map.empty),[])) rs
 
           q `add_P` (rp,cc)
             = do let e  = pickEnd rp
@@ -329,17 +318,17 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   isEq :: (StartEnd att, Tree att) -> (StartEnd att, Tree att) -> Bool
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 -}
-lookupT :: MemoL -> Int -> ContextMap -> MemoTable att -> Maybe (Context,Result att)
+lookupT :: MemoL -> Int -> ContextMap -> MemoTable att -> Maybe (ParseResult att)
 lookupT name inp context mTable = do
-    res_in_table <- Map.lookup name mTable
-    checkUsability inp context (lookupRes inp res_in_table) --TODO: lookupRes uses Maybe which might cause a space leak
+    res_in_table <- Map.lookup (name,inp) mTable
+    if checkUsability inp context res_in_table then return res_in_table else Nothing --TODO: lookupRes uses Maybe which might cause a space leak
 
 --TODO: another example right here of where a list is clearly used as a map!
-lookupRes :: Int -> [(Int,(Context,Result att))] -> Maybe (ParseResult att)
+lookupRes :: Int -> [(Int,(ParseResult att))] -> Maybe (ParseResult att)
 lookupRes inp res_in_table = find (\(i, _) -> i == inp) res_in_table >>= return . snd
 
-checkUsability :: Int -> ContextMap -> Maybe (ParseResult att) -> Maybe (ParseResult att)
-checkUsability inp context res = res >>= (\x@((re,sc),_) -> if null re || checkUsability_ (findInp inp context) (findInp inp sc) then Just x else Nothing )
+checkUsability :: Int -> ContextMap -> (ParseResult att) -> Bool
+checkUsability inp context x@((re,sc),_) = null re || checkUsability_ (findInp inp context) (findInp inp sc)
   where
   --NOTE: In old version, want Nothing to be the case if list is empty or the inp could not be found
   --TODO: ensure findImp is strict
@@ -369,7 +358,7 @@ checkUsability inp context res = res >>= (\x@((re,sc),_) -> if null re || checkU
 --TODO: nub is odd choice here, find out why it's needed.  seems to be used to remove duplicate attributes in the same slot (S1, S2... etc).  But why is this needed?
 --TODO: at the very least we should be using a map for those attributes to prevent this from happening!
 udt :: (Eq att) => (ParseResult att) -> MemoL -> Int -> MemoTable att -> MemoTable att
-udt res name inp = replaceSnd' name [(inp,res)] (my_merge inp res)
+udt res name inp = Map.insert (name,inp) res
 
 --TODO: this absolutely sucks.  need to do this *right*.
 --NOTE: it looks like the Start1's inp is used as a unique key?  Perhaps we should do: Map.Map Int (InsAttVals, (ParseResult att)) instead?
@@ -441,7 +430,7 @@ terminalSet key hashMap id _ (i,inp)
                 return (empty_cuts, map gen semRulesList)
         Nothing -> return (empty_cuts,[])
 
-nt :: NTType att -> Id -> SeqType att
+nt :: (Show att) =>  NTType att -> Id -> SeqType att
 nt fx idx id inhAtts semRules altFromSibs
  = let groupRule'' inst       = filter ((inst ==) . fst) semRules
        ownInheritedAtts       = mapInherited (groupRule'' (I, idx)) altFromSibs inhAtts id --NOTE: multiple rule_i allowed!
@@ -450,7 +439,7 @@ nt fx idx id inhAtts semRules altFromSibs
 --NOTE: So it seems a terminal may contain one or more atts (multiple atts per slot, like S0, S1...)
 --      but it seems like a rule will always yield one att.
 --      multiple atts are therefore obtained from different rules.
-parser :: SeqType att -> [SemRule att] -> NTType att
+parser :: (Show att) =>  SeqType att -> [SemRule att] -> NTType att
 parser synRule semRules id inhAtts i c
  =      do
            s <- get
@@ -464,7 +453,7 @@ parser synRule semRules id inhAtts i c
 
 --NOTE: see note above.  a rule evaluates to a single att.  But here, we wrap it into a singleton list of atts.  We do the same with inherited atts.
 --TODO: why?  can we improve the InsAttVals representation with this?
-mapSynthesize :: [SemRule att] -> Result att -> InsAttVals att -> Id -> Result att
+mapSynthesize :: (Show att) => [SemRule att] -> Result att -> InsAttVals att -> Id -> Result att
 mapSynthesize []   res  downAtts id   = res
 mapSynthesize sems res  downAtts id
  = let appSems' :: [SemRule att] -> InsAttVals att -> InsAttVals att
@@ -472,8 +461,8 @@ mapSynthesize sems res  downAtts id
        appSems' ((i,r):rules) vals
         = let ((ud, _), atts) = (i, [r (vals, id)]) --NOTE: it's a singleton att, but terminals may have *multiple* atts.  TODO: it is POSSIBLE to have multiple rule_s.  They would each have the same instance!  Only the first one would be respected by default?
           in  ((ud, id), atts) : appSems' rules vals
-   in  [(((st,inAtts), (en,appSems' sems (findAtts t))),t) --TODO: this may be why using nt without memoize doesn't work for terminals -- findAtts specifically checks SubNodes and not Leafs
-       |(((st,inAtts), (en,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
+   in  [(((st,en), (inAtts,appSems' sems (findAtts t))),t) --TODO: this may be why using nt without memoize doesn't work for terminals -- findAtts specifically checks SubNodes and not Leafs
+       |(((st,en), (inAtts,synAtts)),t) <- res] --TODO: why is findAtts needed?  why doesn't using synAtts work?
            --NOTE: the actual synAtts are ignored entirely!  it expects the atts to be in t.  Note that each rule adds an element to the result.
 
 --TODO: (vals,id) could be separate arguments without ANY real problem!!!!!
@@ -485,16 +474,16 @@ applySemantics vals id = map (\(i,rule) -> (i,[rule (vals, id)])) --NOTE: it's a
 
 --NOTE: inherited atts have form OF Id that is NOT LHS
 --      synthesized atts have the form OF LHS.  Could this be part of what's going on here?
-mapInherited :: [(Instance,(InsAttVals att, Id) -> att)] -> Result att -> InsAttVals att -> Id -> InsAttVals att
+mapInherited :: (Show att) => [(Instance,(InsAttVals att, Id) -> att)] -> Result att -> InsAttVals att -> Id -> InsAttVals att
 mapInherited sems res [] id
-  = concat [applySemantics (findAtts t) id sems | (((st,inAtts), (en,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
+  = concat [applySemantics (findAtts t) id sems | (((st,en), (inAtts,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
 
 mapInherited sems []  downAtts id
   = applySemantics downAtts id sems -- concat ( map (appSems id sems) (group downAtts))
 
 mapInherited sems res downAtts id
-  = concat [applySemantics (downAtts ++ synAtts ++ (findAtts t)) id sems
-              | (((st,inAtts), (en,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
+  = concat [applySemantics (downAtts ++ synAtts ++ (findAtts t)) id sems --TODO: purpose of findAtts here??
+              | (((st,en), (inAtts,synAtts)),t) <- res]
 
 --NOTE: what is this even for??  why is the first thing in the second tuple completely ignored?  why does it work in pairs?????
 --NOTE: this function seems to not actually do anything meaningful!!!!  WAS used above in (groupAtts downAtts)
@@ -507,10 +496,15 @@ groupAtts [(a,b)]               = [(a,b)]
 groupAtts [(a,b),(_,b1)]       = [(a,b++b1)]
 groupAtts ((a,b):(_,b1):rest)  = (a,b++b1): groupAtts rest
 
+showTree (Branch ts) = "(" ++ concatMap showTree ts ++ ")"
+showTree (SubNode _) = "SubNode"
+showTree (Leaf _)    = "Leaf"
+
 --------------------------------------
 --TODO: optimize!
 --TODO: what should happen if same instance is repeated? error?
-findAtts :: Tree att -> InsAttVals att
+findAtts :: (Show att) => Tree att -> InsAttVals att
+--findAtts t = trace ("Tree: " ++ showTree t) $ findAtts' t
 findAtts (Branch ts)                  = concatMap findAtts ts
 findAtts (SubNode (_,((_,_),(v',v)))) = v' ++ v --NOTE: it is likely that v' are the inherited atts and v are the synthesized atts
 findAtts (Leaf _)                     = []
@@ -690,16 +684,16 @@ op   = memoize Op
 --The nastiest list comprehension I have ever seen in my life
 --The unformatted parse tree
 
-attsFinalAlt :: MemoL -> Int -> MemoTable att -> [[[Atts att]]]
-attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup key t)
+attsFinalAlt :: MemoL -> Int -> MemoTable att -> [[Atts att]]
+attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup (key,1) t)
     where
-        allTrees sr = [ [ map snd synAtts | (((_,end),(_,synAtts)), _)<-rs, end == e] | (_,(_,rs)) <- sr ]
+        allTrees (_,rs) = [ map snd synAtts | (((_,end),(_,synAtts)), _)<-rs, end == e]
 
 --Using a start, end, and memoization key, locate all valid parses that match.  In the case of ambiguity, there may be more than one result.
 --These three conditions are sufficient to guarantee the result is unique and valid.
 lookupTable :: MemoL -> Int -> Int -> MemoTable att -> [Tree att]
-lookupTable key start end t = maybe [] allTrees (Map.lookup key t)
-    where allTrees sr = concat $ [ [ tree | (((_,_end),_), tree) <- results, end == _end] | (_start, (_, results)) <- sr, start == _start]
+lookupTable key start end t = maybe [] allTrees (Map.lookup (key,start) t)
+    where allTrees (_, results) = [ tree | (((_,_end),_), tree) <- results, end == _end]
 
 --The memo table itself must be "unravelled" to reveal the parse tree.  If there is only one valid parse, this is easy.
 --If there are multiple valid parses due to ambiguity, then we must return all valid trees.
@@ -785,7 +779,7 @@ diffTree (SyntaxTreeNT (t1:ts1)) a@(SyntaxTreeNT (t2:ts2)) = diffTree t1 t2 ++ d
 
 --The unformatted flattened parse trees
 formatAttsFinalAlt :: MemoL -> Int -> MemoTable att -> Atts att
-formatAttsFinalAlt key e t =  concat $ concat $ concat $ attsFinalAlt key e t
+formatAttsFinalAlt key e t =  concat $ concat $ attsFinalAlt key e t
 
 meaning_of :: NTType att -> T.Text -> MemoL -> Atts att
 meaning_of p dInp key
@@ -807,10 +801,9 @@ formAtts key ePoint t = maybe [] allAtts $ Map.lookup key t
                                                     |(((st,end),(inAtt2,synAtts)), ts)<-rs, st == 1 && end == ePoint]
                                                     |(i,((cs,ct),rs)) <- sr ]
 
-formFinal key ePoint t = maybe [] final $ Map.lookup key t
-    where final sr = concat $ concat $ concat $ [[[  val1 |(id1,val1)<-synAtts]
-                                                    |(((st,end),(inAtt2,synAtts)), ts)<-rs, st == 1 && end == ePoint]
-                                                    |(i,((cs,ct),rs)) <- sr ]
+formFinal key ePoint t = maybe [] final $ Map.lookup (key,1) t
+    where final (_,rs) = concat $ concat $ [[  val1 |(id1,val1)<-synAtts]
+                                                    |(((st,end),(inAtt2,synAtts)), ts)<-rs, st == 1 && end == ePoint] --TODO: if the start in the table is the same as here... why do we need it in two places?
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
 test :: M att
