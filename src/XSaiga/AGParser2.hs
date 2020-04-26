@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
 
+
 module XSaiga.AGParser2 where
 import Prelude hiding ((*>))
 import Data.List
@@ -15,7 +16,8 @@ import Data.Constructors.EqC
 
 --import qualified Data.Map.Strict as Map
 import qualified Data.HashMap.Lazy as HashMap.Lazy
-import qualified Data.Map.Strict as Map --should probably just be a strict map
+import qualified Data.Map.Strict as Map
+import qualified Data.Map.Lazy as Map.Lazy
 import qualified Data.Set as Set
 
 import qualified Data.Foldable as Fold
@@ -41,6 +43,7 @@ Finished improvements:
     * terminalSet for efficient terminals
     * superterminals to "try" a terminal of any sequence of characters
     * Replace [Tree] with Tree in Result
+    * InsAttVals has a better representation -- but note that duplicate instances are ignored (as in the original version).  Multiple attributes are allowed
 
 TODO Improvements:
 
@@ -83,7 +86,7 @@ TODO Improvements:
 
 --TODO: NILL seems to be only used for "empty" which is a function that seems useful only for building recognizers?
 --and it seems like "empty" recognizes any terminal anyway?  what is the use of that?
-data SorI     = S | I | NILL  deriving (Eq,Ord,Show, Enum)
+data SorI     = S | I | NILL  deriving (Eq,Ord,Show,Enum)
                 -- Synthesized or inherited or NILL
 
 type Instance = (SorI, Id)
@@ -94,11 +97,11 @@ data Useless  = OF|ISEQUALTO  deriving (Show, Eq)
 
 type Error = T.Text
 
-type Atts att   = [att] -- [(AttType, AttValue)]
+type Atts att   = [att] -- [(AttType, AttValue)] --TODO: change to Set of atts or have some kind of meaningful indexing based on type
 
 --TODO: make this a map!  these are supposed to be unique per parse.  Note that it is possible to get the same instance twice (e.g. multiple rule_s)
 --This is supposed to represent different synthesized attributes for the same production.
-type InsAttVals att = [(Instance,Atts att)]
+type InsAttVals att = Map.Lazy.Map Instance (Atts att)
 
 type Start     = (Int, Vector.Vector T.Text) --What purpose does this Int serve?
 
@@ -110,10 +113,10 @@ type Context  = (Set.Set MemoL, ContextMap)
 type Start1 att  = (Int, InsAttVals att)
 type End att    = Start1 att
 
-type StartEnd att = ((Int,Int),(InsAttVals att, InsAttVals att)) --NOTE: want both start AND end recorded because need it later when computing parse tree
+type StartEnd att = ((Int,Int),(InsAttVals att, InsAttVals att)) --Store just the end position, inherited atts and synthesized atts in the results
 
 data Tree att = Leaf (MemoL,Instance)
-            | SubNode ((MemoL, Instance), StartEnd att)
+            | SubNode ((MemoL, Instance), StartEnd att) --But need both positions for the tree for getting the parse tree later
             | Branch [Tree att]
               deriving (Show)
 
@@ -122,7 +125,7 @@ type Result att  = [(StartEnd att,Tree att)] --TODO: how is the StartEnd here di
 type ParseResult att = (Context,Result att)
 
 --Also called an "MTable" or "State" originally
-type MemoTable att = Map.Map (MemoL,Int) (ParseResult att) -- The "Int" corresponds to the Int of a Start1, that is the starting position
+type MemoTable att = Map.Map (MemoL,Int) (ParseResult att) -- The "Int" corresponds to the Int of a Start1, that is the starting position.  TODO: add a second Int for the ending position!
 
 type M att = Start -> Context -> State (MemoTable att) (ParseResult att)
 
@@ -147,6 +150,10 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
       (l2,n) <- q idx inhx (i,inp) c
       return ((Set.union (fst l1) (fst l2),Map.empty), (m ++ n))
 
+foldrM' f !z0 xs = foldl' f' return xs z0
+  where f' k !x z = f x z >>= k
+
+
 --TODO: space leak here?
 --TODO: change lists of attributes to vectors or something that's not a list
 --------------------------------------------------------
@@ -165,7 +172,7 @@ type SeqType att = Id -> (InsAttVals att) -> [SemRule att] -> (Result att) -> (M
                 (l1,m) <- q `add_P` (r,cc)
                 return ((Set.union (l1) (fst l2),Map.empty),(m ++ n))
 
-          apply_to_all q rs l cc = Fold.foldrM (combiner q cc) (((fst l,Map.empty),[])) rs
+          apply_to_all q rs l cc = foldrM' (combiner q cc) ((fst l,Map.empty),[]) rs
 
           q `add_P` (rp,cc)
             = do let e  = pickEnd rp
@@ -182,7 +189,7 @@ pickEnd (((s,e),(iA,a)),t) = e --NOTE: This is a Start1's Int
 addP :: Result att -> (StartEnd att, Tree att) -> Result att
 addP  [] ((s1,e1),t1)                    = []
 addP  ((((s2,e2),(inA2,synA2)),t2):restQ) (((s1,e1),(inA1,synA1)),t1)
- = (((s1,e2),([],[])),  a_P_Q_branch) : addP  restQ (((s1,e1),(inA1,synA1)),t1)
+ = (((s1,e2),(empty_insattvals,empty_insattvals)),  a_P_Q_branch) : addP  restQ (((s1,e1),(inA1,synA1)),t1)
 
    where
    a_P_Q_branch = addToBranch (((s2,e2),(inA2,synA2)),t2)  (((s1,e1),(inA1,synA1)),t1)
@@ -227,21 +234,25 @@ addToBranch (q1,Leaf (x2,i2))
 
 empty_cuts :: Context
 empty_cuts = (Set.empty,Map.empty)
+
+empty_result :: ParseResult att
+empty_result = (empty_cuts,[])
+
+empty_insattvals :: InsAttVals att
+empty_insattvals = Map.Lazy.empty
+
 empty :: InsAttVals att -> M att
-empty atts (x,_) l = return (empty_cuts,[(((x,x),([],atts)), Leaf (Emp, (NILL,O0)))])
+empty atts (x,_) l = return (empty_cuts,[(((x,x),(empty_insattvals,atts)), Leaf (Emp, (NILL,O0)))])
 
 
 --NOTE: this is used like: test (question T0 []) (vWords), so id and downAtts come from that!  The start, context from test come later.
 --      This evalutes to runState (question T0 [] ((1,[]),input) empty_cuts) Map.empty.
 --      Meaning id = T0, downAtts = [], inp = 1, dAtts = [], dInput = input, context = empty_cuts.
---TODO: what is the difference between downAtts and dAtts?
---TODO: remove dAtts entirely, nothing seems to use?  it just gets passed down to the terminals unaltered and is ignored
---NOTE: dAtts is only passed to f.
 --TODO: space leak here?
 memoize :: (Eq att) => MemoL -> NTType att -> NTType att
 memoize name f id downAtts (inp,dInput) context
  = do s <- get
-      case (lookupT name inp (snd context) s) of
+      case (lookupT (name,inp) (snd context) s) of
        Just lRes -> do let lookUpRes = addNode name (S, id) (inp,downAtts) (snd lRes)
                        return (fst lRes,lookUpRes)
        Nothing
@@ -252,10 +263,10 @@ memoize name f id downAtts (inp,dInput) context
                    -- let ((l,newRes),s1) = unMemoTable (f id downAtts (inp,dAtts) iC) s
                              let l1          = makeContext (fst l) inp (snd context)
                              s1             <- get
-                             let udtTab      = udt (l1,newRes) name inp s1 --NOTE: "f" above may alter the memo table, so we need s1 here
-                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNode seems to refer specifically to synthesized atts here
+                             let !udtTab     = udt (l1,newRes) (name,inp) s1 --NOTE: "f" above may alter the memo table, so we need s1 here. Map.insert (name,inp) (l1,newRes) s1
                              put udtTab
-                             return (l1 ,newFoundRes)
+                             let newFoundRes = addNode name (S, id) (inp,downAtts) newRes --NOTE: addNode seems to refer specifically to synthesized atts here
+                             return (l1,newFoundRes)
 
 --TODO: must preserve strictness with replaceSnd'!
 replaceSnd' !key def f map = Map.insertWith (\_ -> \old_value -> f old_value) key def map
@@ -295,12 +306,14 @@ addNT name inp = replaceSnd' (inp,name) 1 (1+)
 addNode :: Eq att => MemoL -> Instance -> (Int, InsAttVals att) -> Result att -> Result att
 addNode name id (s',dA) [] = []
 
---TODO: more list incomprehensions
+--NOTE: is this where the label gets replaced for usage in other productions? like `nt blah S0`, where S0 becomes the name of LHS for that rule?
+--NOTE: seems so.
 addNode name id (s',dA)  oldResult -- ((((s,newIh),(e,atts)),t):rs)
  = let --res     = packAmb oldResult --NOTE: never actually used.  Seems to have been an attempt to reconcile multiple attributes from different rules?
        s_id = snd id
-       newSh x = [ ((sOri, s_id),attVal)| ((sOri, _),attVal)<- x]
-   in  [let newShAtts = newSh atts in (((s,e),(newIh, newShAtts)),SubNode ((name, id),((s,e),(nub dA, newShAtts))))
+       --newSh x = [ ((sOri, s_id),attVal)| ((sOri, _),attVal)<- x]
+       newSh = Map.Lazy.foldrWithKey (\(sOri, _) -> Map.Lazy.insert (sOri,s_id)) Map.Lazy.empty
+   in  [let newShAtts = newSh atts in (((s,e),(newIh, newShAtts)),SubNode ((name, id),((s,e),(dA, newShAtts))))
        | (((s,e),(newIh,atts)),t) <- oldResult] --NOTE: here t is not enforced as a singleton list, but also note that t is thrown out
 
 --NOTE: Does not seem to be used???  WAS referenced above but not used in addNode with let res = packAmb oldResult
@@ -318,9 +331,10 @@ packAmb (x:y:ys) = if isEq x y then packAmb $ (packer x y):ys else x:packAmb (y:
   isEq :: (StartEnd att, Tree att) -> (StartEnd att, Tree att) -> Bool
   isEq (((s1,_),(e1,_)),_) (((s2,_),(e2,_)),_) = s1 == s2 && e1 == e2
 -}
-lookupT :: MemoL -> Int -> ContextMap -> MemoTable att -> Maybe (ParseResult att)
-lookupT name inp context mTable = do
-    res_in_table <- Map.lookup (name,inp) mTable
+--TODO: evaluate if this strictness annotation is truly needed
+lookupT :: (MemoL,Int) -> ContextMap -> MemoTable att -> Maybe (ParseResult att)
+lookupT key@(_,inp) !context mTable = do
+    res_in_table <- Map.lookup key mTable
     if checkUsability inp context res_in_table then return res_in_table else Nothing --TODO: lookupRes uses Maybe which might cause a space leak
 
 --TODO: another example right here of where a list is clearly used as a map!
@@ -357,8 +371,8 @@ checkUsability inp context x@((re,sc),_) = null re || checkUsability_ (findInp i
 --udt == "update table"?
 --TODO: nub is odd choice here, find out why it's needed.  seems to be used to remove duplicate attributes in the same slot (S1, S2... etc).  But why is this needed?
 --TODO: at the very least we should be using a map for those attributes to prevent this from happening!
-udt :: (Eq att) => (ParseResult att) -> MemoL -> Int -> MemoTable att -> MemoTable att
-udt res name inp = Map.insert (name,inp) res
+udt :: (Eq att) => (ParseResult att) -> (MemoL,Int) -> MemoTable att -> MemoTable att
+udt res !key = Map.insert key res
 
 --TODO: this absolutely sucks.  need to do this *right*.
 --NOTE: it looks like the Start1's inp is used as a unique key?  Perhaps we should do: Map.Map Int (InsAttVals, (ParseResult att)) instead?
@@ -397,23 +411,23 @@ superterminal' f id _ q@(r,dInp)
  = term q --trace ((show $ T.intercalate " " dInp) ++ show q) $ term q
     where
     inst = (S, id)
-    instAttVals atts =  [(inst,atts)]
+    instAttVals atts =  Map.Lazy.singleton inst atts
     --term :: M att --NTType
-    term (r,dInp) _ = if r - 1 == Vector.length dInp then return (empty_cuts,[]) else let str = Vector.unsafeIndex dInp (r - 1) in case f str of
-        Nothing -> return (empty_cuts, [])
-        Just atts -> return (empty_cuts,[(((r,r+1),([],instAttVals atts)),Leaf (ALeaf str, inst))])
+    term (r,dInp) _ = if r - 1 == Vector.length dInp then return empty_result else let str = Vector.unsafeIndex dInp (r - 1) in case f str of
+        Nothing -> return empty_result
+        Just atts -> return (empty_cuts,[(((r,r+1),(empty_insattvals,instAttVals atts)),Leaf (ALeaf str, inst))])
 
 terminal :: (Eq att) => T.Text -> Atts att -> NTType att
 terminal str semRules id _ (i,inp)
  = term str ((i,[]),inp)  --NOTE: the downAtts are ignored regardless?
     where
     inst = (S, id)
-    atts = [(inst,semRules)]
+    atts = Map.Lazy.singleton inst semRules
     --term :: T.Text -> M att
     term str ((r,_),dInp) _
-     |r - 1 == Vector.length dInp            = return (empty_cuts,[])
-     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,r+1),([],atts)),Leaf (ALeaf str, inst))])
-     |otherwise                              = return (empty_cuts,[])
+     |r - 1 == Vector.length dInp            = return empty_result
+     |Vector.unsafeIndex dInp (r - 1) == str = return (empty_cuts,[(((r,r+1),(empty_insattvals,atts)),Leaf (ALeaf str, inst))])
+     |otherwise                              = return empty_result
 
 --NOTE: This takes into account multiple rules as if (terminal b x <|> terminal a z) were used
 terminalSet :: (Eq att) => MemoL -> HashMap.Lazy.HashMap (MemoL,T.Text) [Atts att] -> NTType att
@@ -426,15 +440,15 @@ terminalSet key hashMap id _ (i,inp)
     actualTerm _ = case selectedSemRules of
         Just semRulesList -> --TODO: rename attValueList
             let inst = (S, id) in
-            let gen = (\semRules -> let atts = [(inst,semRules)] in (((i,i+1),([],atts)),Leaf (ALeaf word, inst))) in
+            let gen = (\semRules -> let atts = Map.Lazy.singleton inst semRules in (((i,i+1),(empty_insattvals,atts)),Leaf (ALeaf word, inst))) in
                 return (empty_cuts, map gen semRulesList)
-        Nothing -> return (empty_cuts,[])
+        Nothing -> return empty_result
 
 nt :: (Show att) =>  NTType att -> Id -> SeqType att
 nt fx idx id inhAtts semRules altFromSibs
  = let groupRule'' inst       = filter ((inst ==) . fst) semRules
        ownInheritedAtts       = mapInherited (groupRule'' (I, idx)) altFromSibs inhAtts id --NOTE: multiple rule_i allowed!
-   in fx idx ownInheritedAtts
+   in fx idx ownInheritedAtts --NOTE: THIS IS WHERE inAtts changes for the rule!
 
 --NOTE: So it seems a terminal may contain one or more atts (multiple atts per slot, like S0, S1...)
 --      but it seems like a rule will always yield one att.
@@ -442,25 +456,32 @@ nt fx idx id inhAtts semRules altFromSibs
 parser :: (Show att) =>  SeqType att -> [SemRule att] -> NTType att
 parser synRule semRules id inhAtts i c
  =      do
-           s <- get
+           !s <- get
            let ((e,altFromSibs),d)     =
-                let sRule                        = groupRule'' (S, LHS) semRules --NOTE: multiple rule_s allowed!
+                let sRule                        = groupRule'' (S, LHS) semRules --NOTE: multiple rule_s allowed!  but rule_s S0 seems to not make sense -- it is completely ignored.  Need type level guarantee.
                     ((l,newRes),st)              = runState ((synRule id inhAtts semRules altFromSibs) i c) s --NOTE: whoa. altFromSibs being used recursively.
-                    groupRule'' id rules         = [(id,rule) | (ud,rule) <- rules, id == ud] --TODO: way inefficient.  Need better representation for rules if we're going to do this!
-                in  ((l, mapSynthesize  sRule newRes inhAtts id),st)
+                    groupRule'' id rules         = [rule | (ud,rule) <- rules, id == ud] --TODO: way inefficient.  Need better representation for rules if we're going to do this!
+                in  ((l, mapSynthesize sRule newRes id),st)
            put d
            return (e,altFromSibs)
 
 --NOTE: see note above.  a rule evaluates to a single att.  But here, we wrap it into a singleton list of atts.  We do the same with inherited atts.
 --TODO: why?  can we improve the InsAttVals representation with this?
-mapSynthesize :: (Show att) => [SemRule att] -> Result att -> InsAttVals att -> Id -> Result att
-mapSynthesize []   res  downAtts id   = res
-mapSynthesize sems res  downAtts id
- = let appSems' :: [SemRule att] -> InsAttVals att -> InsAttVals att
-       appSems' [] vals        = []
-       appSems' ((i,r):rules) vals
-        = let ((ud, _), atts) = (i, [r (vals, id)]) --NOTE: it's a singleton att, but terminals may have *multiple* atts.  TODO: it is POSSIBLE to have multiple rule_s.  They would each have the same instance!  Only the first one would be respected by default?
-          in  ((ud, id), atts) : appSems' rules vals
+--NOTE: this seems to overwrite the id with the provided one -- is this where "LHS" gets replaced with the nt idx thing?
+--NOTE: this code probably wouldn't work if there were multiple rule_s, even originally, as the atts wouldn't be merged.  Originally it would just have a duplicate instance
+    --but here, we'll just error out.  It seems originally it would have just been ignored later in getAtts anyway.  Should we groupAtts?  It seems like that may have been what it was for.
+--TODO: duplicate instances -- we just throw out duplicates but what should we do?  should synthesized atts be merged?  should we enforce only one att per instance as well?
+mapSynthesize :: (Show att) => [(InsAttVals att, Id) -> att] -> Result att -> Id -> Result att
+mapSynthesize []   res id   = res
+mapSynthesize sems res id
+ = let appSems' :: [(InsAttVals att, Id) -> att] -> InsAttVals att -> InsAttVals att
+       appSems' rules vals = Map.Lazy.fromList $ map (\r -> ((S,id),[r (vals, id)])) rules --NOTE: simplfied to just S, as ud would always be S.  TODO: multiple rule_s will cause second to be ignored (true of original version too!  but does it even make sense to have multiple rule_s?)
+       {-appSems' [] vals        = []
+       appSems' (((ud,_),r):rules) vals
+        = let
+            att = r (vals, id)
+            --((ud, _), atts) = (i, [r (vals, id)]) --NOTE: it's a singleton att, but terminals may have *multiple* atts.  TODO: it is POSSIBLE to have multiple rule_s.  They would each have the same instance!  Only the first one would be respected by default?
+          in  ((ud, id), [att]) : appSems' rules vals-}
    in  [(((st,en), (inAtts,appSems' sems (findAtts t))),t) --TODO: this may be why using nt without memoize doesn't work for terminals -- findAtts specifically checks SubNodes and not Leafs
        |(((st,en), (inAtts,synAtts)),t) <- res] --TODO: why is findAtts needed?  why doesn't using synAtts work?
            --NOTE: the actual synAtts are ignored entirely!  it expects the atts to be in t.  Note that each rule adds an element to the result.
@@ -469,21 +490,32 @@ mapSynthesize sems res  downAtts id
 --TODO: what do we do if the union of two InsAttVals maps contains a DUPLICATE VALUE?! before this was just a concatMap, would RETAIN duplicate KEYS
 --TODO: do we just join them together?!! WTF.  This may be related to the fact that a rule really returns just a regular old att instead of an InsAttVals att!!!!
 --NOTE: terminals may have multiple atts, but a rule must always give a single att?
+--TODO: duplicate instances will be deleted -- how to handle multiple rule_s?  ignored in original too.
 applySemantics :: InsAttVals att -> Id -> [(Instance,(InsAttVals att, Id) -> att)] -> InsAttVals att
-applySemantics vals id = map (\(i,rule) -> (i,[rule (vals, id)])) --NOTE: it's a singleton att, but terminals may have *multiple* atts. TODO: separate representation for inherited atts?
+applySemantics vals id = Map.Lazy.fromList . map (\(i,rule) -> (i,[rule (vals, id)])) --NOTE: it's a singleton att, but terminals may have *multiple* atts. TODO: separate representation for inherited atts?
+
+unionsWithKey f mps = foldr (\mp combined -> Map.Lazy.unionWithKey f mp combined) Map.Lazy.empty mps
+unionsWith f mps = foldr (\mp combined -> Map.Lazy.unionWith f mp combined) Map.Lazy.empty mps
 
 --NOTE: inherited atts have form OF Id that is NOT LHS
 --      synthesized atts have the form OF LHS.  Could this be part of what's going on here?
+--TODO: should the list of atts be a Set?  it seems uniqueness of InsAttVals was enforced in a number of places via nub, which would have eliminated duplicates.. although duplicate atts were allowed
+--NOTE: it seems that all subsequent duplicate instances would have been completely ignored, except for the first two inherited downAtts which would have had their atts merged via concat
+--      in groupAtts.  This is possibly why nub was used on the downAtts?
+--NOTE: the Instance should be expanded to include the ***TYPE*** OF THE ATT
+--NOTE: increasingly, it seems to make sense to have a one attribute per Instance correspondance
+--TODO: duplicate instance meaning!  the original would just take precedence in the following order: downAtts, synAtts, and then findAtts.
+--NOTE: downAtts very likely may be all the same instance, so groupAtts might have made sense on it.  But that would imply that grouping atts of the same instance makes sense.
 mapInherited :: (Show att) => [(Instance,(InsAttVals att, Id) -> att)] -> Result att -> InsAttVals att -> Id -> InsAttVals att
-mapInherited sems res [] id
-  = concat [applySemantics (findAtts t) id sems | (((st,en), (inAtts,synAtts)),t) <- res] --TODO: why list of trees if singleton enforced here? is it possible to have no tree?  or multiple trees?
+mapInherited sems res downAtts id | Map.Lazy.null downAtts
+  = Map.Lazy.unions [applySemantics (findAtts t) id sems | (_,t) <- res] --TODO: seems synAtts are ignored if there are no downAtts -- WHY?  was this an oversight?  seems to work if we include synAtts on one test case...
 
 mapInherited sems []  downAtts id
   = applySemantics downAtts id sems -- concat ( map (appSems id sems) (group downAtts))
 
 mapInherited sems res downAtts id
-  = concat [applySemantics (downAtts ++ synAtts ++ (findAtts t)) id sems --TODO: purpose of findAtts here??
-              | (((st,en), (inAtts,synAtts)),t) <- res]
+  =  Map.Lazy.unions [applySemantics (Map.Lazy.unions [downAtts, synAtts, (findAtts t)]) id sems --TODO: purpose of findAtts here?? (NOTE: probably to get the atts of the children of the production rule)
+              | ((_, (_,synAtts)),t) <- res]
 
 --NOTE: what is this even for??  why is the first thing in the second tuple completely ignored?  why does it work in pairs?????
 --NOTE: this function seems to not actually do anything meaningful!!!!  WAS used above in (groupAtts downAtts)
@@ -503,11 +535,13 @@ showTree (Leaf _)    = "Leaf"
 --------------------------------------
 --TODO: optimize!
 --TODO: what should happen if same instance is repeated? error?
+--NOTE: yes, this is an error, but on the user's part.  this can happen if for example: (nt blah S0 *> nt ugh S0).  TODO: compile time error for this
+--NOTE: duplicate instances are IGNORED
 findAtts :: (Show att) => Tree att -> InsAttVals att
 --findAtts t = trace ("Tree: " ++ showTree t) $ findAtts' t
-findAtts (Branch ts)                  = concatMap findAtts ts
-findAtts (SubNode (_,((_,_),(v',v)))) = v' ++ v --NOTE: it is likely that v' are the inherited atts and v are the synthesized atts
-findAtts (Leaf _)                     = []
+findAtts (Branch ts)                  = Map.Lazy.unions $ map findAtts ts
+findAtts (SubNode (_,((_,_),(v',v)))) = Map.Lazy.union v' v --NOTE: v' are the inherited atts and v are the synthesized atts
+findAtts (Leaf _)                     = Map.Lazy.empty
 
 --------------------------------------------------------
 
@@ -543,14 +577,18 @@ valOf ud typ o_f x  ivs x' | x == LHS   = getAttVals (ud , x') ivs typ --the inh
 --TODO: it seems that an instance may point to multiple different atts... may need to go back to the drawing board
 --NOTE: it looks like it just takes the first i == x and returns getAttVals_ for that.  no worry about duplicate instances here at least.
 getAttVals :: (Eq att) => Instance -> InsAttVals att -> (a -> att) -> Atts att
-getAttVals x ((i,v):ivs) typ =
+getAttVals x ivs typ = case Map.Lazy.lookup x ivs of
+    Nothing -> error "getAttVals Instance not found!" --USER ERROR -- referring to an att that does not exist!
+    Just atts -> filter (\t -> typ undefined == t) atts
+
+{-getAttVals x ((i,v):ivs) typ =
  let getAttVals_ typ (t:tvs) = if (typ undefined) == t then (t :getAttVals_ typ tvs) --NOTE: linear search here too, perhaps we need to store attributes in a Map.Map (Instance,Type) [AttValue]? (recall multiple atts allowed)
                                else getAttVals_ typ tvs
      getAttVals_ typ []      = [] -- ErrorVal {-- 100 --} "ERROR id found but no value" (TODO: this appears to be a *legitimate* case that is NOT AN ERROR for inherited atts!!!  this was COMMENTED OUT IN THE ORIGINAL)
  in
      if(i == x) then getAttVals_ typ v else   getAttVals x ivs typ
 --getAttVals x [] typ          = [ErrorVal {-- 200 --} "ERROR no id"] --TODO: note, the error being reported would be here.  this is the ONLY case of error reporting...
-getAttVals x [] typ = error "ERROR no id"
+getAttVals x [] typ = error "ERROR no id"-}
 
 -------- ************************************** ------------
 
@@ -626,7 +664,7 @@ tree   = memoize Tree
                                                  synthesized  MaxVal OF T3
                                                ],
         rule_i   RepVal OF T1   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: seems that for inherited atts, the Ids may cause trouble if they're the same as the parent (T0 here)
-        rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: i think you can inherit from siblings too
+        rule_i   RepVal OF T2   ISEQUALTO convertRep    [inherited RepVal OF LHS], --NOTE: you can inherit from siblings too
         rule_i   RepVal OF T3   ISEQUALTO convertRep    [inherited RepVal OF LHS]  --NOTE: possible to enter an infinite loop by referring to self
        ]
  <|>
@@ -687,7 +725,7 @@ op   = memoize Op
 attsFinalAlt :: MemoL -> Int -> MemoTable att -> [[Atts att]]
 attsFinalAlt  key e t  =  maybe [] allTrees (Map.lookup (key,1) t)
     where
-        allTrees (_,rs) = [ map snd synAtts | (((_,end),(_,synAtts)), _)<-rs, end == e]
+        allTrees (_,rs) = [ Map.Lazy.elems synAtts | (((_,end),(_,synAtts)), _)<-rs, end == e]
 
 --Using a start, end, and memoization key, locate all valid parses that match.  In the case of ambiguity, there may be more than one result.
 --These three conditions are sufficient to guarantee the result is unique and valid.
@@ -784,14 +822,14 @@ formatAttsFinalAlt key e t =  concat $ concat $ attsFinalAlt key e t
 meaning_of :: NTType att -> T.Text -> MemoL -> Atts att
 meaning_of p dInp key
  = let dInput     = Vector.fromList $ T.words dInp
-       appParser  = runState (p T0 [] (1, dInput) empty_cuts) Map.empty
+       appParser  = runState (p T0 empty_insattvals (1, dInput) empty_cuts) Map.empty
        upperBound = (length dInput) + 1
    in  formFinal key upperBound (snd $ appParser)
 
 meaning_of_ :: NTType att -> T.Text -> MemoL -> MemoTable att
 meaning_of_ p dInp key
  = let dInput     = Vector.fromList $ T.words dInp
-       appParser  = runState (p T0 [] (1, dInput) empty_cuts) Map.empty
+       appParser  = runState (p T0 empty_insattvals (1, dInput) empty_cuts) Map.empty
        upperBound = (length dInput) + 1
    in  (snd $ appParser)
 
@@ -802,8 +840,8 @@ formAtts key ePoint t = maybe [] allAtts $ Map.lookup key t
                                                     |(i,((cs,ct),rs)) <- sr ]
 
 formFinal key ePoint t = maybe [] final $ Map.lookup (key,1) t
-    where final (_,rs) = concat $ concat $ [[  val1 |(id1,val1)<-synAtts]
-                                                    |(((st,end),(inAtt2,synAtts)), ts)<-rs, st == 1 && end == ePoint] --TODO: if the start in the table is the same as here... why do we need it in two places?
+    where final (_,rs) = concat $ concat $ [Map.Lazy.elems synAtts
+                                                    |(((st,end),(inAtt2,synAtts)), ts)<-rs, end == ePoint] --NOTE: start does not need to be checked because the rule encompasses the entire string
 
 --test1 p p_ inp = do putStr  $ render80 $ format{-Atts p_-} $ snd $ runState (p T0 [] ((1,[]),words inp) ([],[])) []
 test :: M att
