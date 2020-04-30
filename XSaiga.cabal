@@ -71,6 +71,7 @@ library
     , text >=0.11
     , unordered-containers
     , vector
+    , generic-data
   default-language: Haskell2010
 
 executable solarman.cgi
@@ -100,4 +101,6 @@ executable solarman.cgi
     , text >=0.11
     , unordered-containers
     , vector
+    , generic-data
   default-language: Haskell2010
+  ghc-options: -rtsopts

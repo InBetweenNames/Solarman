@@ -48,6 +48,7 @@ dependencies:
   - hashable
   - unordered-containers
   - vector
+  - generic-data
 
 default-extensions:
   - DoAndIfThenElse

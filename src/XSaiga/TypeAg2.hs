@@ -4,6 +4,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module XSaiga.TypeAg2 where
 
@@ -17,10 +19,12 @@ import Data.List (nub)
 import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
 --import Control.Applicative
-import Data.Constructors.EqC
+import qualified Data.Data as Data
 
-import GHC.Generics (Generic)
+import GHC.Generics
 import Data.Hashable
+import Debug.Trace
+import Generic.Data (gconIndex)
 
 data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Ord)
 
@@ -381,7 +385,7 @@ applyGettsPrep g = getGetts $ g $ TFMemoT (error "Should not eval!", GettsNone)
 --if we make GettsIntersect have a Maybe GettsTree as the last argument, we can remove GettsNone
 --but this complicates liftS* a bit: (FDBR -> FDBR -> FDBR) -> (GettsTree -> Maybe GettsTree -> Maybe GettsTree) -> ...?
 
---a <<*>> moon <<*>> spins... 
+--a <<*>> moon <<*>> spins...
 --PUBLIC INTERFACE (TODO)
 --TODO: make_fdbr_with_prop is DANGEROUS
 --Get members of named set
@@ -398,6 +402,44 @@ get_subjs_of_event_type' ev_type = (\r -> make_fdbr_with_prop (pure_getts_triple
 
 get_subjs_of_event_type = wrapS0 . get_subjs_of_event_type'
 
+--constrName :: Data.Data a => a -> T.Text
+--constrName = T.pack . show . Data.toConstr
+
+--constrName = T.pack . gconName
+
+{-
+class Name a where
+  constrName :: a -> String
+instance {# OVERLAPPING #} Name a => Name (r -> a) where
+  constrName f = constrName (f undefined)
+instance (Data.Data a) => Name a where
+  constrName = show . toConstr
+-}
+
+--constrName :: Data.Data a => a -> Data.ConIndex
+--constrName = Data.constrIndex . Data.toConstr
+
+--instance (Generic a, Generic b) => Generic (a -> b) where
+
+--constrName :: (HasConstructor (Rep a), Generic a) => a -> Text
+--constrName = pack . genericConstrName . from
+
+{-class HasConstructor (f :: * -> *) where
+  genericConstrName :: f x -> String
+
+instance HasConstructor f => HasConstructor (D1 c f) where
+  genericConstrName (M1 x) = genericConstrName x
+
+instance (HasConstructor x, HasConstructor y) => HasConstructor (x :+: y) where
+  genericConstrName (L1 l) = genericConstrName l
+  genericConstrName (R1 r) = genericConstrName r
+
+instance Constructor c => HasConstructor (C1 c f) where
+  genericConstrName = conName
+-}
+
+constrName = gconIndex
+
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}
               | RepVal          {getAVAL    ::   Int}
@@ -410,7 +452,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
               | ADJ_VAL         {getAVALS   ::   TFMemo FDBR }
               | TERMPH_VAL      {getTVAL    ::   TFMemo FDBR -> TFMemo FDBR}
               | DET_VAL         {getDVAL    ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
-              | VERB_VAL        {getBR      ::   Relation } --stores relation, "subject" and "object". TODO: need to expand on later for "used"      
+              | VERB_VAL        {getBR      ::   Relation } --stores relation, "subject" and "object". TODO: need to expand on later for "used"
           | RELPRON_VAL     {getRELVAL  ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
           | NOUNJOIN_VAL    {getNJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
           | VBPHJOIN_VAL    {getVJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
@@ -418,7 +460,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | SUPERPHSTART_VAL  {getSUPERPHSTARTVAL :: ()}
           | SUPER_VAL       {getSUPERVAL ::  Ordering}
           | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, TFMemo FDBR -> TFMemo FDBR)}
-          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)]} -- used in "hall discovered phobos with a telescope" as "with".  
+          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)]} -- used in "hall discovered phobos with a telescope" as "with".
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
           | PREPPH_VAL      {getPREPPHVAL :: ([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)}
@@ -432,6 +474,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
           | QUEST6_VAL      {getQU6VAL  ::   TFMemo FDBR -> TFMemo Text}
           | QUEST3_VAL      {getQU3VAL  ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo Text}
           | YEAR_VAL        {getYEARVAL ::   Int}
+          deriving(Generic)
 
 --            | RESULT [sys_message]
 --Also called a "NodeName"
@@ -443,17 +486,19 @@ data MemoL    = Start | Tree | Num | Emp | ALeaf !Text | Expr | Op  | ET
 
 instance Hashable MemoL
 
-data Id       = O0|S0 |S1|S2|S3|S4|S5|S6|S7|S8|S9|T0|T1 | T2 | T3 |T4 | N1| N2 | N3 | E0 |E1 |E2 | O1| LHS  deriving (Eq,Ord,Show, Enum)
-                -- basic IDs for identifying each NT  
+data Id       = O0|S0 |S1|S2|S3|S4|S5|S6|S7|S8|S9|T0|T1 | T2 | T3 |T4 | N1| N2 | N3 | E0 |E1 |E2 | O1| LHS  deriving (Eq,Ord,Show,Enum,Generic)
+                -- basic IDs for identifying each NT
+
+instance Hashable Id
 
 {-
 
-attFunc 
+attFunc
  = [
     (VAL,getAVAL), (MaxVal,getAVAL), (SubVal,getAVAL), (RepVal,getAVAL), (Res,getRVAL), (B_OP,getB_OP),(U_OP,getU_OP),(SENT_VAL,getSV),(ErrorVal,getEVAL),
     (NOUNCLA_VAL,getAVALS),(VERBPH_VAL,getAVALS),(ADJ_VAL,getAVALS),(TERMPH_VAL,getTVAL),(DET_VAL,getDVAL),(VERB_VAL,getBR),(RELPRON_VAL,getRELVAL),(NOUNJOIN_VAL,getNJVAL),
     (VBPHJOIN_VAL,getVJVAL),(TERMPHJOIN_VAL,getTJVAL),(PREP_VAL,getPREPVAL),(LINKINGVB_VAL,getLINKVAL),(SENTJOIN_VAL,getSJVAL),(DOT_VAL,getDOTVAL),(QM_VAL,getQMVAL),(QUEST1_VAL,getQU1VAL),
-    (QUEST2_VAL,getQU2VAL),(QUEST3_VAL,getQU3VAL)   
+    (QUEST2_VAL,getQU2VAL),(QUEST3_VAL,getQU3VAL)
    ]
 -}
 type Entity         =  Text
@@ -463,26 +508,27 @@ type Relation = (Text, Text, Text)
 
 data DisplayTree = B [DisplayTree]
                  | N Int
-                   deriving (Show, Eq)
+                   deriving (Show, Eq, Data.Data)
+
+--instance Show AttValue where
+--    show x = "AttValue"
 
 instance Show AttValue where
-    show x = "AttValue"
-
-{-instance Show AttValue where
     show (VAL  j)     = "VAL "    ++ show j
     show (MaxVal j)   = "MaxVal " ++ show j
-    show (SubVal j)   = "SubVal " ++ show j
+    --show (SubVal j)   = "SubVal " ++ show j
     show (RepVal j)   = "RepVal " ++ show j
     show (Res j)      = "Tree: "  ++ show j
     show (B_OP j)     = "B_OP"
     show (U_OP j)     = "U_OP"
-    show (SENT_VAL j) = show j
+    show _            = "AttValue"
+    {-show (SENT_VAL j) = show j
     show (ErrorVal j) =  j
     show (NOUNCLA_VAL j) = "NOUNCLA_VAL " ++ unwords $ map fst j
     show (VERBPH_VAL j)  = "VERBPH_VAL " ++ unwords $ map fst j
     show (ADJ_VAL    j)  = "ADJ_VLA " ++ unwords $ map fst j
-    show (TERMPH_VAL j)  = "TERMPH_VAL "      
-    show (DET_VAL j)     = "DET_VAL " 
+    show (TERMPH_VAL j)  = "TERMPH_VAL "
+    show (DET_VAL j)     = "DET_VAL "
     show (VERB_VAL j)    =  "VERB_VAL " ++ j
     show (RELPRON_VAL j)  = "RELPRON_VAL "
     show (NOUNJOIN_VAL j)  = "NOUNJOIN_VAL "
@@ -491,9 +537,9 @@ instance Show AttValue where
     show (PREP_VAL j)  = "PREP_VAL "
     show (LINKINGVB_VAL j)  = "LINKINGVB_VAL "
     show (SENTJOIN_VAL j)  = "SENTJOIN_VAL "
-    show (DOT_VAL j) = j 
-    show (QM_VAL j) = j 
-    show (QUEST_VAL j) = j 
+    show (DOT_VAL j) = j
+    show (QM_VAL j) = j
+    show (QUEST_VAL j) = j
     show (QUEST1_VAL j)  = "QUEST1_VAL"
     show (QUEST2_VAL j)  = "QUEST2_VAL"
     show (QUEST3_VAL j)  = "SENTJOIN_VAL"-}
@@ -502,7 +548,7 @@ instance Show AttValue where
 --NOTE: this is only here because of the expression problem in Haskell
 --Ideally, you do this with the EqC typeclass and then it gets handled properly in AGParser2
 --Instead, we define equality as equality up to the constructor used to generate the AttValue
-instance Eq AttValue where
+{-instance Eq AttValue where
     (VAL  _)           ==  (VAL  _)     = True
     (MaxVal _)         ==  (MaxVal _)   = True
     (RepVal _)         ==  (RepVal _)   = True
@@ -538,6 +584,7 @@ instance Eq AttValue where
     (SUPER_VAL _)     ==  (SUPER_VAL _) = True
     (SUPERPH_VAL _)   ==  (SUPERPH_VAL _) = True
     _                  ==  _              = False
+-}
 
 --------- *********************** --------------
 -- needs to be simplified --

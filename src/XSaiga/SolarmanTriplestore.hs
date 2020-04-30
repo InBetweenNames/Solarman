@@ -20,7 +20,7 @@ import Control.Applicative hiding ((*>), (<|>))
 import Data.Biapplicative
 import Data.Bifunctor
 import qualified Data.Map.Strict as Map
-import qualified Data.HashMap.Lazy as HashMap.Lazy
+import qualified Data.HashMap.Strict as HashMap
 import Control.Monad.State.Strict
 import qualified Data.Ord as Ord
 import qualified Data.Maybe as Maybe
@@ -58,7 +58,7 @@ intersect_fdbr'' [] _ = []
 intersect_fdbr'' fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
   = case compare e1 e2 of
       LT -> intersect_fdbr'' eei1 fdbr2
-      EQ -> (e2, evs2):(intersect_fdbr'' eei1 eei2) 
+      EQ -> (e2, evs2):(intersect_fdbr'' eei1 eei2)
       GT -> intersect_fdbr'' fdbr1 eei2
 
 {-intersect_fdbr'' eei1 eei2
@@ -374,9 +374,9 @@ filter_ev' :: [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> [Eve
 filter_ev' [] evs ev_data = evs
 filter_ev' ((names,_,pred):list) evs triples
   = if not $ List.null res then filter_ev' list relevant_evs triples else []
-  where  
+  where
   relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events
-  relevant_list = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names 
+  relevant_list = concatMap (\name -> make_fdbr_with_prop relevant_triples name) names
   res = (fst pred) (pure relevant_list) triples --TODO: prove correct (TODO USE getGetts AS WELL FOR MEMOIZATION!!!)
   --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
   relevant_evs = List.nub $ concatMap snd res
@@ -397,7 +397,7 @@ filter_ev list evs triples = foldrM filt evs list
             res <- pred_tf triples
             let relevant_evs = List.nub $ concatMap snd res
             return relevant_evs
-    
+
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
 
 make_pred_arg_pure :: [Event] -> [T.Text] -> TF FDBR
@@ -495,10 +495,10 @@ prepProps = nub . concatMap fst-}
 {-gatherPreps :: [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> SemFunc [([T.Text], TF FDBR -> TF FDBR)]
 gatherPreps preps = peelGetts preps >|< attachProps preps
   where
-    peelGetts = map (\(propNames, sf) -> (propNames, getSem sf)) 
+    peelGetts = map (\(propNames, sf) -> (propNames, getSem sf))
     extractGetts = foldr iunion GettsNone . map (\(propNames, sf) -> getGetts sf)
     attachProps preps = GettsPreps (nub $ concatMap fst preps) `iunion` (extractGetts preps) --Will contain AttachP info [propNames] and whatever else was in SemFunc(->)
--}  
+-}
 
 --Modified version of make_trans_active' to accomodate new filter_ev
 {-make_trans_active' :: (TripleStore m) => m -> T.Text -> [([T.Text], SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
@@ -811,7 +811,7 @@ year = superterminal Year $ \t -> case TR.decimal t of
     in  memoize key altTerminals-}
 
 --Fixed space leak by just having it use a hashmap
-memoize_terminals_from_dictionary :: MemoL -> Id -> InsAttVals AttValue -> M AttValue
+memoize_terminals_from_dictionary :: MemoL -> NTType AttValue
 memoize_terminals_from_dictionary key
   = let altTerminals           = terminalSet key dictionary'''
         --TODO: do we need to memoize this even?
@@ -1012,7 +1012,7 @@ prepph
      <|>
      parser (nt prepnph S1 *> nt joinvbph S2) -- "to discover phobos"
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph_nph [synthesized PREPNPH_VAL OF S1,
-                                                         synthesized VERBPH_VAL OF S2]] 
+                                                         synthesized VERBPH_VAL OF S2]]
      <|>
      parser (nt prepyear S1 *> nt joinyear S2) -- "in 1877 or 1822 and 1923"
      [rule_s PREPPH_VAL OF LHS ISEQUALTO applyprepph [synthesized PREPN_VAL OF S1,
@@ -1146,7 +1146,7 @@ question
     <|>
     {-parser (nt quest7 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
-                                              synthesized VERBPH_VAL    OF  S2]] 
+                                              synthesized VERBPH_VAL    OF  S2]]
     <|> -}
     parser (nt quest5 S1 *> nt joinvbph S2)
     [rule_s QUEST_VAL  OF LHS ISEQUALTO ans2 [synthesized QUEST2_VAL    OF  S1,
@@ -1188,18 +1188,13 @@ query = memoize Query
 || -----------------------------------------------------------------------------
 || THE SEMANTICS - PART I : The attribute evaluation  functions
 ||-----------------------------------------------------------------------------
-applyBiOp [e1,op,e2]
-                  = \atts -> VAL ((getAtts getB_OP atts op ) (getAtts getAVAL atts e1 ) (getAtts getAVAL atts e2))
-
 -}
--- getAtts f (y,i) x = f (head (x y i))
--- copy      [b]     = \(atts,i) -> head (b atts i)
 
-intrsct1 [x, y] atts = NOUNCLA_VAL (intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+intrsct1 [x, y] = NOUNCLA_VAL (intersect_fdbr (getAtts getAVALS  x) (getAtts getAVALS y))
 
-intrsct2 [x, y] atts = ADJ_VAL (intersect_fdbr (getAtts getAVALS atts x) (getAtts getAVALS atts y))
+intrsct2 [x, y] = ADJ_VAL (intersect_fdbr (getAtts getAVALS x) (getAtts getAVALS y))
 
-applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS atts y)
+applydet [x, y] = TERMPH_VAL $ (getAtts getDVAL x) (getAtts getAVALS y)
 
 --make_trans_vb is very similar to make_trans_active.  getBR must mean "get binary relation"
 --getTVAL must mean "get predicate" i.e. what would be "phobos" in "discover phobos"
@@ -1209,95 +1204,95 @@ applydet [x, y] atts = TERMPH_VAL $ (getAtts getDVAL atts x) (getAtts getAVALS a
 --nearly identical
 
 --NEW FOR PREPOSITIONAL PHRASES
-applytransvbprep [x,y,z] atts = VERBPH_VAL $ make_trans_active' reln ((make_prep [object] predicate) : preps)
+applytransvbprep [x,y,z] = VERBPH_VAL $ make_trans_active' reln ((make_prep [object] predicate) : preps)
     where
-    reln = getAtts getBR atts x
-    predicate = getAtts getTVAL atts y
-    preps = getAtts getPREPVAL atts z
+    reln = getAtts getBR x
+    predicate = getAtts getTVAL y
+    preps = getAtts getPREPVAL z
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbprep [x,y] atts = VERBPH_VAL $ make_trans_active' reln [make_prep [object] predicate]
+applytransvbprep [x,y] = VERBPH_VAL $ make_trans_active' reln [make_prep [object] predicate]
     where
-    reln = getAtts getBR atts x
-    predicate = getAtts getTVAL atts y
+    reln = getAtts getBR x
+    predicate = getAtts getTVAL y
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbsuper [x, y] atts = VERBPH_VAL $ make_trans_active' reln [make_prep_superph [object] superpred]
+applytransvbsuper [x, y] = VERBPH_VAL $ make_trans_active' reln [make_prep_superph [object] superpred]
     where
-    reln = getAtts getBR atts x 
-    superpred = getAtts getSUPERPHVAL atts y
+    reln = getAtts getBR x
+    superpred = getAtts getSUPERPHVAL y
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvbsuper [x, y, z] atts = VERBPH_VAL $ make_trans_active' reln ((make_prep_superph [object] superpred) : preps)
+applytransvbsuper [x, y, z] = VERBPH_VAL $ make_trans_active' reln ((make_prep_superph [object] superpred) : preps)
     where
-    reln = getAtts getBR atts x 
-    superpred = getAtts getSUPERPHVAL atts y
-    preps = getAtts getPREPVAL atts z
+    reln = getAtts getBR x
+    superpred = getAtts getSUPERPHVAL y
+    preps = getAtts getPREPVAL z
     (_, object) = getVoiceProps ActiveVoice reln
 
-applytransvb_no_tmph [x,y] atts = VERBPH_VAL $ make_trans_active' reln preps
+applytransvb_no_tmph [x,y] = VERBPH_VAL $ make_trans_active' reln preps
     where
-    reln = getAtts getBR atts x
-    preps = getAtts getPREPVAL atts y
+    reln = getAtts getBR x
+    preps = getAtts getPREPVAL y
 
-applytransvb_no_tmph [x] atts = VERBPH_VAL $ make_trans_active' reln []
+applytransvb_no_tmph [x] = VERBPH_VAL $ make_trans_active' reln []
     where
-    reln = getAtts getBR atts x
+    reln = getAtts getBR x
 
 --TODO: modify grammar so you can't ask "what was phobos discover", or if you can, make the answer sensible (e.g. hall, not phobos)
-apply_quest_transvb_passive (x2:x3:x4:xs) atts = VERBPH_VAL $ termph (make_trans_passive reln preps)
+apply_quest_transvb_passive (x2:x3:x4:xs) = VERBPH_VAL $ termph (make_trans_passive reln preps)
     where
-    linkingvb = getAtts getLINKVAL atts x2
-    termph = getAtts getTVAL atts x3
-    reln = getAtts getBR atts x4
+    linkingvb = getAtts getLINKVAL x2
+    termph = getAtts getTVAL x3
+    reln = getAtts getBR x4
     preps = case xs of
         [] -> []
-        (x5:_) -> getAtts getPREPVAL atts x5
+        (x5:_) -> getAtts getPREPVAL x5
 
-applyprepph [x, y] atts = PREPPH_VAL $
-        let prep_names = getAtts getPREPNVAL atts x
-            termph = getAtts getTVAL atts y in
+applyprepph [x, y] = PREPPH_VAL $
+        let prep_names = getAtts getPREPNVAL x
+            termph = getAtts getTVAL y in
                 make_prep prep_names termph
 
-applyprepph_nph [x, y] atts = PREPPH_VAL $
-        let prep_names = getAtts getPREPNPHVAL atts x
-            nph = getAtts getAVALS atts y in
+applyprepph_nph [x, y] = PREPPH_VAL $
+        let prep_names = getAtts getPREPNPHVAL x
+            nph = getAtts getAVALS y in
                 make_prep_nph prep_names nph
 
-applyprepph_super [x, y] atts = PREPPH_VAL $
-        let prep_names = getAtts getPREPNVAL atts x
-            superph = getAtts getSUPERPHVAL atts y in
+applyprepph_super [x, y] = PREPPH_VAL $
+        let prep_names = getAtts getPREPNVAL x
+            superph = getAtts getSUPERPHVAL y in
                 make_prep_superph prep_names superph
 
-applyprep [x] atts = PREP_VAL $ [getAtts getPREPPHVAL atts x]--[(["with_implement"], a telescope)]
+applyprep [x] = PREP_VAL $ [getAtts getPREPPHVAL x]--[(["with_implement"], a telescope)]
 
-applypreps [x, y] atts = PREP_VAL $ getAtts getPREPPHVAL atts x : (getAtts getPREPVAL atts y)
+applypreps [x, y] = PREP_VAL $ getAtts getPREPPHVAL x : (getAtts getPREPVAL y)
 
-applysuperph [x, y, z] atts = SUPERPH_VAL $
-        let super_the = getAtts getSUPERPHSTARTVAL atts x
-            super_ordering = getAtts getSUPERVAL atts y
-            nph = getAtts getAVALS atts z
+applysuperph [x, y, z] = SUPERPH_VAL $
+        let super_the = getAtts getSUPERPHSTARTVAL x
+            super_ordering = getAtts getSUPERVAL y
+            nph = getAtts getAVALS z
             --inject :: Ordering -> SemFunc (TF FDBR -> TF FDBR) -> (Ordering, SemFunc (TF FDBR -> TF FDBR))
             inject ord termph = (ord, termph)
             in
                 inject super_ordering $ intersect_fdbr nph
-                
 
-applyyear [x] atts = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL atts x
+
+applyyear [x] = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL x
 
 --END PREPOSITIONAL PHRASES
 
-applyvbph [z] atts = VERBPH_VAL (getAtts getAVALS atts z)
+applyvbph [z] = VERBPH_VAL (getAtts getAVALS z)
 
-appjoin1 [x, y, z] atts = TERMPH_VAL $ (getAtts getTJVAL atts y) (getAtts getTVAL atts x) (getAtts getTVAL atts z)
+appjoin1 [x, y, z] = TERMPH_VAL $ (getAtts getTJVAL y) (getAtts getTVAL x) (getAtts getTVAL z)
 
-appjoin2 [x, y, z] atts = VERBPH_VAL ((getAtts getVJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+appjoin2 [x, y, z] = VERBPH_VAL ((getAtts getVJVAL y) (getAtts getAVALS x) (getAtts getAVALS z))
 
-apply_middle1 [x, y, z] atts = NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+apply_middle1 [x, y, z] = NOUNCLA_VAL ((getAtts getRELVAL y) (getAtts getAVALS x) (getAtts getAVALS z))
 
-apply_middle2 [x, y, z] atts = NOUNCLA_VAL ((getAtts getNJVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+apply_middle2 [x, y, z] = NOUNCLA_VAL ((getAtts getNJVAL y) (getAtts getAVALS x) (getAtts getAVALS z))
 
-apply_middle3 [x, y, z] atts =  NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts getAVALS atts x) (getAtts getAVALS atts z))
+apply_middle3 [x, y, z] =  NOUNCLA_VAL ((getAtts getRELVAL y) (getAtts getAVALS x) (getAtts getAVALS z))
 
 -- Think "a orbited by b" vs "b orbits a"
 {-drop3rd          [w, x, y, z]
@@ -1307,29 +1302,29 @@ apply_middle3 [x, y, z] atts =  NOUNCLA_VAL ((getAtts getRELVAL atts y) (getAtts
         make_inverted_relation dataStore reln predicate-}
 
 --NEW FOR PREPOSITIONAL PHRASES
-drop3rdprep (w:x:xs) atts = VERBPH_VAL $ make_trans_passive reln preps
+drop3rdprep (w:x:xs) = VERBPH_VAL $ make_trans_passive reln preps
         where
-        reln = getAtts getBR atts x
+        reln = getAtts getBR x
         preps = case xs of
                   [] -> []
-                  (p:_) -> getAtts getPREPVAL atts p
+                  (p:_) -> getAtts getPREPVAL p
 --END PREPOSITIONAL PHRASES
 
-apply_termphrase [x, y] atts = SENT_VAL ((getAtts getTVAL atts x) (getAtts getAVALS atts y))
+apply_termphrase [x, y] = SENT_VAL ((getAtts getTVAL x) (getAtts getAVALS y))
 
-sent_val_comp [s1, f, s2] atts = SENT_VAL ((getAtts getSJVAL atts f) (getAtts getSV atts s1) (getAtts getSV atts s2))
+sent_val_comp [s1, f, s2] = SENT_VAL ((getAtts getSJVAL f) (getAtts getSV s1) (getAtts getSV s2))
 
-ans1 [x, y] atts = QUEST_VAL ((getAtts getQU1VAL atts x) (getAtts getSV atts y) )
+ans1 [x, y] = QUEST_VAL ((getAtts getQU1VAL x) (getAtts getSV y) )
 
-ans2 [x, y] atts = QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getAVALS atts y))
+ans2 [x, y] = QUEST_VAL ((getAtts getQU2VAL x) (getAtts getAVALS y))
 
-ans3 [x, y, z] atts = QUEST_VAL ((getAtts getQU3VAL atts x) (getAtts getAVALS atts y) (getAtts getAVALS atts z))
+ans3 [x, y, z] = QUEST_VAL ((getAtts getQU3VAL x) (getAtts getAVALS y) (getAtts getAVALS z))
 
-ans5 [x, y, z] atts = QUEST_VAL ((getAtts getQU2VAL atts x) (getAtts getSV atts z))
+ans5 [x, y, z] = QUEST_VAL ((getAtts getQU2VAL x) (getAtts getSV z))
 
-ans6 [x, y, z] atts = QUEST_VAL ((getAtts getQU6VAL atts x) (getAtts getSV atts z))
+ans6 [x, y, z] = QUEST_VAL ((getAtts getQU6VAL x) (getAtts getSV z))
 
-truefalse [x] atts = QUEST_VAL $ _truefalse (getAtts getSV atts x) -- fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") `first` (getAtts getSV atts x)
+truefalse [x] = QUEST_VAL $ _truefalse (getAtts getSV x) -- fmap (\fdbr -> if not (List.null fdbr) then "true." else "false.") `first` (getAtts getSV atts x)
 
 {-
 ||-----------------------------------------------------------------------------
@@ -1391,21 +1386,18 @@ This is NOT the same as ("hall", Pnoun, [TERMPH_VAL $ make_pnoun "hall", TERMPH_
 which will (seemingly) use the first TERMPH_VAL and ignore the second completely.
 
 NOTE2: Map needs to be lazy in the values or else the parser will loop indefinitely with meaning_of: map from dict, evaluate meaning_of, which needs to use map from dict, which evaluates meaning of
-NOTE3: It seems like having a lazy map as a value of a strict map retains the property needed to avoid a loop?
-TODO: HashMap seems like a big win, make AGParser use it too
 
 NOTE4: so fromListWith in HashMap is actually *NOT* strict in the values!  That means lazy evaluation is still happening!
-
 https://medium.com/@aleksandrasays/brief-normal-forms-explanation-with-haskell-cd5dfa94a157
 
-seq only peels off first layer.  need deepseq to force head normal form.
+A strict HashMap is used because the lists themselves are still lazy.  so evaluating to WHNF is no problem.
 
 -}
 
 --Try to retain old semantics: collect AttValues of multiple definitions together and unpack them later
 --Use Lazy hashmap to ensure meaning_of still works!
-dictionary''' :: HashMap.Lazy.HashMap (MemoL,T.Text) [[AttValue]]
-dictionary''' = HashMap.Lazy.fromListWith (flip (++)) $ map (\(t,m,atts) -> ((m,t),[atts])) dictionary
+dictionary''' :: HashMap.HashMap (MemoL,T.Text) [[AttValue]]
+dictionary''' = HashMap.fromListWith (flip (++)) $ map (\(t,m,atts) -> ((m,t),[atts])) dictionary
 
 dictionary :: [(T.Text, MemoL, [AttValue])]
 dictionary = [
@@ -1539,7 +1531,7 @@ dictionary = [
     --("was",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("are",                Quest1,    [QUEST1_VAL     $ yesno]),
     --("were",               Quest1,    [QUEST1_VAL     $ yesno]),
-    ("what",               Quest2,    [QUEST2_VAL     $ what]), 
+    ("what",               Quest2,    [QUEST2_VAL     $ what]),
     ("what",               Quest6,    [QUEST6_VAL     $ whatobj]),
     ("who",                Quest5,    [QUEST2_VAL     $ who]),
     ("where",              Quest5,    [QUEST2_VAL     $ where']),
@@ -1888,10 +1880,10 @@ syntaxTreeToLinear' :: SyntaxTree -> T.Text
 syntaxTreeToLinear' (SyntaxTreeT x) = x
 syntaxTreeToLinear' (SyntaxTreeNT ts) = intercalateBrackets $ concatMap syntaxTreeToLinear ts
 
-parse i = formatAttsFinalAlt Question (Vector.length vWords + 1) $ snd $ test (question T0 []) (vWords)
+parse i = formatAttsFinalAlt QUEST_VAL Question (Vector.length vWords + 1) $ snd $ test (question T0 empty_insattvals) (vWords)
     where
         vWords = Vector.fromList $ T.words i
-parseTree i = findAllParseTreesFormatted syntaxTreeToLinear' Question (Vector.length vWords + 1) $ snd $ test (question T0 []) (vWords)
+parseTree i = findAllParseTreesFormatted syntaxTreeToLinear' QUEST_VAL Question (Vector.length vWords + 1) $ snd $ test (question T0 empty_insattvals) (vWords)
     where
         vWords = Vector.fromList $ T.words i
 
