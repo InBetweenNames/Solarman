@@ -15,7 +15,7 @@ import Control.Monad.State.Strict
 import Data.Constructors.EqC
 
 --import qualified Data.Map.Strict as Map
-import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map.Strict as Map
 --import qualified Data.Map.Lazy as Map.Lazy
 import qualified Data.IntMap.Strict as IntMap
@@ -51,36 +51,41 @@ Finished improvements:
     * Replace [Tree] with Tree in Result
     * InsAttVals has a better representation -- but note that duplicate instances are ignored (as in the original version).  Multiple attributes are allowed
     * atts are pre-applied to the semantic functions.  This makes it more convenient
-    * Attributes are represented in an IntMap based on the constructor chosen.  The att must be an instance of Generic and it needs to be lazy in its values until
+    * Attributes are represented in an IntMap based on the constructor chosen.  The att must be an instance of Generic and GConstructors (Rep att) and it needs to be lazy in its values until
       I can figure out some other way that doesn't involve applying "undefined" to the constructor to figure out which data constructor it is.  Not a huge deal thankfully.
       Multiple attributes are permitted provided they are unique in the data constructor chosen.  This mirrors how attribute grammars are written out.
     * Better error reporting
+    * Improved condCheck code taking advantage of maps
+    * Alternative representation for table: instead of (Start1, End), use ((Start :: Int,End :: Int),(InhAtts,SynAtts)) -- facilitates easier processing
+    * Find another way to find "equivalence" between AttValues.  See TypeAg2 where the annoying bit is with instance Eq (solved using Generics)
+    * Find all instances where empty lists are used to denote "not found" and singletons are used to denote "found" and replace with Maybe
+        --NOTE: it seems like parses are treated like cartesian products with SeqType -- so an empty parse needs to be something "empty" and not a failure condition
+        --this is required to handle ambiguity
 
 TODO Improvements:
 
+    * Use HashMaps/IntMaps everywhere except where Ord is really needed?
     * Extract the constructor from the getter directly?  or construct our own getter using the provided data constructor? would be nice to do getAtt QUEST_VAL atts
-    * Make all attribute maps lazy in the values
-    * Hash the T.Text for the AttValue instead of using it directly
-    * Alternative representation for table: instead of (Start1, End), use ((Start :: Int,End :: Int),[(InhAtts,SynAtts)]) and key on (Int,Int).  Each pair of atts is a valid parse.
+       --want to avoid using "typ undefined" in getAttVals
+    * Make all attribute maps lazy in the values?  Is this needed?
+    * Hash the T.Text for the AttValue instead of using it directly -- this may no longer be needed with the IntMap
+    * use ((Start :: Int,End :: Int),(InhAtts,SynAtts)) to key on (Int,Int).  Each pair of atts is a valid parse.  Use this to speed things up a bit.
     * Simplified memotable list of results: it no longer stores inherited atts (Start1) beside the set of results, it just stores the start position (Int)
     * multi-terminal: a terminal consisting of N or more tokens.  Like "refractor telescope 1" or "asaph hall"
-    * Better representation for attributes.  In particular, synthesized and inherited atts should be separated, and they should have names.
+    * Better representation for attributes.  In particular, synthesized and inherited atts should be separated, and they should have names (not drawn from the same pool)
       Those names should be independent of the type.  Example. Rule.value = "100", Rule.size = 3 (for synthesized).  These names should not be hardcoded!
-      Also, if no duplicate instances are permitted, then we should make it a map and get rid of the lists.  Note that whatever is done, lazy evaluation must be permitted.
-    * Elimination of all space leaks
-    * Should we consider using HashMap?  Seems to do better in benchmarks
-    * Use Unboxed/Storable Vector/HashMap?
-    * Find another way to signal an error for slot mismatch (S1/S3 given and S1/S2 requested)
-    * Find another way to find "equivalence" between AttValues.  See TypeAg2 where the annoying bit is with instance Eq
-    * Move data Id to here from TypeAg2
-    * MemoL needs to be unique per memoize block, is this able to be generated automatically?
+      Note that whatever is done, lazy evaluation must be accommodated to prevent infinite loops.
+    * Elimination of all space leaks -- may not be possible directly since many thunks could build up during evaluation from inherited atts
+    * Use Unboxed/Storable Vector/HashMap? Probably not possible except with the IntMap
+    * Find another way to signal an error for slot mismatch (S1/S3 given with nt and S1/S2 requested)
+    * Move data Id to here from TypeAg2 or ideally, make it a part of the type constructor
+    * MemoL needs to be unique per memoize block, is this able to be generated automatically?  or can we at least make it part of the type constructor?
     * Move the example code to a new file (with the +-/* grammar), use the parameterized code to do this
     * Make a better syntax for the parser.  The list based syntax leaves a lot to be desired.
     * New name for the parser.  XSaiga-NG?
-    * Decouple error reporting from AttValue
+    * Decouple error reporting from AttValue -- we use "error" right now when we really ought to use an Either
     * okay so memoized and unmemoized return the same type... but unmemoized never seems to work?  need type level correction
         * REASON: terminals return Leafs, not SubNodes.  it's the memoization that creates the SubNode.  So terminal by itself, unmemoized, won't work due to findAtts only looking at SubNodes.
-    * Need to find all instances where empty lists are used to denote "not found" and singletons are used to denote "found" and replace with Maybe
     *** "or" and "and" should not be ambiguous except when used with each other.  for example
         "hall or phobos or deimos and hall or kuiper or galileo" should only be ambiguous around the "and":
         "(hall or (phobos or (deimos))) and (hall or (kuiper or (galileo)))"
@@ -287,7 +292,7 @@ memoize name f id downAtts (inp,dInput) context
                              return (l1,newFoundRes)
 
 --TODO: must preserve strictness with replaceSnd'!
-replaceSnd' !key def f map = Map.insertWith (\_ -> \old_value -> f old_value) key def map
+--replaceSnd' !key def f map = Map.insertWith (\_ -> \old_value -> f old_value) key def map
 
 
 --NOTE: Should this return all matches?  why return a list?
@@ -318,7 +323,7 @@ makeContext rs st js = (rs, memos)
         memos = Map.restrictKeys js (Set.map (\q -> (st,q)) rs) -- (rs, [(st, concatMap (flip filterWithFst ncs) rs)])
 
 --Merged with incContext
-addNT name inp = replaceSnd' (inp,name) 1 (1+)
+addNT !name !inp = Map.insertWith (\_ old_value -> old_value + 1) (inp,name) 1 --replaceSnd' (inp,name) 1 (1+)
 
 --NOTE: could be a Start1 att or and End att
 addNode :: MemoL -> Instance -> (Int, InsAttVals att) -> Result att -> Result att
@@ -380,12 +385,13 @@ checkUsability inp context x@((re,sc),_) = null re || checkUsability_ (findInp i
   --The idea: each sc should have a corresponding cc that is greater than it
   --NOTE: second arg was called scs
   condCheck :: ContextMap -> ContextMap -> Bool
-  condCheck ccs = Map.foldrWithKey' (condCheck_ ccs) True
-  condCheck_ :: ContextMap -> (Int,MemoL) -> Int -> Bool -> Bool
+  --condCheck ccs = Map.foldrWithKey' (condCheck_ ccs) True
+  --condCheck_ :: ContextMap -> (Int,MemoL) -> Int -> Bool -> Bool
   --NOTE: findWithDefault set to -1 to avoid the Maybe, and -1 is strictly below any of the allowed values of cs1
-  condCheck_ ccs n1 cs1 b = (let cs = Map.findWithDefault (-1) n1 ccs in cs >= cs1) && b
+  --condCheck_ ccs n1 cs1 b = (cs1 <= Map.findWithDefault (-1) n1 ccs) && b
 
-  condCheck__ ccs scs = Map.isSubmapOfBy (\cs cs1 -> cs >= cs1) ccs scs --TODO: test this!  it should be equivalent to the original.
+  --Read as "does ccs subsume scs?  is everything in scs inside ccs with a higher count in ccs?"
+  condCheck ccs scs = Map.isSubmapOfBy (\cs1 cs -> cs1 <= cs) scs ccs --TODO: test this!  it should be equivalent to the original.
 
 {-nub (dA ++ dAtts)-}
 --udt == "update table"?
