@@ -20,7 +20,7 @@ import Control.Applicative hiding ((*>), (<|>))
 import Data.Biapplicative
 import Data.Bifunctor
 import qualified Data.Map.Strict as Map
-import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashMap.Lazy as HashMap
 import Control.Monad.State.Strict
 import qualified Data.Ord as Ord
 import qualified Data.Maybe as Maybe
@@ -1390,7 +1390,7 @@ NOTE2: Map needs to be lazy in the values or else the parser will loop indefinit
 NOTE4: so fromListWith in HashMap is actually *NOT* strict in the values!  That means lazy evaluation is still happening!
 https://medium.com/@aleksandrasays/brief-normal-forms-explanation-with-haskell-cd5dfa94a157
 
-A strict HashMap is used because the lists themselves are still lazy.  so evaluating to WHNF is no problem.
+Use HashMap.Lazy to be safe.
 
 -}
 
