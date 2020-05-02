@@ -64,6 +64,7 @@ Finished improvements:
 
 TODO Improvements:
 
+    * Would there be any benefit to a Lazy IntMap, etc?  How aren't the atts not crashing and burning with the strict maps?
     * Use HashMaps/IntMaps everywhere except where Ord is really needed?
     * Extract the constructor from the getter directly?  or construct our own getter using the provided data constructor? would be nice to do getAtt QUEST_VAL atts
        --want to avoid using "typ undefined" in getAttVals

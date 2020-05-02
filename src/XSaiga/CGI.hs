@@ -189,7 +189,7 @@ interpret' input = do
             --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
             let flatQueries = Prelude.foldr mergeFlat ([],[]) sems
             let optQueries = TypeAg2.flatOptimize flatQueries
-            rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
+            rtriples <- TypeAg2.getReducedTriplestore dataStore optQueries
             (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) sems --TODO: save the state for later?  paper opportunity
             if List.null attTrees
                 then return $ Aeson.encode $ XSaigaParseError "Do not know that one yet, will work on it tonight"
@@ -208,7 +208,7 @@ runQuery interp = do
     let g = TypeAg2.getGetts interp
     let flatQueries = TypeAg2.flattenGetts g
     let optQueries = TypeAg2.flatOptimize flatQueries
-    rtriples <- TypeAg2.getReducedTriplestore remoteData optQueries
+    rtriples <- TypeAg2.getReducedTriplestore dataStore optQueries
     (out, _) <- evaluate rtriples interp Map.empty
     return out
 

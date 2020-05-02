@@ -95,6 +95,8 @@ pure_getts_members ev_data set = collect $ setRel
 
 data SPARQLBackend = SPARQL String Text deriving (Ord, Eq)
 
+--TODO: move this to XSaiga.CGI!!
+
 endpointTable :: IORef (M.Map String String)
 {-# NOINLINE endpointTable #-}
 endpointTable = unsafeDupablePerformIO $ newIORef M.empty
