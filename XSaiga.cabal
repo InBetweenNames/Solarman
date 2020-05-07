@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 16c64a13a401121d5c59ad4a0e9f622c15a16497758a5d928c3d010b92117dc6
+-- hash: 2bf8ca1ea560f869d803de4f391d62c15c1bcf4f2a66fdb7b4211509939288d9
 
 name:           XSaiga
 version:        1.6.1.0
@@ -38,12 +38,18 @@ source-repository head
   type: git
   location: https://github.com/InBetweenNames/Solarman
 
+flag instore
+  description: Use built-in triplestore (no network access)
+  manual: True
+  default: False
+
 library
   exposed-modules:
       XSaiga.Getts
       XSaiga.AGParser2
       XSaiga.TypeAg2
       XSaiga.SolarmanTriplestore
+      --XSaiga.Interactive
       XSaiga.LocalData
       XSaiga.CGI
   other-modules:
@@ -61,6 +67,7 @@ library
     , containers >=0.5
     , data-constructors
     , fastcgi
+    , generic-data
     , hashable
     , hsparql >=0.3.6
     , mtl
@@ -71,7 +78,11 @@ library
     , text >=0.11
     , unordered-containers
     , vector
-    , generic-data
+  if flag(instore)
+    ghc-options: -DINSTORE
+  else
+    build-depends:
+        network
   default-language: Haskell2010
 
 executable solarman.cgi
@@ -91,6 +102,7 @@ executable solarman.cgi
     , containers >=0.5
     , data-constructors
     , fastcgi
+    , generic-data
     , hashable
     , hsparql >=0.3.6
     , mtl
@@ -101,6 +113,9 @@ executable solarman.cgi
     , text >=0.11
     , unordered-containers
     , vector
-    , generic-data
+  if flag(instore)
+    ghc-options: -DINSTORE
+  else
+    build-depends:
+        network
   default-language: Haskell2010
-  ghc-options: -rtsopts

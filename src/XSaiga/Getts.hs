@@ -16,9 +16,6 @@ import Data.RDF.Types hiding (triple, Triple)
 import Database.HSparql.Connection
 import Database.HSparql.QueryGenerator
 
---For caching name lookup
-import qualified Network.Socket as Net
-
 import qualified Data.Map as M
 import Data.IORef
 import System.IO.Unsafe
@@ -33,16 +30,16 @@ type GFDBR = [(Text, FDBR)]
 --getts returns all triples in the triple store that match the given parameters
 class TripleStore m where
     getts_triples_entevprop_type :: m -> [Text] -> Text -> IO [Triple]
-    
+
     getts_triples_entevprop :: m -> [Text] -> [Event] -> IO [Triple]
-   
+
     getts_triples_members :: m -> Text -> IO [Triple]
 
 sortFirst = sortBy (\x y -> compare (fst x) (fst y))
 
 --TODO: This is DANGEROUS.  Needs refactoring.
 make_fdbr_with_prop :: [Triple] -> Text -> FDBR
-make_fdbr_with_prop ev_data entity_type 
+make_fdbr_with_prop ev_data entity_type
   = collect $ map (\(x, _, z) -> (z, x)) $ List.filter (\(x, y, z) -> y == entity_type) ev_data
 
 getts_1 ev_data ("?", b, c) = [x | (x,y,z) <- ev_data, b == y, c == z]
@@ -57,9 +54,9 @@ instance TripleStore [Triple] where
       let evs_with_type_ev_type = getts_1 ev_data ("?", "type", ev_type)
       getts_triples_entevprop ev_data propNames evs_with_type_ev_type
 
-    getts_triples_entevprop ev_data propNames evs = 
+    getts_triples_entevprop ev_data propNames evs =
       return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` ("type":propNames)) ev_data
-    
+
     --TODO: can getts_triples_members just be implemented in terms of getts_triples_entevprop_type?
     --getts_triples_members ev_data set = getts_triples_entevprop_type ev_data ["subject", "object"] "membership"
     --yes.  Actually, triplestore retrieval really only needs getts_triples_entevprop_type.
@@ -95,30 +92,10 @@ pure_getts_members ev_data set = collect $ setRel
 
 data SPARQLBackend = SPARQL String Text deriving (Ord, Eq)
 
---TODO: move this to XSaiga.CGI!!
-
-endpointTable :: IORef (M.Map String String)
-{-# NOINLINE endpointTable #-}
-endpointTable = unsafeDupablePerformIO $ newIORef M.empty
-
-lookupEndpoint :: String -> IO String
-lookupEndpoint url = do
-  m <- readIORef endpointTable
-  case M.lookup url m of
-    Nothing -> Net.getAddrInfo Nothing (Just $ getServer url) (Just "http") >>=
-      \x -> (writeIORef endpointTable (M.insert url (newURL (showAddress x) (getURLPath url)) m) >> return (newURL (showAddress x) (getURLPath url)))
-    Just res -> return res
-  where
-  getServer = List.takeWhile (\x -> '/' /= x) . List.drop 7
-  showAddress = show . Net.addrAddress . head
-  getURLPath xs = List.drop (7 + (List.length $ getServer xs)) xs
-  newURL server path = "http://" ++ server ++ path
-
 --the String in this instance is to be the endpoint that you wish to query
 instance TripleStore SPARQLBackend where
     getts_triples_entevprop_type (SPARQL endpoint namespace_uri) propNames ev_type = do
-      resolvedEndpoint <- lookupEndpoint endpoint
-      m <- selectQuery resolvedEndpoint query
+      m <- selectQuery endpoint query
       case m of
         (Just res) -> return $ List.concatMap (\[x, y, z] -> [(removeUri namespace_uri $ deconstruct x, "type", ev_type), (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)]) res
         Nothing -> return []
@@ -135,8 +112,7 @@ instance TripleStore SPARQLBackend where
           selectVars [ev, prop, ent]
 
     getts_triples_entevprop (SPARQL endpoint namespace_uri) propNames evs = do
-      resolvedEndpoint <- lookupEndpoint endpoint
-      m <- selectQuery resolvedEndpoint query
+      m <- selectQuery endpoint query
       case m of
         (Just res) -> return $ map (\[x, y, z] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)) res
         Nothing -> return []
@@ -153,8 +129,7 @@ instance TripleStore SPARQLBackend where
           selectVars [ev, prop, ent]
 
     getts_triples_members (SPARQL endpoint namespace_uri) set = do
-      resolvedEndpoint <- lookupEndpoint endpoint
-      m <- selectQuery resolvedEndpoint query
+      m <- selectQuery endpoint query
       case m of
         (Just res) -> return $ Prelude.concatMap (\[ev, ent] ->
           [(removeUri namespace_uri $ deconstruct ev, "type", "membership"),
@@ -177,8 +152,7 @@ instance TripleStore SPARQLBackend where
     {-getts_members = getts_members'
         where
         getts_members' (SPARQL endpoint namespace_uri) set = do
-            resolvedEndpoint <- lookupEndpoint endpoint
-            m <- selectQuery resolvedEndpoint query
+            m <- selectQuery endpoint query
             case m of
                 (Just res) -> return $ condense $ map (\[x, y] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y)) res
                 Nothing -> return []
@@ -196,9 +170,9 @@ instance TripleStore SPARQLBackend where
                     selectVars [subj, ev]
     -}
 
-removeUri :: Text -> Text -> Text         
+removeUri :: Text -> Text -> Text
 removeUri namespace_uri = T.drop $ T.length namespace_uri
-                      
+
 preprocess :: Text -> IO [[BindingValue]] -> IO [Text]
 preprocess namespace_uri bvals = bvals >>= \x -> return $ map (removeUri namespace_uri . deconstruct) $ concat x
 
@@ -224,7 +198,7 @@ That is, the first element of that equivalence class that appears in the input l
 will be chosen to represent the entire equivalence class in the output.
 
 -}
-    
+
 --Faster collect: runs in n lg n time
 --collect = condense . sortFirst
 collect = Map.toList . Map.fromListWith (++) . map (\(x, y) -> (x, [y]))
@@ -236,7 +210,7 @@ collect = Map.toList . Map.fromListWith (++) . map (\(x, y) -> (x, [y]))
 --condense :: (Eq a, Ord a) => [(a, a)] -> [(a, [a])]
 --condense [] = []
 --condense ((x,y):t) = (x, y:a):(condense r)
---    where 
+--    where
 --    (a, r) = findall x t
 --    findall x [] = ([], [])
 --    findall x list@((t,y):ts) | x /= t = ([], list)
@@ -248,6 +222,6 @@ condense = map (\list -> (fst $ head list, map snd list)) . List.groupBy cmp
 
 --alias for getts_fdbr_entevprop_type
 --make_fdbr :: (TripleStore m) => m -> Text -> Text -> IO FDBR
---make_fdbr = getts_fdbr_entevprop_type 
-    
-    
+--make_fdbr = getts_fdbr_entevprop_type
+
+

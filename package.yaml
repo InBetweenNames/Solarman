@@ -29,6 +29,12 @@ description: |
   .
   \[3] <http://speechweb2.cs.uwindsor.ca/solarman4/demo_sparql.html>
 
+flags:
+  instore:
+    description: Use built-in triplestore (no network access)
+    manual: True
+    default: False
+
 dependencies:
   - base >=4.6 && < 5
   - pretty >= 1.1
@@ -50,6 +56,14 @@ dependencies:
   - vector
   - generic-data
 
+#SPARQL backend
+when:
+  - condition: flag(instore)
+    then:
+      ghc-options: -DINSTORE
+    else:
+      dependencies: network
+
 default-extensions:
   - DoAndIfThenElse
   - OverloadedStrings
@@ -66,6 +80,9 @@ library:
     #- XSaiga.Interactive
     - XSaiga.LocalData
     - XSaiga.CGI
+  #when:
+  #  - condition: flag(instore)
+  #    exposed-modules: XSaiga.LocalData
 
 executables:
   solarman.cgi:
