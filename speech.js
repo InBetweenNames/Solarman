@@ -1,3 +1,5 @@
+var workaround=false;
+
 if (typeof SpeechRecognition === 'undefined')
 {
     var SpeechRecognition;
@@ -6,9 +8,10 @@ if (typeof SpeechRecognition === 'undefined')
 
     if (!(typeof webkitSpeechRecognition === 'undefined'))
     {
-        SpeechRecognition = webkitSpeechRecognition
-        SpeechGrammarList = webkitSpeechGrammarList
-        SpeechRecognitionEvent = webkitSpeechRecognitionEvent
+        SpeechRecognition = webkitSpeechRecognition;
+        SpeechGrammarList = webkitSpeechGrammarList;
+        SpeechRecognitionEvent = webkitSpeechRecognitionEvent;
+        workaround = true;
     }
 }
 
@@ -33,7 +36,15 @@ function loadGrammar(grammar)
     recognition = new SpeechRecognition();
     speechRecognitionList = new SpeechGrammarList();
 
-    speechRecognitionList.addFromString(grammar, 1);
+    //webkit workaround
+    if (workaround)
+    {
+       speechRecognitionList.addFromUri("grammar.jsgf", 1);
+    }
+    else
+    {
+        speechRecognitionList.addFromString(grammar, 1);
+    }
 
     recognition.grammars = speechRecognitionList;
     recognition.continuous = false;
