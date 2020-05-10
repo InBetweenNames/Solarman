@@ -34,6 +34,10 @@ flags:
     description: Use built-in triplestore (no network access)
     manual: True
     default: False
+  asterius:
+    description: Use when building for Asterius -- sets up hooks for querying triplestores via XMLHttpRequest
+    manual: True
+    default: False
 
 dependencies:
   - base >=4.6 && < 5
@@ -63,6 +67,10 @@ when:
       ghc-options: -DINSTORE
     else:
       dependencies: network
+
+  - condition: flag(asterius)
+    ghc-options: -DASTERIUS
+    dependencies: asterius-prelude
 
 default-extensions:
   - DoAndIfThenElse
