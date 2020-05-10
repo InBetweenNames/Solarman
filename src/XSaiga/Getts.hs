@@ -1,6 +1,8 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module XSaiga.Getts where
 import Data.List as List
@@ -18,7 +20,41 @@ import Database.HSparql.QueryGenerator
 
 import qualified Data.Map as M
 import Data.IORef
-import System.IO.Unsafe
+
+import Debug.Trace
+import GHC.Generics
+import Data.Aeson
+
+--If Asterius is being used, override selectQuery with our own implementation
+#ifdef ASTERIUS
+import Asterius.Aeson
+import Asterius.ByteString
+import Asterius.Text
+import Asterius.Types
+
+import qualified Data.Text.IO as TIO
+import qualified System.IO as SIO
+
+foreign import javascript safe "asterius_getts_sparql($1,$2)" asterius_getts_sparql :: JSString -> JSString -> IO JSString
+
+foreign import javascript safe "getts_triples_entevprop_type($1,$2,$3)" asterius_getts_triples_entevprop_type :: JSVal -> JSArray -> JSString -> IO JSArray
+
+--Needs to take in endpoint, namespace uri, preferably as JSON object.  Then needs to take in a set name.
+--need to de-namespace here, not in the function?
+--may be able to use hsparql's direct XML parsing functionality to save a bit of work
+--better yet, do the work in Javascript and return the list of triples directly!!!
+foreign import javascript safe "getts_triples_members($1,$2)" asterius_getts_triples_members :: JSVal -> JSString -> IO JSArray
+
+--TODO: the following is the preferred way to use Asterius, but it does not work yet
+gettsSelectQuery :: String -> Query SelectQuery -> IO (Maybe [[BindingValue]])
+gettsSelectQuery endpoint query = do
+    js_triples_xml <- asterius_getts_sparql (toJSString endpoint) (toJSString $ createSelectQuery query)
+    --SIO.putStrLn $ createSelectQuery query --This is crashing!
+    return $ structureContent $ fromJSString $ js_triples_xml
+#else
+
+gettsSelectQuery = selectQuery
+#endif
 
 addUri namespace_uri = (T.append namespace_uri)
 
@@ -30,8 +66,6 @@ type GFDBR = [(Text, FDBR)]
 --getts returns all triples in the triple store that match the given parameters
 class TripleStore m where
     getts_triples_entevprop_type :: m -> [Text] -> Text -> IO [Triple]
-
-    getts_triples_entevprop :: m -> [Text] -> [Event] -> IO [Triple]
 
     getts_triples_members :: m -> Text -> IO [Triple]
 
@@ -53,9 +87,9 @@ instance TripleStore [Triple] where
     getts_triples_entevprop_type ev_data propNames ev_type = do
       let evs_with_type_ev_type = getts_1 ev_data ("?", "type", ev_type)
       getts_triples_entevprop ev_data propNames evs_with_type_ev_type
-
-    getts_triples_entevprop ev_data propNames evs =
-      return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` ("type":propNames)) ev_data
+        where
+            getts_triples_entevprop ev_data propNames evs =
+                return $ List.filter (\(ev, prop, _) -> ev `elem` evs && prop `elem` ("type":propNames)) ev_data
 
     --TODO: can getts_triples_members just be implemented in terms of getts_triples_entevprop_type?
     --getts_triples_members ev_data set = getts_triples_entevprop_type ev_data ["subject", "object"] "membership"
@@ -90,12 +124,45 @@ pure_getts_members ev_data set = collect $ setRel
     setRel = [(z, x) | (x, y, z) <- ev_data, x `elem` evs, "subject" == y]
 
 
-data SPARQLBackend = SPARQL String Text deriving (Ord, Eq)
+data SPARQLBackend = SPARQL {sparqlEndpoint :: String, sparqlNamespace :: Text} deriving (Generic)
+instance ToJSON SPARQLBackend where
+    toEncoding = genericToEncoding defaultOptions
 
+instance FromJSON SPARQLBackend
+
+--TODO: can't use hsparql with asterius for unknown reason, likely a compiler error
+#ifdef ASTERIUS
+
+instance TripleStore SPARQLBackend where
+    --These need to use the asterius_getts_sparql function... or perhaps, we could cook something else up right in Javascript
+    --I imagine there are Javascript libraries to do SPARQL queries, after all!
+    getts_triples_entevprop_type triplestore@(SPARQL endpoint namespace_uri) propNames ev_type = do
+        js_bindings_array <- asterius_getts_triples_entevprop_type (jsonToJSVal triplestore) (toJSArray $ map jsonToJSVal propNames) (textToJSString ev_type)
+        let js_bindings = fromJSArray js_bindings_array
+        let bindings = map (\x -> jsonFromJSVal' x :: (T.Text, T.Text, T.Text)) js_bindings
+        return $ List.concatMap (\(ev,prop,ent) -> [(ev, "type", ev_type), (ev, prop, ent)]) bindings
+
+    getts_triples_members triplestore@(SPARQL endpoint namespace_uri) set = do
+        js_bindings_array <- asterius_getts_triples_members (jsonToJSVal triplestore) (textToJSString set)
+        let js_bindings = fromJSArray js_bindings_array
+        let bindings = map (\x -> jsonFromJSVal' x :: (T.Text, T.Text)) js_bindings
+        --now we have the [(ev,ent)] bindings from before, already de-namespaced and deconstructed in javascript
+        return $ List.concatMap (\(ev,ent) -> [(ev, "type", "membership"), (ev, "subject", ent), (ev, "object", set)]) bindings
+
+    {-getts_triples_members triplestore@(SPARQL endpoint namespace_uri) set = do
+        js_triples_xml <- asterius_getts_triples_members triplestore set
+        return $ case structureContent $ fromJSString $ js_triples_xml of
+            Just res -> Prelude.concatMap (\[ev, ent] ->
+          [(removeUri namespace_uri $ deconstruct ev, "type", "membership"),
+          (removeUri namespace_uri $ deconstruct ev, "subject", removeUri namespace_uri $ deconstruct ent),
+          (removeUri namespace_uri $ deconstruct ev, "object", set)]) res
+            Nothing -> []-}
+
+#else
 --the String in this instance is to be the endpoint that you wish to query
 instance TripleStore SPARQLBackend where
     getts_triples_entevprop_type (SPARQL endpoint namespace_uri) propNames ev_type = do
-      m <- selectQuery endpoint query
+      m <- gettsSelectQuery endpoint query
       case m of
         (Just res) -> return $ List.concatMap (\[x, y, z] -> [(removeUri namespace_uri $ deconstruct x, "type", ev_type), (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)]) res
         Nothing -> return []
@@ -111,25 +178,8 @@ instance TripleStore SPARQLBackend where
           filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames --type required here as this is not an FDBR
           selectVars [ev, prop, ent]
 
-    getts_triples_entevprop (SPARQL endpoint namespace_uri) propNames evs = do
-      m <- selectQuery endpoint query
-      case m of
-        (Just res) -> return $ map (\[x, y, z] -> (removeUri namespace_uri $ deconstruct x, removeUri namespace_uri $ deconstruct y, removeUri namespace_uri $ deconstruct z)) res
-        Nothing -> return []
-      where
-        query :: Query SelectQuery
-        query = do
-          sol <- prefix "sol" (iriRef namespace_uri)
-          ev <- var
-          prop <- var
-          ent <- var
-          triple ev prop ent
-          filterExpr $ List.foldr1 (.||.) $ map ((ev .==.) . (sol .:. )) evs
-          filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames
-          selectVars [ev, prop, ent]
-
     getts_triples_members (SPARQL endpoint namespace_uri) set = do
-      m <- selectQuery endpoint query
+      m <- gettsSelectQuery endpoint query
       case m of
         (Just res) -> return $ Prelude.concatMap (\[ev, ent] ->
           [(removeUri namespace_uri $ deconstruct ev, "type", "membership"),
@@ -146,7 +196,7 @@ instance TripleStore SPARQLBackend where
           triple ev (sol .:. "subject") ent
           triple ev (sol .:. "object") (sol .:. set)
           selectVars [ev, ent]
-
+#endif
     --Used to return FDBR directly
     --Efficient implementation of getts_members for SPARQL backend
     {-getts_members = getts_members'

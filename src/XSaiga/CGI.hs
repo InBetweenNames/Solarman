@@ -70,6 +70,11 @@ cgiMain dataStore = do
         setHeader "Content-type" "text/plain; charset=utf-8"
         outputFPS out
 
+remoteData = Getts.SPARQL endpoint_uri namespace_uri
+    where
+        endpoint_uri = "http://speechweb2.cs.uwindsor.ca:8890/sparql"
+        namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
+
 --Inside an #ifdef to avoid the network-based dependencies, helps keep size down for completely offline builds
 main :: IO ()
 #ifdef INSTORE
@@ -77,14 +82,12 @@ main = do
     runFastCGIorCGI (handleErrors $ cgiMain Local.localData) --No need to resolve anything
 #else
 main = do
-    resolved_endpoint <- resolveEndpoint endpoint_uri
-    runFastCGIorCGI (handleErrors $ cgiMain (Getts.SPARQL resolved_endpoint namespace_uri))
+    resolved_endpoint <- resolveEndpoint remoteData
+    runFastCGIorCGI (handleErrors $ cgiMain resolved_endpoint)
     where
-        endpoint_uri = "http://speechweb2.cs.uwindsor.ca/sparql"
-        namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
-        resolveEndpoint url = do
+        resolveEndpoint (Getts.SPARQL url namespace_uri) = do
             x <- Net.getAddrInfo Nothing (Just $ getServer url) (Just "http")
-            return $ newURL (showAddress x) (getURLPath url)
+            return $ Getts.SPARQL (newURL (showAddress x) (getURLPath url)) namespace_uri
             where
                 getServer = List.takeWhile (\x -> '/' /= x) . List.drop 7 --drop the "http://" part and take until the first "/" character
                 showAddress = show . Net.addrAddress . List.head
