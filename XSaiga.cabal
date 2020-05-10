@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2bf8ca1ea560f869d803de4f391d62c15c1bcf4f2a66fdb7b4211509939288d9
+-- hash: a015a64b83a16fb1cbb803e59ecd89bfdb96843a2d4cc18f547af9f465feb72d
 
 name:           XSaiga
 version:        1.6.1.0
@@ -38,6 +38,11 @@ source-repository head
   type: git
   location: https://github.com/InBetweenNames/Solarman
 
+flag asterius
+  description: Use when building for Asterius -- sets up hooks for querying triplestores via XMLHttpRequest
+  manual: True
+  default: False
+
 flag instore
   description: Use built-in triplestore (no network access)
   manual: True
@@ -49,7 +54,6 @@ library
       XSaiga.AGParser2
       XSaiga.TypeAg2
       XSaiga.SolarmanTriplestore
-      --XSaiga.Interactive
       XSaiga.LocalData
       XSaiga.CGI
   other-modules:
@@ -83,6 +87,10 @@ library
   else
     build-depends:
         network
+  if flag(asterius)
+    ghc-options: -DASTERIUS
+    build-depends:
+        asterius-prelude
   default-language: Haskell2010
 
 executable solarman.cgi
@@ -118,4 +126,8 @@ executable solarman.cgi
   else
     build-depends:
         network
+  if flag(asterius)
+    ghc-options: -DASTERIUS
+    build-depends:
+        asterius-prelude
   default-language: Haskell2010
