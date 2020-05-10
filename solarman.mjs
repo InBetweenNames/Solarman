@@ -9,7 +9,7 @@ function set_query(query)
     input_query = query;
 }
 
-async function getText()
+async function get_query()
 {
   return input_query;
 }
@@ -159,17 +159,73 @@ async function getts_sparql(endpoint, query)
   return fetch(endpoint/*, { headers: headers }*/).then(async response => response.text());
 }
 
+async function update_results(results_string)
+{
+    var data = JSON.parse(results_string);
+
+    if (Array.isArray(data))
+    {
+        $("#result").html("");
+        data.forEach(function(item, index) {
+                var builder = "";
+                builder += "<b>result:</b> " + item.res + "<br/>";
+                builder += "<b>syntax:</b> " + item.syntax + "<br/>";
+                builder += "<br/>";
+                $("#result").append(builder);
+
+                if (!(typeof window.speechSynthesis === 'undefined'))
+                {
+                    if (data.length == 1)
+                    {
+                        var utterThis = new SpeechSynthesisUtterance(item.res);
+                        window.speechSynthesis.speak(utterThis);
+                    }
+                    else
+                    {
+                        var utterThis = new SpeechSynthesisUtterance("result " + (index + 1) + ": " + item.res + ".");
+                        window.speechSynthesis.speak(utterThis);
+                    }
+                }
+            });
+    }
+    else if (!(typeof data.resError === 'undefined'))
+    {
+        $("#querygroup").addClass("has-danger");
+        $("#query").addClass("form-control-danger");
+        $("#result").html(data.resError);
+        $("#query").addClass("is-invalid");
+
+        if (!(typeof window.speechSynthesis === 'undefined'))
+        {
+            var utterThis = new SpeechSynthesisUtterance(data.resError);
+            window.speechSynthesis.speak(utterThis);
+        }
+    }
+    else if (!(typeof data.resConversation === 'undefined'))
+    {
+        var res = data.resConversation;
+        $("#result").html(res);
+
+        if (!(typeof window.speechSynthesis === 'undefined'))
+        {
+            var utterThis = new SpeechSynthesisUtterance(res);
+            window.speechSynthesis.speak(utterThis);
+        }
+    }
+}
+
 module.then(m => rts.newAsteriusInstance(Object.assign(req, {module: m}))).then(async i => {
   //i.exports.hs_init();
   //i.exports.main().catch(err => {if (!(err.startsWith('ExitSuccess') || err.startsWith('ExitFailure '))) i.fs.writeSync(2, `solarman: ${err}`)});
   //console.log(await i.exports.parse_query(1));
   //const r = i.exports.parse_query("Hello world");
   window.asterius = i;
-  window.getText = getText;
+  window.get_query = get_query;
   window.getts_sparql = getts_sparql;
   window.getts_triples_members = getts_triples_members;
   window.getts_triples_entevprop_type = getts_triples_entevprop_type;
   window.set_query = set_query;
-  console.log(i);
-  i.exports.main();
+  window.update_results = update_results;
+  //console.log(i);
+  //i.exports.main();
 });

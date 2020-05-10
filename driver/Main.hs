@@ -19,7 +19,11 @@ import Asterius.ByteString
 import Asterius.Text
 import Asterius.Types
 
-foreign import javascript safe "getText()" getText :: IO JSString
+import qualified Data.Text.Encoding as TE
+import qualified Data.ByteString.Lazy as BL
+
+foreign import javascript safe "get_query()" get_query :: IO JSString
+foreign import javascript safe "update_results($1)" update_results :: JSString -> IO ()
 
 #ifdef INSTORE
 dataStore = Local.localData
@@ -28,11 +32,10 @@ dataStore = C.remoteData
 #endif
 
 main = do
-    jsString <- getText
+    jsString <- get_query
     let input_query = textFromJSString $ jsString
-    TIO.putStrLn $ input_query
-    C.interpret''' dataStore input_query
-
+    json_utf8 <- C.interpret' dataStore input_query
+    update_results $ textToJSString (TE.decodeUtf8 $ BL.toStrict json_utf8)
 #else
 
 main = C.main
