@@ -2,8 +2,11 @@ packages: .
 optional-packages:
   cross-deps/{comonad,distributive}
   workaround-deps/{MissingH,rdf4h}
+  asterius-deps/hsparql
   asterius-deps/html-entities
   asterius-deps/hs-certificate/{x509,x509-store,x509-system,x509-util,x509-validation}
+  asterius-deps/hsc2hs
+  asterius-deps/parsers
 
 
 --Required for Asterius: pass on command line ideally
