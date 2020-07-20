@@ -28,7 +28,7 @@ foreign import javascript safe "update_results($1)" update_results :: JSString -
 #ifdef INSTORE
 dataStore = Local.localData
 #else
-dataStore = C.remoteData
+dataStore = C.asteriusRemoteData
 #endif
 
 main = do

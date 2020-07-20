@@ -70,10 +70,13 @@ cgiMain dataStore = do
         setHeader "Content-type" "text/plain; charset=utf-8"
         outputFPS out
 
-remoteData = Getts.SPARQL endpoint_uri namespace_uri
-    where
-        endpoint_uri = "http://speechweb2.cs.uwindsor.ca:8890/sparql"
-        namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
+namespace_uri = "http://solarman.richard.myweb.cs.uwindsor.ca#"
+endpoint_uri = "speechweb2.cs.uwindsor.ca/sparql"
+
+--Asterius requires https
+asteriusRemoteData = Getts.SPARQL ("https://" ++ endpoint_uri) namespace_uri
+--CGI requires http (Network.FastCGI limitation)
+cgiRemoteData = Getts.SPARQL ("http://" ++ endpoint_uri) namespace_uri
 
 --Inside an #ifdef to avoid the network-based dependencies, helps keep size down for completely offline builds
 main :: IO ()
@@ -81,15 +84,15 @@ main :: IO ()
 main = do
     runFastCGIorCGI (handleErrors $ cgiMain Local.localData) --No need to resolve anything
 #else
-main = do
-    resolved_endpoint <- resolveEndpoint remoteData
+main = do --For CGI, not Asterius
+    resolved_endpoint <- resolveEndpoint cgiRemoteData
     runFastCGIorCGI (handleErrors $ cgiMain resolved_endpoint)
     where
         resolveEndpoint (Getts.SPARQL url namespace_uri) = do
-            x <- Net.getAddrInfo Nothing (Just $ getServer url) (Just "http")
+            x <- Net.getAddrInfo Nothing (Just $ getServer url) (Just "http") --Network.FastCGI requires plain HTTP :(
             return $ Getts.SPARQL (newURL (showAddress x) (getURLPath url)) namespace_uri
             where
-                getServer = List.takeWhile (\x -> '/' /= x) . List.drop 7 --drop the "http://" part and take until the first "/" character
+                getServer = List.takeWhile (\x -> not $ x `elem` ['/']) . List.drop 7 --drop the "http://" part and take until the first "/" character
                 showAddress = show . Net.addrAddress . List.head
                 getURLPath xs = List.drop (7 + (List.length $ getServer xs)) xs
                 newURL server path = "http://" ++ server ++ path
