@@ -2,3 +2,12 @@
 *.hi
 *.ghc.environment.*
 stack.yaml.lock
+.nvimlog
+.vscode
+*.prof
+*.cgi
+*.cgi.*
+*.svg
+dist-newstyle
+asterius-deps
+cabal.project.local
