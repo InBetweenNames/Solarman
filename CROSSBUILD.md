@@ -55,7 +55,7 @@ To build for wasm (using Asterius):
 To run:
 
 ~~~
-stack exec ahc-dist -- --browser --input-exe dist-newstyle/build/x86_64-linux/ghc-8.8.3/XSaiga-1.6.1.0/x/solarman.cgi/build/solarman.cgi/solarman.cgi
+stack exec ahc-dist -- --browser --input-mjs solarman.mjs --input-exe dist-newstyle/build/x86_64-linux/ghc-8.8.3/XSaiga-1.6.1.0/x/solarman.cgi/build/solarman.cgi/solarman.cgi
 ~~~
 
 Change `--browser` to `--run` if you want to run it on the command line.  `--run` doesn't work just yet.
