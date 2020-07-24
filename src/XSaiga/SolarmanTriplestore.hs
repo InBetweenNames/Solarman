@@ -11,7 +11,7 @@ import Data.List as List hiding (words, unwords)
 import qualified Data.Text as T
 import qualified Data.Text.Read as TR
 import qualified Data.Set as Set
-import XSaiga.AGParser2
+import XSaiga.AGParser2 hiding (Result)
 import XSaiga.TypeAg2
 import Control.Monad
 import Debug.Trace
@@ -33,84 +33,213 @@ subset s t = (s \\ t) == []
 --TODO: MERGE IMAGES PROPER
 
 --copied from gangster_v4: combinators
-termor' :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
-termor' = (liftA2 . liftA2 $ union_fdbr'') >|< liftA2 (GettsUnion GU_NounOr)
+termor' :: SemFunc ((TF Result -> TF Result) -> (TF Result -> TF Result) -> TF Result -> TF Result)
+termor' = (liftA2 . liftA2 $ union_result'') >|< liftA2 (GettsUnion GU_NounOr)
 
-termor :: (TFMemo FDBR -> TFMemo FDBR) -> (TFMemo FDBR -> TFMemo FDBR) -> TFMemo FDBR -> TFMemo FDBR
-termor = liftA2 $ wrapS2 $ (liftA2 union_fdbr'') >|< (GettsUnion GU_NounOr)
+termor :: (TFMemo Result -> TFMemo Result) -> (TFMemo Result -> TFMemo Result) -> TFMemo Result -> TFMemo Result
+termor = liftA2 $ wrapS2 $ (liftA2 union_result'') >|< (GettsUnion GU_NounOr)
 --termor = liftA2 union_fdbr
 
 --see MSc thesis for explanation of why termand is in terms of termor
-termand'' :: FDBR -> FDBR -> FDBR
-termand'' nph vbph = if not (List.null $ nph) && not (List.null $ vbph) then union_fdbr'' nph vbph else []
+--NOTE: these are actually two termphrases applied already to their arguments
+--e.g., "hall and galileo spin" => "hall spins and galileo spins", which is true if both are non-empty
+--following convention of sentjoin
+termand''' :: FDBR -> FDBR -> FDBR
+termand''' nph vbph = if not (List.null $ nph) && not (List.null $ vbph) then union_fdbr nph vbph else []
+
+--NOTE: this looks a lot like sentand/sentor
+termand'' :: CardinalityFunction -> Result -> Result -> Result
+termand'' cardinality nph vbph = if cardinality nph > 0 && cardinality vbph > 0 then union_result'' nph vbph else FDBR []
+--termand''' nph vbph  --"spins" is the applied argument to both termphrases
+--"not spins" is the applied argument to both termphrases, nph is set, vbph is comp (hall, not galileo)
+--"not spins" is the applied argument to both termphrases, nph is comp, vbph is set
+--"not spins" is the applied argument to both termphrases, both comp (not hall, not galileo)
 
 --May need to be changed to intersection?  Don't think so:  can't remove anything from nub (t1++t2) because all things are relevant to either t1 or t2
---TODO: MERGE IMAGES PROPER (or do termphrases always preserve ents)
-termand' :: SemFunc ((TF FDBR -> TF FDBR) -> (TF FDBR -> TF FDBR) -> TF FDBR -> TF FDBR)
-termand' = (liftA2 . liftA2 $ termand'') >|< liftA2 (GettsUnion GU_NounAnd)
+termand' :: SemFunc ((TF Result -> TF Result) -> (TF Result -> TF Result) -> TF Result -> TF Result)
+termand' = (liftA2 . applyCard $ termand'') >|< liftA2 (GettsUnion GU_NounAnd)
 
-termand :: (TFMemo FDBR -> TFMemo FDBR) -> (TFMemo FDBR -> TFMemo FDBR) -> TFMemo FDBR -> TFMemo FDBR
-termand = liftA2 $ wrapS2 $ (liftA2 termand'') >|< (GettsUnion GU_NounAnd)
+termand :: (TFMemo Result -> TFMemo Result) -> (TFMemo Result -> TFMemo Result) -> TFMemo Result -> TFMemo Result
+termand = liftA2 $ wrapS2 $ (applyCard termand'') >|< (GettsUnion GU_NounAnd)
+
+nounnot'' :: Result -> Result
+nounnot'' nph = case nph of
+    FDBR a -> ComplementFDBR a
+    ComplementFDBR a -> FDBR a
+
+nounnot' :: SemFunc (TF Result -> TF Result)
+nounnot' = liftA nounnot'' >|< GettsComplement
+
+nounnot = wrapS1 $ nounnot'
+
+nounnon = nounnot
+
+termnot'' :: (Result -> Result) -> Result -> Result
+--termnot tmph vbph@(FDBR set) = intersect_fdbr'' vbph (nounnot $ tmph vbph)  --FDBR $ set `difference_fdbr` (tmph vbph), tmph vbph is always FDBR for FDBR input? seems so
+--termnot tmph vbph@(ComplementFDBR set) = intersect_fdbr'' (nounnot $ tmph vbph) vbph --nounnot $ union_fdbr'' (tmph vbph) (FDBR set)
+--NOTE: this is new and should definitely go in the paper (if it works!) -- "(not hall) discovered" maps to discovered - hall
+--"discovered not phobos" vs "discovered no moon", elaborate on differences (`phobos discovered no moon` is true while `phobos discovered not phobos` should be false...)
+termnot'' tmph vbph = intersect_result'' (nounnot'' $ tmph vbph) vbph --TODO: can this be defined in terms of nounnot?
+
+termnot' :: (TF Result -> TF Result) -> TF Result -> TF Result
+termnot' tmph vbph = liftA2 intersect_result'' (nounnot'' . tmph vbph) vbph
+
+termnot :: (TFMemo Result -> TFMemo Result) -> TFMemo Result -> TFMemo Result
+termnot tmph vbph = intersect_result (nounnot $ tmph vbph) vbph --TODO: is GI_NounAnd good enough here?  Should be GI_NounAndNot? is `(not hall) spins` the same as `a spinner (not (hall spins))`? I think so
 
 --TODO: FDBRs are sorted.  Use that to improve this.
-intersect_fdbr'' _ [] = []
-intersect_fdbr'' [] _ = []
-intersect_fdbr'' fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
+--TODO: verify sorted -- new representation?
+intersect_fdbr :: FDBR -> FDBR -> FDBR
+intersect_fdbr _ [] = []
+intersect_fdbr [] _ = []
+intersect_fdbr fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
   = case compare e1 e2 of
-      LT -> intersect_fdbr'' eei1 fdbr2
-      EQ -> (e2, evs2):(intersect_fdbr'' eei1 eei2)
-      GT -> intersect_fdbr'' fdbr1 eei2
+      LT -> intersect_fdbr eei1 fdbr2
+      EQ -> (e2, evs2):(intersect_fdbr eei1 eei2)
+      GT -> intersect_fdbr fdbr1 eei2
 
-{-intersect_fdbr'' eei1 eei2
+--TODO: add grammar rules for termph AFTER prepositions
+
+--TODO: define difference, event preservation?
+--NOTE: requires FDBR be sorted...
+--NOTE: this is like `a - b`
+difference_fdbr :: FDBR -> FDBR -> FDBR
+difference_fdbr xs [] = xs
+difference_fdbr [] _ = []
+difference_fdbr fdbr1@((e1, evs1):eei1) fdbr2@((e2, evs2):eei2)
+    = case compare e1 e2 of
+      LT -> (e1, evs1):difference_fdbr eei1 fdbr2
+      EQ -> difference_fdbr eei1 fdbr2
+      GT -> difference_fdbr fdbr1 eei2
+
+--TODO: burden on caller to know that if cardinality of complement == 0 then False?  Or explicitly return FDBR []?
+
+intersect_result'' :: Result -> Result -> Result
+intersect_result'' (FDBR a) (FDBR b) = FDBR $ intersect_fdbr a b
+intersect_result'' (FDBR a) (ComplementFDBR b) = FDBR $ difference_fdbr a b
+intersect_result'' (ComplementFDBR a) (FDBR b) = FDBR $ difference_fdbr b a
+intersect_result'' (ComplementFDBR a) (ComplementFDBR b) = ComplementFDBR $ union_fdbr a b
+
+--TODO TRYING: explicit [] handling -- this makes functions like "which" easier, may also assist with "the least"?
+--should we always force 0 cardinality == FDBR []?
+--currently this function is used in "which"
+intersect_result''_ :: CardinalityFunction -> Result -> Result -> Result
+intersect_result''_ cardinality nph vbph = if cardinality res == 0 then FDBR [] else res
+    where
+        res = intersect_result'' nph vbph
+
+{-intersect_fdbr eei1 eei2
   = [(subj2, evs2) | (subj1, evs1) <- eei1, (subj2, evs2) <- eei2, subj1 == subj2]-}
 
-intersect_fdbr' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-intersect_fdbr' = liftA2 intersect_fdbr'' >|< GettsIntersect GI_NounAnd
+intersect_result' :: SemFunc (TF Result -> TF Result -> TF Result)
+intersect_result' = liftA2 intersect_result'' >|< GettsIntersect GI_NounAnd
 
-intersect_fdbr = wrapS2 intersect_fdbr'
+intersect_result = wrapS2 intersect_result'
 
-union_fdbr'' :: FDBR -> FDBR -> FDBR
-union_fdbr'' fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
+union_fdbr :: FDBR -> FDBR -> FDBR
+union_fdbr fdbr1 fdbr2 = Map.toList $ Map.fromListWith (++) (fdbr1 ++ fdbr2)
 
-union_fdbr' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-union_fdbr' = liftA2 union_fdbr'' >|< GettsUnion GU_NounOr
+union_result'' :: Result -> Result -> Result
+union_result'' (FDBR a) (FDBR b) = FDBR $ union_fdbr a b
+union_result'' (FDBR a) (ComplementFDBR b) = ComplementFDBR $ b `difference_fdbr` a
+union_result'' (ComplementFDBR a) (FDBR b) = ComplementFDBR $ a `difference_fdbr` b
+union_result'' (ComplementFDBR a) (ComplementFDBR b) = ComplementFDBR $ a `intersect_fdbr` b
 
-union_fdbr = wrapS2 union_fdbr'
+--TRYING: explicit [] handling (needed? this isn't used right now)
+{-
+union_result''_ :: CardinalityFunction -> Result -> Result -> Result
+union_result''_ cardinality nph vbph = if cardinality res == 0 then FDBR [] else res
+    where
+        res = union_result'' nph vbph
+-}
 
-nounand = intersect_fdbr
+--TODO: REMEMBER liftA2 here instead if applyCard ''_ is causing issues
+union_result' :: SemFunc (TF Result -> TF Result -> TF Result)
+union_result' = liftA2 union_result'' >|< GettsUnion GU_NounOr
+
+union_result = wrapS2 union_result'
+
+nounand = intersect_result
 
 that = nounand
 
 --TODO: MERGE IMAGES PROPER (verify)
 
-nounor = union_fdbr
+nounor = union_result
 
 {-a' nph vbph =
     length (intersect  nph vbph) /= 0-}
-a = intersect_fdbr
+a = intersect_result --WITH CAVEAT: a "non moon" "not spins" is FALSE if cardinality of complement == 0! this means FDBR [] and ComplementFDBR [...everything...] are treated the same
 any' = a
 the = a
 some = a
 an = a
 
-every'' :: FDBR -> FDBR -> FDBR
-every'' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr'' nph vbph
+every''' :: FDBR -> FDBR -> FDBR
+every''' nph vbph | subset (map fst nph) (map fst vbph) = intersect_fdbr nph vbph
                 | otherwise = []
 
-every' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-every' = liftA2 every'' >|< GettsIntersect GI_Every
+cardinality' _ (FDBR nph) = List.length nph
+cardinality' (Just num_ents) (ComplementFDBR nph) = num_ents - List.length nph
+cardinality' Nothing _ = error "cardinality of complement requested, but it has not been retrived"
+
+--apply the cardinality of the entity set of the triplestore to the provided function
+--TODO: rename to applyCard2?
+applyCard :: (CardinalityFunction -> Result -> Result -> a) -> TF Result -> TF Result -> TF a
+applyCard f nph vbph rtriples = liftA2 (f $ cardinality' mCard) nph vbph rtriples
+    where
+        mCard = getCardinality rtriples
+
+applyCard1 :: (CardinalityFunction -> Result -> a) -> TF Result -> TF a
+applyCard1 f nph rtriples = liftA (f $ cardinality' mCard) nph rtriples
+    where
+        mCard = getCardinality rtriples
+
+
+every'' :: CardinalityFunction -> Result -> Result -> Result
+every'' cardinality nph vbph = if cardinality res == cardinality nph then res else FDBR []
+    where
+        res = intersect_result'' nph vbph
+
+--observation: if no negation appears in the query, then num_ents isn't needed.
+
+--TODO: store FDBR as a map instead of a list??
+
+--every moon spins = false, if there exists a moon entity that does not spin (moon - spins is not empty)
+--every moon (not spins) = false, if there exists a moon entity that spins (moon intersect spins is not empty)
+--every (not moon) spins = false, if there exists a non-moon entity that does not spin (counterexample fdbr?  need only one counterexample...)
+--true, otherwise
+--   if every (not moon) spins is false, then that means a (not moon) (not spins), that is comp(moon union spins) is not empty -- sufficient to test cardinality of moon union spins == #ents
+--every (not moon) (not spins) = false, if there exists a non-moon entity that spins (findable via spins - moon not empty)
+--true, otherwise
+
+every' :: SemFunc (TF Result -> TF Result -> TF Result)
+every' = applyCard every'' >|< GettsIntersect GI_Every
 
 every = wrapS2 every'
 
-most'' :: FDBR -> FDBR -> FDBR
-most'' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
+most''' :: FDBR -> FDBR -> FDBR
+most''' nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else []
   where
-    nph_v = intersect_fdbr'' nph vbph
+    nph_v = intersect_fdbr nph vbph
     n_nph = fromIntegral $ length nph
     n_nph_v = fromIntegral $ length nph_v
 
-most' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-most' = liftA2 most'' >|< GettsIntersect GI_Most
+--NOTE: cardinality seems to be really important...
+--NOTE: can we query it from the triplestore directly? e.g, query cardinality of sets, number of entities...
+--      seems to be important for handling of "the most" superlatives too
+
+--Encode cardinality of FDBR directly into it?
+
+most'' :: CardinalityFunction -> Result -> Result -> Result
+most'' cardinality nph vbph = if n_nph /= 0 && (n_nph_v / n_nph) > 0.5 then nph_v else FDBR []
+    where
+        nph_v = intersect_result'' nph vbph
+        n_nph = fromIntegral $ cardinality nph
+        n_nph_v = fromIntegral $ cardinality nph_v
+
+most' :: SemFunc (TF Result -> TF Result -> TF Result)
+most' = applyCard most'' >|< GettsIntersect GI_Most
 
 most = wrapS2 most'
 
@@ -120,59 +249,116 @@ no' nph vbph =
 no = liftM2 no'
 -}
 
+--TODO: move FDBR functions to XSaiga.FDBR
+--import XSaiga.FDBR as FDBR.
+--rename intersect,difference,union to match?
+--import XSaiga.Result too?
+--want to express that these are building blocks to work with
+
+--no moons spin: if true, then spin, if false, then []?
+--TODO: COMP set if false??? can't remember!
+    --specifically transitive verbs
+--alternatively: COMP not? i think this is right though
+no'' :: CardinalityFunction -> Result -> Result -> Result
+no'' cardinality nph (FDBR []) = ComplementFDBR [] --Special, to indicate truth?  SEE NOTES (TODO)
+no'' cardinality nph vbph = if cardinality res == 0 then vbph else FDBR []
+    where
+        res = intersect_result'' nph vbph
+
+no' = applyCard no'' >|< GettsIntersect GI_None
+
+no = wrapS2 no'
+
+none = no
+
 {- TODO:
 none' nph vbph =
     no nph vbph
 none = liftM2 none'
 -}
 
-one'' :: FDBR -> FDBR -> FDBR
-one'' nph vbph   | length res == 1 = res
+one''' :: FDBR -> FDBR -> FDBR
+one''' nph vbph   | length res == 1 = res
                 | otherwise = []
     where
-      res = intersect_fdbr'' nph vbph
+      res = intersect_fdbr nph vbph
 
-one' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-one' = liftA2 one'' >|< GettsIntersect (GI_Number 1)
+one'' :: CardinalityFunction -> Result -> Result -> Result
+one'' cardinality nph vbph = let res = intersect_result'' nph vbph in if cardinality res == 1 then res else FDBR []
+
+one' :: SemFunc (TF Result -> TF Result -> TF Result)
+one' = applyCard one'' >|< GettsIntersect (GI_Number 1)
 
 one = wrapS2 one'
 
-two'' nph vbph   | length res == 2 = res
+two''' nph vbph   | length res == 2 = res --same thing here
                 | otherwise = []
     where
-      res = intersect_fdbr'' nph vbph
+      res = intersect_fdbr nph vbph
 
-two' :: SemFunc (TF FDBR -> TF FDBR -> TF FDBR)
-two' = liftA2 two'' >|< GettsIntersect (GI_Number 2)
+two'' :: CardinalityFunction -> Result -> Result -> Result
+two'' cardinality nph vbph = let res = intersect_result'' nph vbph in if cardinality res == 2 then res else FDBR []
+
+two' :: SemFunc (TF Result -> TF Result -> TF Result)
+two' = applyCard two'' >|< GettsIntersect (GI_Number 2)
 
 two = wrapS2 two'
 
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
 
-which'' :: FDBR -> FDBR -> T.Text
-which'' nph vbph = if not $ T.null result then result else "none."
+which''' :: FDBR -> FDBR -> T.Text
+which''' nph vbph = if not $ T.null result then result else "none."
   where
-  result = T.unwords $ map fst $ intersect_fdbr'' nph vbph
+  result = T.unwords $ map fst $ intersect_fdbr nph vbph
 
-which' :: SemFunc (TF FDBR -> TF FDBR -> TF T.Text)
-which' = liftA2 which'' >|< GettsIntersect (GI_Which)
+--TODO: ADD COMMAS
+--the complement of the empty set denotes everything
+everything = ComplementFDBR []
+
+--3 cases
+--  1. result FDBR -> the usual
+--  2. a. result Comp, cardinality of complement == everything -> everything
+--  2. b. result Comp, otherwise -> everything except these:
+which'' :: CardinalityFunction -> Result -> Result -> T.Text
+{-
+which'' cardinality f1@(ComplementFDBR nph) f2@(ComplementFDBR vbph) = let r@(ComplementFDBR res) = intersect_result'' f1 f2 in
+    if cardinality r == cardinality everything then "none." --mention this in paper, qutie elegant!  could we do this directly in intersect_result?
+    else T.concat ["everything except these: ", (T.unwords $ map fst $ res)] --TODO: special case of card COMP ==0 and also commas!!!
+which'' cardinality nph vbph = let FDBR res = intersect_result'' nph vbph in if not $ List.null res then T.unwords $ map fst $ res else "none."
+-}
+
+--TODO: ADD COMMAS
+which'' cardinality nph vbph =
+    case intersect_result''_ cardinality nph vbph of
+    FDBR res -> if not $ List.null res then T.unwords $ map fst $ res else "none."
+    ComplementFDBR res -> if not $ List.null res then T.concat["everything except: ", T.unwords $ map fst $ res] else "everything." --"all of them"?
+
+which' :: SemFunc (TF Result -> TF Result -> TF T.Text)
+which' = applyCard which'' >|< GettsIntersect (GI_Which)
 
 --which = liftS2 which'' (GettsIntersect (GI_Which))
 --T.Text is not memoized
 --need: unique name, but unmemoized result
 --like liftS, but SKIPS memoization
-which :: TFMemo FDBR -> TFMemo FDBR -> TFMemo T.Text
+which :: TFMemo Result -> TFMemo Result -> TFMemo T.Text
 which = wrapT2 which'
 --which (nph_tf, nph_g) (vbph_tf, vbph_g) = (f, g)
 --    where
 --        g = GettsIntersect (GI_Which) nph_g vbph_g
 --        f = liftA2 (liftM2 which'') nph_tf vbph_tf
 
-how_many'' nph vbph = tshow $ List.length (intersect_fdbr'' nph vbph)
-how_many' = liftA2 how_many'' >|< GettsIntersect (GI_HowMany)
+how_many''' nph vbph = tshow $ List.length (intersect_fdbr nph vbph)
 
---TODO MEMO: would REALLY like to say liftM2 here to skip memoization
+-- how many not moons not spin? need cardinality!
+--NOTE: major contribution of paper: encoding of cardinality of complement?  but how do we know when to request it?  can we make it optional?
+--major alleviation: using the triplestore itself to do what it's best at
+--major alleviation: using a map as the FDBR makes counting easier
+how_many'' cardinality nph vbph = let res = intersect_result'' nph vbph in tshow $ cardinality res
+
+how_many' = applyCard how_many'' >|< GettsIntersect (GI_HowMany)
+
+--NOTE MEMO: would REALLY like to say liftM2 here to skip memoization
 --but we can't because then it would not have a name and it would be top-level!
 --how_many = liftS2 how_many'' (GettsIntersect (GI_HowMany))
 how_many = wrapT2 how_many'
@@ -185,9 +371,35 @@ how_many = wrapT2 how_many'
 
 who = which ((get_members "person") `nounor` ((get_members "science_team")))
 
---New
-what'' nph = if not $ T.null result then result else "nothing."
-    where result = T.unwords $ map fst nph
+what''' nph = if not $ T.null result then result else "nothing."
+    where result = T.unwords $ map fst nph --TODO: ADD COMMAS
+
+--TODO: should entities have to be declared? or can they be inferred via triples like subject, object, implement, location?
+--TODO: is a year an entity?  I think not, cite Kent, see MSc thesis for citation
+--TODO: can we get the cardinality of "every entity" via a special query to the triplestore?
+--would require upfront knowledge of what labels are entities to consider for counting purposes
+
+--YES: we can query cardinality on the server!
+
+{-
+    PREFIX : <http://solarman.richard.myweb.cs.uwindsor.ca#>
+
+    select (count(?ent) AS ?count) where {
+
+        ?ev ?prop ?ent .
+
+        FILTER (?prop IN ( :with_implement, :subject, :object ))
+
+    }
+
+-}
+
+what'' :: Result -> T.Text --as in "what discovered"?
+what'' (FDBR nph) = what''' nph
+what'' (ComplementFDBR []) = "everything."
+what'' (ComplementFDBR nph) = T.concat ["everything except: ", what''' nph] --TODO: ADD COMMAS
+
+--NOTE: want to keep notion of "you don't pay for what you don't use"
 
 what' = fmap what'' >|< id
 
@@ -201,9 +413,9 @@ what = wrapT1 what'
 --TODO: prepositions
 make_prep props tmph = (props, Nothing, tmph)
 
-make_prep_nph' props nph = (props, Nothing, intersect_fdbr' <<*>> nph)
+make_prep_nph' props nph = (props, Nothing, intersect_result' <<*>> nph)
 
-make_prep_nph props nph = (props, Nothing, intersect_fdbr nph)
+make_prep_nph props nph = (props, Nothing, intersect_result nph)
 
 make_prep_superph props (ord, tmph) = (props, Just ord, tmph)
 
@@ -214,9 +426,15 @@ by = make_prep ["subject"]
 
 at = make_prep ["location"]
 
-make_pnoun'' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
+make_pnoun''' noun image = [(subj, evs) | (subj, evs) <- image, subj == noun]
 
-make_pnoun' :: T.Text -> SemFunc (TF FDBR -> TF FDBR)
+--this behaves like "intersect_result"
+make_pnoun'' :: T.Text -> Result -> Result
+make_pnoun'' noun (FDBR image) = FDBR $ make_pnoun''' noun image
+make_pnoun'' noun (ComplementFDBR image) = FDBR $ if make_pnoun''' noun image == [] then [(noun, [])] else [] --this is like "difference_fdbr"
+--TODO: hall (not spin) = [(hall,[])] -- note the empty list of events does not mean false in this context.  will this be a problem?
+
+make_pnoun' :: T.Text -> SemFunc (TF Result -> TF Result)
 make_pnoun' noun = (fmap $ make_pnoun'' noun) >|< GettsIntersect GI_NounAnd (GettsPNoun noun)
 
 make_pnoun noun = wrapS1 $ make_pnoun' noun
@@ -247,18 +465,51 @@ make_prop_termphrase ev_data prop nph = do
   return $ if not $ T.null finalList then finalList else "nothing."
 -}
 
-make_prop_termphrase' :: T.Text -> TF FDBR -> TF T.Text
-make_prop_termphrase' prop nph triples = if not $ T.null finalList then finalList else "nothing."
-  where
-  evs = List.nub $ List.concatMap snd (nph triples)
-  rtriples = pure_getts_triples_entevprop triples [prop] evs
-  finalList = T.unwords $ List.nub $ map (\(x,y,z) -> z) rtriples
 
-make_prop_termphrase_ :: T.Text -> SemFunc (TF FDBR -> TF T.Text)
+--"how did hall discover phobos"
+--"how was phobos discovered"
+--"how did (not (a person)) (not (discover a moon))"?  doesn't really make sense to ask.
+--TODO: return a result like "question doesn't make sense"?  or pull out implement from literally the whole complement??
+--NOTE: or perhaps "the answer excludes the following: " ... pull out property from complement
+make_prop_termphrase' :: T.Text -> TF Result -> TF T.Text
+make_prop_termphrase' prop nph triples = if not $ T.null finalList then T.concat [start, finalList] else emptycase
+  where
+    (nph_v, start, emptycase) = case nph triples of
+        FDBR fdbr -> (fdbr, "", "nothing.")
+        ComplementFDBR _ -> ([], "This list has no meaning: ", "I can't perform this query because I would need to enumerate the entire triplestore.")
+    evs = List.nub $ List.concatMap snd nph_v
+    rtriples = pure_getts_triples_entevprop triples [prop] evs
+    finalList = T.unwords $ List.nub $ map (\(x,y,z) -> z) rtriples
+
+--Now hold on: `how $ not discovered` refers to events other than discover events
+--`how $ a (not person) (not discover)`, not mutually exclusive
+--could have an implement not used in a discovery event that is also used in a discovery event
+--so the answer should not exclude these items...
+--need to enumerate the entire triplestore?
+
+--NOTE: thing == Comp [] or thing == get_members "thing"?
+--not thing == FDBR [], or not thing == COMP get_members "thing"?
+--we may want to force retrieval of all things if the word is used...
+--but we can define thing as a union of several properties: implement, location, subject, object
+--is a year a thing?  i didn't think so... do we distinguish entities from properties?
+--the working definition is that an entity is something that exists physically between some range of time
+--everything could mean Comp [], nothing could mean FDBR []
+
+--NOTE: 6 cases
+{-
+    FDBR containing every entity: everything
+    FDBR empty: nothing
+    FDBR has some stuff: these things
+    ComplementFDBR every entity: nothing
+    ComplementFDBR empty: everything
+    ComplementFDBR has some stuff: the answer excludes these things
+-}
+
+make_prop_termphrase_ :: T.Text -> SemFunc (TF Result -> TF T.Text)
 make_prop_termphrase_ prop = make_prop_termphrase' prop >|< (GettsPropTmph prop . GettsAttachP prop)
 
---TODO: how to memoize text? WE DON'T
-make_prop_termphrase :: T.Text -> TFMemo FDBR -> TFMemo T.Text
+--NOTE: text results are not memoized
+make_prop_termphrase :: T.Text -> TFMemo Result -> TFMemo T.Text
 --make_prop_termphrase prop (tf, g) = liftW (make_prop_termphrase'' prop) (GettsPropTmph prop . GettsAttachP prop)
 make_prop_termphrase prop = wrapT1 $ make_prop_termphrase_ prop
 
@@ -277,13 +528,13 @@ findFirstObj (GettsUnion _ _ y) = findFirstObj y
 findFirstObj (GettsTP _ (_,_,object) _) = object
 
 --needs special handling due to semantics requiring info from getts
-whatobj' :: SemFunc (TF FDBR) -> SemFunc (TF T.Text)
+whatobj' :: SemFunc (TF Result) -> SemFunc (TF T.Text)
 whatobj' (tf, getts) = make_prop_termphrase' prop tf >|< GettsPropTmph prop (GettsAttachP prop getts)
   where
     prop = findFirstObj getts
 
 --top level things should ALWAYS be named
-whatobj :: TFMemo FDBR -> TFMemo T.Text
+whatobj :: TFMemo Result -> TFMemo T.Text
 whatobj x = let g = getGetts x in make_prop_termphrase (findFirstObj g) x
 
 --end of copied from gangster_v4
@@ -368,9 +619,14 @@ filter_ev ev_data ((names,pred):list) evs = do
     res <- pred $ return $ concat $ relevant_list
     if res /= [] then filter_ev ev_data list evs else return False-}
 
+--TODO: three changes to transitive verbs
+-- 1. superlatives should be processed left to right, for consistency
+-- 2. extend transitive verb to handle complements (see notes)
+-- 3. modify grammar to allow termphrase to appear AFTER the list of prepositions in the input
+
 --new filter_ev: Handles prepositional phrases (IN TESTING)
---TODO: handle superlatives =
-filter_ev' :: [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> [Event] -> TF [Event]
+{-
+filter_ev' :: [([T.Text], Maybe Ordering, SemFunc (TF Result -> TF Result))] -> [Event] -> TF [Event]
 filter_ev' [] evs ev_data = evs
 filter_ev' ((names,_,pred):list) evs triples
   = if not $ List.null res then filter_ev' list relevant_evs triples else []
@@ -380,6 +636,7 @@ filter_ev' ((names,_,pred):list) evs triples
   res = (fst pred) (pure relevant_list) triples --TODO: prove correct (TODO USE getGetts AS WELL FOR MEMOIZATION!!!)
   --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
   relevant_evs = List.nub $ concatMap snd res
+-}
 
 --NOTE MEMO: Don't bother memoizing the individual rows, just make sure memoized termphs are used and the actual transvb itself is memoized
 --It is incredibly unlikely the same list of evs will occur twice
@@ -387,7 +644,7 @@ filter_ev' ((names,_,pred):list) evs triples
 --Is this a case for intersect_fdbr :: TFMemo a = ([Triple] -> State (Map.Map GettsTree a), Maybe GettsTree)?
 --What's a good name for GettsFilterEv?  How do we deal with the recursion?
 --Temporary workaround: don't bother memoizing the list of events
-filter_ev :: [([T.Text], Maybe Ordering, (TFMemo FDBR -> TFMemo FDBR))] -> [Event] -> [Triple] -> State (Map.Map GettsTree FDBR) [Event]
+filter_ev :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> [Event] -> ReducedTriplestore -> State (Map.Map GettsTree Result) [Event]
 filter_ev list evs triples = foldrM filt evs list
     where
         filt _ [] = return []
@@ -395,14 +652,14 @@ filter_ev list evs triples = foldrM filt evs list
             let pred_tf = getSem $ pred (make_pred_arg_memo evs names) --skips memoizing the result
             --Memoization already happened in pred_tf thankfully
             res <- pred_tf triples
-            let relevant_evs = List.nub $ concatMap snd res
+            let relevant_evs = List.nub $ concatMap snd (case res of FDBR x -> x) --FIXME TODO: handle ComplementFDBR
             return relevant_evs
 
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
 
-make_pred_arg_pure :: [Event] -> [T.Text] -> TF FDBR
-make_pred_arg_pure evs names triples = let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events
-                                        in concatMap (\name -> make_fdbr_with_prop relevant_triples name) names
+make_pred_arg_pure :: [Event] -> [T.Text] -> TF Result
+make_pred_arg_pure evs names triples = let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) (getTriples triples) -- only get triples with our events
+                                        in FDBR $ concatMap (\name -> make_fdbr_with_prop relevant_triples name) names
 
 --Previously, we allowed things to not have names, and unnamed things inhibit memoization in expressions using them
 --this was used to kill memoization in prepositional phrases for the prop-FDBRs produced there as it was believed it would hurt performance
@@ -417,27 +674,30 @@ make_pred_arg_pure evs names triples = let relevant_triples = List.filter (\(x, 
 make_pred_arg_memo evs names = wrapS0 (make_pred_arg_pure evs names, GettsPropFDBR names evs)
 
 --TODO: can we memoize this?  could we perhaps have a GFDBR table?
+{-
 make_gfdbr' :: [T.Text] -> FDBR -> TF GFDBR
 make_gfdbr' props fdbr triples = gfdbr
     where
         --fdbr = fdbr_func triples
         relevant_triples triples evs = List.filter (\(x, _, _) -> x `elem` evs) triples -- only get triples with our events TODO OPTIMIZE -- this is done TWICE! (this sure looks like filter_ev)
-        expand_evs triples evs = concatMap (\prop -> make_fdbr_with_prop (relevant_triples triples evs) prop) props
+        expand_evs triples evs = FDBR $ concatMap (\prop -> make_fdbr_with_prop (relevant_triples triples evs) prop) props
         gfdbr = map (\(ent, evs) -> (ent, expand_evs triples evs)) fdbr
+-}
 
---TODO memo
+--NOTE memo
 
-make_gfdbr :: [T.Text] -> FDBR -> [Triple] -> State (Map.Map GettsTree FDBR) GFDBR
+make_gfdbr :: [T.Text] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) GFDBR
 make_gfdbr props fdbr triples
         = forM fdbr (\(ent, evs) -> do
                     let prop_g = GettsPropFDBR props evs
                     s <- get
                     case Map.lookup prop_g s of
-                        Just fdbr -> return (ent, fdbr)
+                        Just (FDBR fdbr) -> return (ent, fdbr) --TODO FIXME
                         Nothing -> do
-                            let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) triples
+                            let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) (getTriples triples)
                             let prop_fdbr = concatMap (\prop -> make_fdbr_with_prop relevant_triples prop) props
-                            modify (\s' -> Map.insert prop_g prop_fdbr s')
+                            let fixme = FDBR prop_fdbr
+                            modify (\s' -> Map.insert prop_g fixme s')  --TODO FIXME
                             return (ent, prop_fdbr))
 
 
@@ -452,7 +712,8 @@ make_partition ord gfdbr = map (map (\(_, ent, fdbr) -> (ent, fdbr))) $ groupBy 
 condense_gfdbr :: GFDBR -> FDBR
 condense_gfdbr = map (\(ent, fdbr) -> (ent, concatMap snd fdbr))
 
-filter_super' :: [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> FDBR -> TF FDBR
+{-
+filter_super' :: [([T.Text], Maybe Ordering, SemFunc (TF Result -> TF Result))] -> FDBR -> TF Result
 filter_super' preps fdbr_start rtriples = foldr filt fdbr_start preps
     where
         filt (_, Nothing, _) fdbr = fdbr --do nothing if no ordering is required (e.g, ``in 1877'')
@@ -463,11 +724,12 @@ filter_super' preps fdbr_start rtriples = foldr filt fdbr_start preps
                     case maybe_top_gfdbr of
                         Just top_gfdbr -> condense_gfdbr top_gfdbr
                         Nothing -> []
+-}
 
 --TODO MEMO: can't memoize GFDBRs just yet or filter_super, but can memoize the rows
 --NOTE MEMO: May be able to memoize using fdbr_start?
 
-filter_super :: [([T.Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)] -> FDBR -> [Triple] -> State (Map.Map GettsTree FDBR) FDBR
+filter_super :: [([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result)] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) FDBR
 filter_super preps fdbr_start rtriples = foldrM filt fdbr_start preps
     where
         filt (_, Nothing, _) fdbr = return fdbr --do nothing if no ordering is required (e.g, ``in 1877'')
@@ -520,8 +782,8 @@ gettsTP voice rel preps = GettsTP subject rel preps
 
 relname (a, _, _) = a
 
---TODO: need to modify this to actually use the ordering
-make_trans''' :: Voice -> Relation -> [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> TF FDBR
+{-
+make_trans''' :: Voice -> Relation -> [([T.Text], Maybe Ordering, SemFunc (TF Result -> TF Result))] -> TF Result
 make_trans''' voice rel preps rtriples = ord_fdbr
   where
     (subjectProp,_) = getVoiceProps voice rel
@@ -531,25 +793,28 @@ make_trans''' voice rel preps rtriples = ord_fdbr
     fdbr = filter (not . List.null . snd) fdbrRelevantEvs --TODO: this will make it so sets of events with a cardinality of 0 are not counted, leading to wrong "the least" behaviour
     --Now for superlatives.  All termphrases are applied first, and ordering happens after.
     ord_fdbr = filter_super' preps fdbr rtriples
+-}
 
-make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)] -> TFMemo FDBR
+--TODO: need to modify this to actually use the ordering
+make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result)] -> TFMemo Result
 make_trans'' voice rel preps = TFMemoT (f, g) --top level things ALWAYS have a name
     where
     g = gettsTP voice rel (gatherPreps preps)
     f rtriples = do
         s <- get
         case Map.lookup g s of
-            Just fdbr -> return fdbr
+            Just res -> return res
             Nothing -> do
                 let (subjectProp,_) = getVoiceProps voice rel
                 let filtRTriples = pure_getts_triples_entevprop_type rtriples (subjectProp:(nub $ concatMap (\(a,_,_) -> a) $ preps)) (relname rel)
                 let images = make_fdbr_with_prop filtRTriples subjectProp
                 fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev preps evs rtriples >>= (\x -> return (subj, x))) images
-                let fdbr = filter (not . List.null . snd) fdbrRelevantEvs --TODO: this will make it so sets of events with a cardinality of 0 are not counted, leading to wrong "the least" behaviour
+                let fdbr = filter (not . List.null . snd) fdbrRelevantEvs --TODO: this will make it so sets of events with a cardinality of 0 are not counted, partially leading to wrong "the least" behaviour (consider complement)
                 --Now for superlatives.  All termphrases are applied first, and ordering happens after.
                 res <- filter_super preps fdbr rtriples
-                modify (\s' -> Map.insert g res s')
-                return res
+                let fixme = FDBR res
+                modify (\s' -> Map.insert g fixme s') --TODO FIXME
+                return fixme
 
 --make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?
@@ -561,8 +826,10 @@ make_trans'' voice rel preps = TFMemoT (f, g) --top level things ALWAYS have a n
 --' denotes preps
 --'' denotes tmph followed by preps
 
-make_trans_active'_ :: Relation -> [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
+{-
+make_trans_active'_ :: Relation -> [([T.Text], Maybe Ordering, SemFunc (TF Result -> TF Result))] -> SemFunc (TF Result)
 make_trans_active'_ rel preps =  make_trans''' ActiveVoice rel preps >|< gettsTP ActiveVoice rel (gatherPreps' preps)
+-}
 
 make_trans_active' rel preps = make_trans'' ActiveVoice rel preps
 
@@ -597,23 +864,31 @@ make_trans_passive' ev_data rel preps = do
     fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev triples preps evs >>= (\x -> return (subj, x))) images
     filterM (return . not . List.null . snd) fdbrRelevantEvs-}
 
-make_trans_passive'_ :: Relation -> [([T.Text], Maybe Ordering, SemFunc (TF FDBR -> TF FDBR))] -> SemFunc (TF FDBR)
+{-
+make_trans_passive'_ :: Relation -> [([T.Text], Maybe Ordering, SemFunc (TF Result -> TF Result))] -> SemFunc (TF Result)
 make_trans_passive'_ rel preps = make_trans''' PassiveVoice rel preps >|< gettsTP PassiveVoice rel (gatherPreps' preps)
+-}
 
 make_trans_passive rel preps = make_trans'' PassiveVoice rel preps
 
 --Copied from old solarman:
-yesno'' x = if x /= [] then "yes." else "no"
-yesno' :: SemFunc (TF FDBR -> TF T.Text)
-yesno' = fmap yesno'' >|< GettsYesNo
+yesno''' x = if x /= [] then "yes." else "no"
 
-yesno :: TFMemo FDBR -> TFMemo T.Text
+yesno'' :: CardinalityFunction -> Result -> T.Text
+yesno'' cardinality x = if cardinality x > 0 then "yes." else "no."
+
+yesno' :: SemFunc (TF Result -> TF T.Text)
+yesno' = applyCard1 yesno'' >|< GettsYesNo
+
+yesno :: TFMemo Result -> TFMemo T.Text
 yesno = wrapT1 yesno'
 
-_truefalse'' x = if x /= [] then "true." else "false."
-_truefalse' = fmap _truefalse'' >|< GettsYesNo
+_truefalse''' x = if x /= [] then "true." else "false."
+_truefalse'' cardinality x = if cardinality x > 0 then "true." else "false."
 
-_truefalse :: TFMemo FDBR -> TFMemo T.Text
+_truefalse' = applyCard1 _truefalse'' >|< GettsYesNo
+
+_truefalse :: TFMemo Result -> TFMemo T.Text
 _truefalse = wrapT1 _truefalse'
 
 does = yesno
@@ -631,12 +906,17 @@ are = yesno
     return $ if r1 /= [] && r2 /= [] then List.nub $ r1 ++ r2 else []-}
 
 --TODO: MERGE IMAGES PROPER (verify new impl)
---This is basically termand
-sand'' [] _ = []
-sand'' _ [] = []
-sand'' fdbr1 fdbr2 = union_fdbr'' fdbr1 fdbr2
+--TODO: This is basically termand
+--TODO: and/or in grammar should follow standard precedence -> ^ binds tighter than v, and also force left to right.
+sand''' [] _ = []
+sand''' _ [] = []
+sand''' fdbr1 fdbr2 = union_fdbr fdbr1 fdbr2
 
-sand' = liftA2 sand'' >|< GettsUnion GU_NounAnd
+sand'' = termand''
+
+--what about sentor?  it should work like termor.
+
+sand' = applyCard sand'' >|< GettsUnion GU_NounAnd
 
 sand = wrapS2 sand'
 
@@ -789,6 +1069,11 @@ super           =  memoize_terminals_from_dictionary Super
 superph_start   =  memoize_terminals_from_dictionary SuperphStart
 --year            =  memoize_terminals_from_dictionary Year
 
+--NEW FOR NEGATION
+termphnot       =  memoize_terminals_from_dictionary Termphnot
+adverb          =  memoize_terminals_from_dictionary Adverb
+prefix          =  memoize_terminals_from_dictionary Prefix
+
 --years are treated like termphrases.  but should they be?
 --want to be able to ask "between 1877 and 1922"
 --discovered in 1877 or at an observatory
@@ -843,25 +1128,28 @@ type Result   = [((Start1, End),[Tree MemoL])]
 -- public <snouncla> = <cnoun> | <adjs> <cnoun>;
 snouncla
  = memoize Snouncla
- (parser
-  (nt cnoun S3)
+ (
+  parser (nt cnoun S3)
   [rule_s NOUNCLA_VAL OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL OF S3]]
   <|>
-  parser (nt adjs S1  *> nt cnoun S2)
+  parser (nt adjs S1 *> nt cnoun S2)
   [rule_s NOUNCLA_VAL OF LHS ISEQUALTO intrsct1 [synthesized ADJ_VAL      OF  S1,
                                                  synthesized NOUNCLA_VAL  OF  S2]]
-
  )
 
 -------------------------------------------------------------------------------
 -- public <relnouncla> = <snouncla> <relpron> <joinvbph> | <snouncla>;
 relnouncla
  = memoize Relnouncla
-   (parser
-    (nt snouncla S1  *> nt relpron S2  *> nt joinvbph S3)
-    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle1[synthesized NOUNCLA_VAL  OF S1,
-                                                       synthesized RELPRON_VAL  OF S2,
-                                                       synthesized VERBPH_VAL   OF S3]]
+   (
+    parser (nt snouncla S1  *> nt relpron S2  *> nt joinvbph S3)
+    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle1 [synthesized NOUNCLA_VAL  OF S1,
+                                                        synthesized RELPRON_VAL  OF S2,
+                                                        synthesized VERBPH_VAL   OF S3]]
+    <|>
+    parser (nt prefix S4 *> nt snouncla S2)
+    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_prefix [synthesized PREFIX_VAL OF S4,
+                                                       synthesized NOUNCLA_VAL OF S2]]  --"non" applies closer than "that".  "non vacuumous moon" is also valid.  "non vacuumous moon that spins" will evaluate to "(non (vacuumous moon)) `that` spins"
     <|>
     parser
     (nt snouncla S4)
@@ -877,7 +1165,7 @@ nouncla
                                                         synthesized NOUNJOIN_VAL OF S2,
                                                         synthesized NOUNCLA_VAL  OF S3]]
     <|>
-    parser (nt relnouncla S1 *> nt relpron S2 *> nt linkingvb S3 *> nt nouncla S4) --Does this make sense?  Allows us to ask "which moon that was discovered by hall that is moon orbits mars"
+    parser (nt relnouncla S1 *> nt relpron S2 *> nt linkingvb S3 *> nt nouncla S4) --TODO: Does this make sense?  Allows us to ask "which moon that was discovered by hall that is moon orbits mars"
     [rule_s NOUNCLA_VAL  OF LHS ISEQUALTO apply_middle3 [synthesized NOUNCLA_VAL  OF S1,
                                                          synthesized RELPRON_VAL  OF S2,
                                                          synthesized NOUNCLA_VAL  OF S4]]
@@ -929,6 +1217,11 @@ transvbph
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvb_no_tmph [synthesized VERB_VAL OF S1,
                                                               synthesized PREP_VAL OF S2]]
     <|>
+    parser (nt transvb S1 *> nt preps S2 *> nt jointermph S3) --"discovered in... phobos (and blah and blah and blah)" --termph comes after preps
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep_tmph [synthesized VERB_VAL OF S1,
+                                                               synthesized PREP_VAL OF S2,
+                                                               synthesized TERMPH_VAL OF S3]]
+    <|>
     parser (nt transvb S1 *> nt jointermph S2) --"discovered phobos (and blah and blah and blah)"
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep [synthesized VERB_VAL    OF S1,
                                                           synthesized TERMPH_VAL  OF S2]]
@@ -951,12 +1244,21 @@ transvbph
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
                                                       synthesized VERB_VAL       OF  S2]]
     <|>
+    parser (nt linkingvb S1 *> nt adverb T1 *> nt transvb S2) --"was not discovered" (NEW)
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_transvb_adverb [synthesized ADVERB_VAL  OF  T1,
+                                                               synthesized VERB_VAL    OF  S2]]
+    <|>
     parser (nt linkingvb S1 *> nt transvb S2 *> nt preps S3) --"was discovered by hall in..."
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
-                                                  synthesized VERB_VAL       OF  S2,
-                                                  synthesized PREP_VAL       OF  S3]]
+                                                      synthesized VERB_VAL       OF  S2,
+                                                      synthesized PREP_VAL       OF  S3]]
     <|>
-    parser (nt linkingvb S1  *>  nt jointermph S2 *> nt transvb S3) --"was phobos discovered"
+    parser (nt linkingvb S1 *> nt adverb T1 *>  nt transvb S2 *> nt preps S3) --"was not discovered by hall in..."
+    [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_transvb_adverb [synthesized ADVERB_VAL     OF  T1,
+                                                               synthesized VERB_VAL       OF  S2,
+                                                               synthesized PREP_VAL       OF  S3]]
+    <|>
+    parser (nt linkingvb S1  *>  nt jointermph S2 *> nt transvb S3) --"was phobos discovered"  --TODO: can't answer "how was phobos not discovered" at all yet
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO apply_quest_transvb_passive [synthesized LINKINGVB_VAL OF  S1,
                                                                       synthesized TERMPH_VAL    OF  S2,
                                                                       synthesized VERB_VAL      OF  S3]]
@@ -1030,12 +1332,12 @@ verbph
  = memoize Verbph
    (
     parser (nt transvbph S4)
-    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S4]]
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S4]] -- "discovered ..." TODO: "was not discovered in 1877" "a moon (not discovered in 1877)" "a moon (not spins)"
    <|>
-    parser (nt intransvb S5)
-    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S5]]
+    parser (nt intransvb S5) -- "spins"
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S5]] -- "spins" TODO: convert intransvb to transvb??  intransvb is a transvb with no args
    <|>
-    parser (nt linkingvb S1 *> nt det S2 *> nt nouncla S3)
+    parser (nt linkingvb S1 *> nt det S2 *> nt nouncla S3)  -- "is a non vacuumous moon"
     [rule_s VERBPH_VAL OF LHS ISEQUALTO applyvbph [synthesized NOUNCLA_VAL OF S3]]
    )
 ------------------------------------------------------------------------------------
@@ -1048,6 +1350,10 @@ termph
    <|>
    parser (nt detph S2)
    [rule_s TERMPH_VAL OF LHS ISEQUALTO copy [synthesized TERMPH_VAL OF S2]]
+   <|>
+   parser (nt termphnot S3 *> nt termph S4) --"not" binds closest to the termph, closer than "and" and "or"
+   [rule_s TERMPH_VAL OF LHS ISEQUALTO apply_termphnot [synthesized TERMPHNOT_VAL OF S3,
+                                                        synthesized TERMPH_VAL OF S4]]
    )
 
 --TODO: space leak here?
@@ -1079,7 +1385,14 @@ joinvbph
    [rule_s VERBPH_VAL  OF LHS ISEQUALTO appjoin2 [synthesized VERBPH_VAL    OF S1,
                                                   synthesized VBPHJOIN_VAL  OF S2,
                                                   synthesized VERBPH_VAL    OF S3]]
-    <|>
+   <|>
+    parser (nt quest1 T3 *> nt intransvb S5) --"did/does spin"
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO copy [synthesized VERBPH_VAL OF S5]]
+   <|>
+    parser (nt quest1 T3 *> nt adverb T4 *> nt verbph S5) --"did/does not spin/discover" --TODO: hack, allows one to ask "what did not was not discovered..." obviously not the intended use
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO apply_adverb [synthesized ADVERB_VAL OF T4,
+                                                      synthesized VERBPH_VAL OF S5]]
+   <|>
     parser (nt verbph S4)
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO copy [synthesized VERBPH_VAL  OF S4]]
    )
@@ -1190,9 +1503,9 @@ query = memoize Query
 ||-----------------------------------------------------------------------------
 -}
 
-intrsct1 [x, y] = NOUNCLA_VAL (intersect_fdbr (getAtts getAVALS  x) (getAtts getAVALS y))
+intrsct1 [x, y] = NOUNCLA_VAL (intersect_result (getAtts getAVALS x) (getAtts getAVALS y))
 
-intrsct2 [x, y] = ADJ_VAL (intersect_fdbr (getAtts getAVALS x) (getAtts getAVALS y))
+intrsct2 [x, y] = ADJ_VAL (intersect_result (getAtts getAVALS x) (getAtts getAVALS y))
 
 applydet [x, y] = TERMPH_VAL $ (getAtts getDVAL x) (getAtts getAVALS y)
 
@@ -1215,6 +1528,13 @@ applytransvbprep [x,y] = VERBPH_VAL $ make_trans_active' reln [make_prep [object
     where
     reln = getAtts getBR x
     predicate = getAtts getTVAL y
+    (_, object) = getVoiceProps ActiveVoice reln
+
+applytransvbprep_tmph [x,y,z] = VERBPH_VAL $ make_trans_active' reln (preps ++ [(make_prep [object] predicate)])
+    where
+    reln = getAtts getBR x
+    preps = getAtts getPREPVAL y
+    predicate = getAtts getTVAL z
     (_, object) = getVoiceProps ActiveVoice reln
 
 applytransvbsuper [x, y] = VERBPH_VAL $ make_trans_active' reln [make_prep_superph [object] superpred]
@@ -1275,7 +1595,7 @@ applysuperph [x, y, z] = SUPERPH_VAL $
             --inject :: Ordering -> SemFunc (TF FDBR -> TF FDBR) -> (Ordering, SemFunc (TF FDBR -> TF FDBR))
             inject ord termph = (ord, termph)
             in
-                inject super_ordering $ intersect_fdbr nph
+                inject super_ordering $ intersect_result nph
 
 
 applyyear [x] = TERMPH_VAL $ make_pnoun $ tshow $ getAtts getYEARVAL x
@@ -1309,6 +1629,19 @@ drop3rdprep (w:x:xs) = VERBPH_VAL $ make_trans_passive reln preps
                   [] -> []
                   (p:_) -> getAtts getPREPVAL p
 --END PREPOSITIONAL PHRASES
+
+--NEW FOR NEGATION
+apply_termphnot [x, y] = TERMPH_VAL $ (getAtts getTERMPHNOTVAL x) (getAtts getTVAL y)
+apply_prefix [x, y] = NOUNCLA_VAL $ (getAtts getPREFIXVAL x) (getAtts getAVALS y)
+apply_adverb [x, y] = VERBPH_VAL $ (getAtts getADVERBVAL x) (getAtts getAVALS y)
+
+apply_transvb_adverb (x:y:zs) = VERBPH_VAL $ (getAtts getADVERBVAL x) $ make_trans_passive reln preps
+    where
+    reln = getAtts getBR y
+    preps = case zs of
+                [] -> []
+                (p:_) -> getAtts getPREPVAL p
+--END NEGATION
 
 apply_termphrase [x, y] = SENT_VAL ((getAtts getTVAL x) (getAtts getAVALS y))
 
@@ -1420,7 +1753,7 @@ dictionary = [
     ("red",                Adj,       [ADJ_VAL $ get_members "red"]),
     ("ringed",             Adj,       [ADJ_VAL $ get_members "ringed"]),
     ("vacuumous",          Adj,       [ADJ_VAL $ get_members "vacuumous"]),
-    ("exist",              Intransvb, [VERBPH_VAL $ get_members "thing"]),
+    ("exist",              Intransvb, [VERBPH_VAL $ get_members "thing"]), --TODO: replace with COMP [], add "everything" == comp []
     ("exists",             Intransvb, [VERBPH_VAL $ get_members "thing"]),
     ("spin",               Intransvb, [VERBPH_VAL $ get_members "spin"]),
     ("spins",              Intransvb, [VERBPH_VAL $ get_members "spin"]),
@@ -1430,11 +1763,14 @@ dictionary = [
     ("an",                 Det,       [DET_VAL $ a]),
     ("some",               Det,       [DET_VAL $ a]),
     ("any",                Det,       [DET_VAL $ a]),
-    --("no",                 Det,       [DET_VAL $ no]),
+    --("no",                 Det,       [DET_VAL $ no]), FIXME: not entirely satisfied yet with this
     ("every",              Det,       [DET_VAL $ every]),
     ("all",                Det,       [DET_VAL $ every]),
     ("two",                Det,       [DET_VAL $ two]),
     ("most",               Det,       [DET_VAL $ most]),
+    ("not",                Adverb,    [ADVERB_VAL $ nounnot]), --"a moon (not spins)
+    ("not",                Termphnot, [TERMPHNOT_VAL $ termnot]), --"(not hall) discovered"
+    ("non",                Prefix,    [PREFIX_VAL $ nounnon]), -- "a (non moon) spins"
     ("the",                SuperphStart,       [SUPERPHSTART_VAL $ ()]),
     ("most",               Super,     [SUPER_VAL $ GT]),
     --("least",              Super,     [SUPER_VAL $ LT]), --TODO: problem with least is 0-cardinality and negation

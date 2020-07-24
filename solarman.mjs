@@ -148,6 +148,58 @@ async function getts_triples_entevprop_type(endpoint, props, ev_type)
     .then(json => convert_bindings3(endpoint.sparqlNamespace, json.results.bindings));
 }
 
+//This function also takes advantage of IN filter
+async function getts_cardinality_allents(endpoint, props)
+{
+ /*
+    PREFIX : <http://solarman.richard.myweb.cs.uwindsor.ca#>
+
+    select distinct (count(?ent) AS ?count) where {
+
+        ?ev ?prop ?ent .
+
+        FILTER (?prop IN ( :with_implement, :subject, :object ))
+
+    }
+
+    query :: Query SelectQuery
+    query = do
+        sol <- prefix "sol" (iriRef namespace_uri)
+        ev <- var
+        prop <- var
+        ent <- var
+        triple ev prop ent
+        filterExpr $ List.foldr1 (.||.) $ map ((prop .==.) . (sol .:. )) propNames --type required here as this is not an FDBR
+        c <- count ent
+        distinct
+        select [c]
+ */
+
+    var query = "PREFIX sol: <$namespace> \
+    SELECT distinct (count(?ent) AS ?count) WHERE { \
+    ?ev ?prop ?ent .\
+    FILTER (?prop IN (";
+
+    var filterExpr = "sol:" + props[0];
+    for (var i = 1; i < props.length; ++i)
+    {
+        filterExpr += ", "
+        filterExpr += "sol:" + props[i];
+    }
+
+    query += filterExpr;
+    query += "))}";
+
+    var formData = new FormData();
+    formData.append("query", query);
+    formData.append("format", "application/sparql-results+json");
+
+    return fetch(endpoint.sparqlEndpoint, { method: "POST", body: formData })
+    .then(response => response.json())
+    .then(json => parseInt(json.results.bindings[0].count.value));
+
+}
+
 async function getts_sparql(endpoint, query)
 {
   console.log("endpoint: " + endpoint);

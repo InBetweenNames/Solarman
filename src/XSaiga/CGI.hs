@@ -214,7 +214,7 @@ interpret' dataStore input = do
             let trees = Prelude.map snd attTrees
             let sems = List.map TypeAg2.getQUVAL atts
             --outs <- mapM evaluate interpretations --TODO: this is a code smell -- needs to be abstracted -- looks like SemFunc
-            let flatQueries = Prelude.foldr mergeFlat ([],[]) sems
+            let flatQueries = Prelude.foldr mergeFlat ([],[],[]) sems
             let optQueries = TypeAg2.flatOptimize flatQueries
             rtriples <- TypeAg2.getReducedTriplestore dataStore optQueries
             (outs, _) <- M.foldM (nextInterp rtriples) ([], Map.empty) sems --TODO: save the state for later?  paper opportunity

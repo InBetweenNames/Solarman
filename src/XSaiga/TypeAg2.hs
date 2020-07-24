@@ -15,7 +15,7 @@ import XSaiga.ShowText
 import Control.Arrow
 import Data.Bifunctor
 import Data.Biapplicative
-import Data.List (nub)
+import Data.List (nub,union)
 import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
 --import Control.Applicative
@@ -26,7 +26,7 @@ import Data.Hashable
 import Debug.Trace
 import Generic.Data (gconIndex)
 
-data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_Number Int deriving (Eq, Ord)
+data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_None | GI_Number Int deriving (Eq, Ord)
 
 instance Show GettsIntersectType where
     show GI_NounAnd = "intersect_fdbr"
@@ -46,9 +46,19 @@ instance Show GettsUnionType where
     show GU_NounOr = "nounor"
     show GU_NounAnd = "nounand"
 
+--ReducedTriplestore represents the local triplestore that the semantics operate on
+--It is a pair of a list of triples with the cardinality of the set of entities within the triplestore.
+--The "maybe" part comes from the fact that the cardinality may not have been retrieved
+--Alternative representation: Map from events to (property,entity)?
+--Also, COULD store a special triple, like ("ev_triplestore", "cardinality", cardinality)
+--using pure* to access the cardinality?
+type ReducedTriplestore = ([Triple], Maybe Cardinality)
+getCardinality (_,x) = x
+getTriples (x, _) = x
+
 --idea: the tree should be fully applied whenever it is stored
 --If made fine grained enough, this may suffice for memoization
-type TF a = [Triple] -> a
+type TF a = ReducedTriplestore -> a
 
 --newtype TFMemo a = TFMemo (TF (State (Map.Map GettsTree FDBR) a), Maybe GettsTree)
 
@@ -106,7 +116,7 @@ getGetts (TFMemoT a) = snd a
 getSem (TFMemoT a) = fst a
 
 --this could be made into a monad if we use Maybe GettsTree... but it is not a useful one
-type TFMemo = TFMemoT [Triple] GettsTree (State (Map.Map GettsTree FDBR))
+type TFMemo = TFMemoT ReducedTriplestore GettsTree (State (Map.Map GettsTree Result))
 
 --moon >>= (\moon_fdbr -> spins >>= (\spin_fdbr -> a'' moon_fdbr spins_fdbr))
 
@@ -127,6 +137,7 @@ data GettsTree =
     | GettsPropTmph Text GettsTree
     | GettsAttachP Text GettsTree
     | GettsPropFDBR [Text] [Text] --props and events, used for memoizing filter_evs
+    | GettsComplement GettsTree
     deriving (Eq, Show, Ord)
 
 showOrd Nothing = ""
@@ -151,11 +162,13 @@ treeToParsedSentence (GettsPropFDBR x y) = undefined
 data GettsFlatTypes =
     FGettsMembers Text
   | FGettsT [Text] Text
+  | FGettsCardinality [Text] --the list of properties that is used to count the total number of entities
 
 type FGettsMembers = Text
 type FGettsT = ([Text], Text)
+type FGettsCardinality = [Text] --Maybe?
 
-type GettsFlat = ([FGettsMembers], [FGettsT])
+type GettsFlat = ([FGettsMembers], [FGettsT], FGettsCardinality)
 
 --Convert a function signature to a Getts style function
 --Keeps same kind, same arity
@@ -184,7 +197,8 @@ Flattened layer
 
 --wrapS* memoizes SemFuncs
 --wrapT* does not (but still uses memoization in the arguments)
-wrapS0 :: SemFunc (TF FDBR) -> TFMemo FDBR
+--TODO: could TF/Memo Result be changed to TF/Memo c?
+wrapS0 :: SemFunc (TF Result) -> TFMemo Result
 wrapS0 (f,g) = TFMemoT (f', g)
     where
         f' triples = do
@@ -196,7 +210,7 @@ wrapS0 (f,g) = TFMemoT (f', g)
                     modify (\s' -> Map.insert g res s')
                     return res
 
-wrapS1 :: SemFunc (TF a -> TF FDBR) -> TFMemo a -> TFMemo FDBR
+wrapS1 :: SemFunc (TF a -> TF Result) -> TFMemo a -> TFMemo Result
 wrapS1 (f,g) a = TFMemoT (f', g')
                 where
                     g' = g (getGetts a)
@@ -210,7 +224,7 @@ wrapS1 (f,g) a = TFMemoT (f', g')
                                     modify (\s' -> Map.insert g' res s')
                                     return res
 
-wrapS2 :: SemFunc (TF a -> TF b -> TF FDBR) -> TFMemo a -> TFMemo b -> TFMemo FDBR
+wrapS2 :: SemFunc (TF a -> TF b -> TF Result) -> TFMemo a -> TFMemo b -> TFMemo Result
 wrapS2 (f,g) a b = TFMemoT (f', g')
                 where
                     g' = g (getGetts a) (getGetts b)
@@ -307,40 +321,55 @@ gettsAttachP prop (GettsTP p rel sub) = GettsTP p rel ((GettsPrep [prop] Nothing
 --TODO MEMO -- altering tree may affect identity for memoization
 --IDEA!!  create a GettsAttachP node instead and only during flattening will it have any effect -- prevents altering trees
 
-flattenGetts :: GettsTree -> GettsFlat
-flattenGetts GettsNone = ([],[])
-flattenGetts (GettsPNoun _) = ([],[])
-flattenGetts (GettsMembers set) = ([set], [])
-flattenGetts (GettsYesNo fdbr) = flattenGetts fdbr
-flattenGetts (GettsIntersect t i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
-flattenGetts (GettsUnion t i1 i2) = merge (flattenGetts i1) (flattenGetts i2)
+--TODO: flattenGetts needs information about list of entity properties to count in the triplestore (to be used in a count query)
+flattenGetts'' :: [T.Text] -> GettsTree -> GettsFlat
+flattenGetts'' allEntProps tree = flattenGetts' tree
+    where
+    flattenGetts' :: GettsTree -> GettsFlat
+    flattenGetts' GettsNone = ([],[],[])
+    flattenGetts' (GettsPNoun _) = ([],[],[])
+    flattenGetts' (GettsMembers set) = ([set], [], [])
+    flattenGetts' (GettsYesNo fdbr) = flattenGetts' fdbr
+    flattenGetts' (GettsIntersect t i1 i2) = merge (flattenGetts' i1) (flattenGetts' i2)
+    flattenGetts' (GettsUnion t i1 i2) = merge (flattenGetts' i1) (flattenGetts' i2)
+    flattenGetts' (GettsPrep props _ sub) = error "Cannot flatten prep directly" --TODO
+    flattenGetts' (GettsPropTmph t sub) = flattenGetts' sub --TODO MEMO!
+    flattenGetts' (GettsAttachP prop sub) = flattenGetts' $ gettsAttachP prop sub
+    flattenGetts' (GettsTP prop (rel, _, _) preps) =
+        let props = nub $ prop:(Prelude.concatMap (\(GettsPrep p _ _) -> p) preps)
+            in Prelude.foldr merge ([],[(props, rel)],[]) $ map (\(GettsPrep _ _ sub) -> flattenGetts' sub) preps
+    flattenGetts' (GettsComplement tree) = merge ([],[],allEntProps) (flattenGetts' tree) --FIXME
 
-flattenGetts (GettsPrep props _ sub) = error "Cannot flatten prep directly" --TODO
-flattenGetts (GettsPropTmph t sub) = flattenGetts sub --TODO MEMO!
-
-flattenGetts (GettsAttachP prop sub) = flattenGetts $ gettsAttachP prop sub
-
-flattenGetts (GettsTP prop (rel, _, _) preps) = let props = nub $ prop:(Prelude.concatMap (\(GettsPrep p _ _) -> p) preps)
-        in Prelude.foldr merge ([],[(props, rel)]) $ map (\(GettsPrep _ _ sub) -> flattenGetts sub) preps
+--TODO: refactor... expose to user somehow (triplestore retriever builder?)
+flattenGetts = flattenGetts'' ["subject","object","with_implement", "location"] --the Solarman props
+--TODO: denotation of "thing" or "entity" == above?
 
 merge :: GettsFlat -> GettsFlat -> GettsFlat
-merge (x1, y1) (x2, y2) = (x1 ++ x2, y1 ++ y2)
+merge (x1, y1, props1) (x2, y2, props2) = (x1 ++ x2, y1 ++ y2, union props1 props2)
 
 (>|<) :: a -> Treeify a -> SemFunc a
 f >|< g = bipure f g
 
 flatOptimize :: GettsFlat -> GettsFlat
-flatOptimize (members, gettsTPs) = (nub members, dedupTP)
+flatOptimize (members, gettsTPs, comp) = (nub members, dedupTP, nub comp)
   where
     dedupTP = Prelude.foldr (\(props, rel) -> \optlist -> if Prelude.any (\(_, r) -> r == rel) optlist
                                                              then map (\(p, r) -> if r == rel then (nub $ props ++ p, rel) else (p, r)) optlist
                                                              else (props,rel):optlist) [] gettsTPs
 
-getReducedTriplestore :: (TripleStore m) => m -> GettsFlat -> IO [Triple]
-getReducedTriplestore ev_data (sets, trans) = do
+--TODO: the triplestore itself, [Triple], should maybe be ([Triple], Maybe Int) for cardinality?
+--      this would at least make the #entities information available...
+--      but then, how do we specify which props to count?
+-- TODO: maybe good opportunity to specify comp properties here?
+getReducedTriplestore :: (TripleStore m) => m -> GettsFlat -> IO ReducedTriplestore
+getReducedTriplestore ev_data (sets, trans, compProps) = do
   t1 <- mapM (\set -> getts_triples_members ev_data set) sets
   t2 <- mapM (\(props, rel) -> getts_triples_entevprop_type ev_data props rel) trans
-  return $ Prelude.concat $ t1 ++ t2
+  let triples = Prelude.concat $ t1 ++ t2
+  if Prelude.null compProps
+      then return $ (triples, Nothing)
+      else do t3 <- getts_cardinality_allents ev_data compProps
+              return $ (triples, Just t3)
 
 unionerr x y = error $ "attempt to union: " ++ show x ++ " with " ++ show y --TODO: debugging
 
@@ -391,14 +420,18 @@ applyGettsPrep g = getGetts $ g $ TFMemoT (error "Should not eval!", GettsNone)
 --Get members of named set
 --get_members :: (TripleStore m) => m -> Text -> IO FDBR
 --get_members = getts_members
-get_members' :: Text -> SemFunc (TF FDBR)
-get_members' set = (\r -> pure_getts_members r set) >|< GettsMembers set
+get_members' :: Text -> SemFunc (TF Result)
+get_members' set = (\r -> FDBR $ pure_getts_members r set) >|< GettsMembers set
+--NOTE: should we have get_not_members?  how do we get cardinalities?
+--Example: GettsComplement (GettsMembers "moon") -- this means the "not" should have something in it about the cardinality
+--like AttachCardinality?
 
 get_members = wrapS0 . get_members'
 
 --TODO: revise this for new transitive verb definition.  should not assume these fields in general.
-get_subjs_of_event_type' :: Text -> SemFunc (TF FDBR)
-get_subjs_of_event_type' ev_type = (\r -> make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP "subject" (ev_type, "subject", "object") []
+--NOTE: how do we handle "not" here?  need cardinality... how do we request it and fill it in here?
+get_subjs_of_event_type' :: Text -> SemFunc (TF Result)
+get_subjs_of_event_type' ev_type = (\r -> FDBR $ make_fdbr_with_prop (pure_getts_triples_entevprop_type r ["subject"] ev_type) "subject") >|< GettsTP "subject" (ev_type, "subject", "object") []
 
 get_subjs_of_event_type = wrapS0 . get_subjs_of_event_type'
 
@@ -440,39 +473,52 @@ instance Constructor c => HasConstructor (C1 c f) where
 
 constrName = gconIndex
 
+type Cardinality = Int --if we need more than 2 billion entities, we can change this
+
+--Denotes either a set of examples or a set of exceptions
+--Inspired from Frost,Boulos (2004)
+data Result = FDBR FDBR | ComplementFDBR FDBR
+getFDBR (FDBR x) = x
+getFDBR (ComplementFDBR x) = x
+
+type CardinalityFunction = Result -> Cardinality
+
 data AttValue = VAL             {getAVAL    ::   Int}
               | MaxVal          {getAVAL    ::   Int}
               | RepVal          {getAVAL    ::   Int}
               | Res             {getRVAL    ::   DisplayTree}
               | B_OP            {getB_OP    ::   (Int -> Int -> Int)}
               | U_OP            {getU_OP    ::   (Int -> Int)}
-              | SENT_VAL        {getSV      ::   TFMemo FDBR }
-              | NOUNCLA_VAL     {getAVALS   ::   TFMemo FDBR }
-              | VERBPH_VAL      {getAVALS   ::   TFMemo FDBR }
-              | ADJ_VAL         {getAVALS   ::   TFMemo FDBR }
-              | TERMPH_VAL      {getTVAL    ::   TFMemo FDBR -> TFMemo FDBR}
-              | DET_VAL         {getDVAL    ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
+              | SENT_VAL        {getSV      ::   TFMemo Result }
+              | NOUNCLA_VAL     {getAVALS   ::   TFMemo Result }
+              | VERBPH_VAL      {getAVALS   ::   TFMemo Result }
+              | ADJ_VAL         {getAVALS   ::   TFMemo Result } --TODO: treat adjective like termph whose argument is a moon?
+              | TERMPH_VAL      {getTVAL    ::   TFMemo Result -> TFMemo Result}
+              | DET_VAL         {getDVAL    ::   TFMemo Result -> TFMemo Result -> TFMemo Result}
               | VERB_VAL        {getBR      ::   Relation } --stores relation, "subject" and "object". TODO: need to expand on later for "used"
-          | RELPRON_VAL     {getRELVAL  ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
-          | NOUNJOIN_VAL    {getNJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
-          | VBPHJOIN_VAL    {getVJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
-          | TERMPHJOIN_VAL  {getTJVAL   ::   (TFMemo FDBR -> TFMemo FDBR) -> (TFMemo FDBR -> TFMemo FDBR) -> TFMemo FDBR -> TFMemo FDBR }
+          | RELPRON_VAL     {getRELVAL  ::   TFMemo Result -> TFMemo Result -> TFMemo Result}
+          | NOUNJOIN_VAL    {getNJVAL   ::   TFMemo Result -> TFMemo Result -> TFMemo Result}
+          | VBPHJOIN_VAL    {getVJVAL   ::   TFMemo Result -> TFMemo Result -> TFMemo Result}
+          | TERMPHJOIN_VAL  {getTJVAL   ::   (TFMemo Result -> TFMemo Result) -> (TFMemo Result -> TFMemo Result) -> TFMemo Result -> TFMemo Result }
           | SUPERPHSTART_VAL  {getSUPERPHSTARTVAL :: ()}
           | SUPER_VAL       {getSUPERVAL ::  Ordering}
-          | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, TFMemo FDBR -> TFMemo FDBR)}
-          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)]} -- used in "hall discovered phobos with a telescope" as "with".
+          | SUPERPH_VAL     {getSUPERPHVAL :: (Ordering, TFMemo Result -> TFMemo Result)}
+          | PREP_VAL       {getPREPVAL ::   [([Text], Maybe Ordering, TFMemo Result -> TFMemo Result)]} -- used in "hall discovered phobos with a telescope" as "with".
           | PREPN_VAL       {getPREPNVAL :: [Text]} --used for mapping between prepositions and their corresponding identifiers in the database.  I.e., "in" -> ["location", "year"]
           | PREPNPH_VAL     {getPREPNPHVAL :: [Text]}
-          | PREPPH_VAL      {getPREPPHVAL :: ([Text], Maybe Ordering, TFMemo FDBR -> TFMemo FDBR)}
-          | LINKINGVB_VAL   {getLINKVAL ::   TFMemo FDBR -> TFMemo FDBR}
-          | SENTJOIN_VAL    {getSJVAL   ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo FDBR}
+          | PREPPH_VAL      {getPREPPHVAL :: ([Text], Maybe Ordering, TFMemo Result -> TFMemo Result)}
+          | TERMPHNOT_VAL   {getTERMPHNOTVAL :: (TFMemo Result -> TFMemo Result) -> (TFMemo Result -> TFMemo Result)}  --"not" (as in not-hall)
+          | PREFIX_VAL      {getPREFIXVAL :: TFMemo Result -> TFMemo Result} -- "non-" (as in "non moon")
+          | ADVERB_VAL      {getADVERBVAL :: TFMemo Result -> TFMemo Result} -- "not" (as in "not spins")
+          | LINKINGVB_VAL   {getLINKVAL ::   TFMemo Result -> TFMemo Result}
+          | SENTJOIN_VAL    {getSJVAL   ::   TFMemo Result -> TFMemo Result -> TFMemo Result}
           | DOT_VAL         {getDOTVAL  ::   TFMemo Text}
           | QM_VAL          {getQMVAL   ::   TFMemo Text}
           | QUEST_VAL       {getQUVAL   ::   TFMemo Text}
-          | QUEST1_VAL      {getQU1VAL  ::   TFMemo FDBR -> TFMemo Text}
-          | QUEST2_VAL      {getQU2VAL  ::   TFMemo FDBR -> TFMemo Text}
-          | QUEST6_VAL      {getQU6VAL  ::   TFMemo FDBR -> TFMemo Text}
-          | QUEST3_VAL      {getQU3VAL  ::   TFMemo FDBR -> TFMemo FDBR -> TFMemo Text}
+          | QUEST1_VAL      {getQU1VAL  ::   TFMemo Result -> TFMemo Text}
+          | QUEST2_VAL      {getQU2VAL  ::   TFMemo Result -> TFMemo Text}
+          | QUEST6_VAL      {getQU6VAL  ::   TFMemo Result -> TFMemo Text}
+          | QUEST3_VAL      {getQU3VAL  ::   TFMemo Result -> TFMemo Result -> TFMemo Text}
           | YEAR_VAL        {getYEARVAL ::   Int}
           deriving(Generic)
 
@@ -481,7 +527,7 @@ data AttValue = VAL             {getAVAL    ::   Int}
 --TODO: Split ALeaf out from here, and make this an enum!  ALeaf is used for terminals
 data MemoL    = Start | Tree | Num | Emp | ALeaf !Text | Expr | Op  | ET
               | Pnoun|Cnoun|Adj|Det|Intransvb|Transvb|Linkingvb|Relpron|Termphjoin|Verbphjoin|Nounjoin|Preps|Prepph|Super|Superph|SuperphStart|Prepn|Prepnph|Prepyear|Joinyear|Indefpron|Sentjoin|Quest1|Quest2|Quest3|Quest4a|Quest4b
-              | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6
+              | Snouncla|Relnouncla|Nouncla|Adjs|Detph|Transvbph|Verbph|Termph|Jointermph|Joinvbph|Sent|Two_sent|Question|Quest4|Query|Year|Quest5|Quest6|Adverb|Prefix|Termphnot
                 deriving (Eq,Ord,Show,Generic)
 
 instance Hashable MemoL

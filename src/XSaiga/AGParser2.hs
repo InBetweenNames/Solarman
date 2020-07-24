@@ -8,7 +8,7 @@ import Prelude hiding ((*>))
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
-import XSaiga.TypeAg2
+import XSaiga.TypeAg2 hiding (Result)
 import Control.Monad
 import Control.Applicative hiding ((<|>), (*>))
 import Control.Monad.State.Strict
