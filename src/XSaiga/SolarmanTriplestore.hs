@@ -310,9 +310,8 @@ two = wrapS2 two'
 which''' :: FDBR -> FDBR -> T.Text
 which''' nph vbph = if not $ T.null result then result else "none."
   where
-  result = T.unwords $ map fst $ intersect_fdbr nph vbph
+  result = T.intercalate ", " $ map fst $ intersect_fdbr nph vbph
 
---TODO: ADD COMMAS
 --the complement of the empty set denotes everything
 everything = ComplementFDBR []
 
@@ -336,11 +335,10 @@ which'' cardinality f1@(ComplementFDBR nph) f2@(ComplementFDBR vbph) = let r@(Co
 which'' cardinality nph vbph = let FDBR res = intersect_result'' nph vbph in if not $ List.null res then T.unwords $ map fst $ res else "none."
 -}
 
---TODO: ADD COMMAS
 which'' cardinality nph vbph =
     case intersect_result''_ cardinality nph vbph of
-    FDBR res -> if not $ List.null res then T.unwords $ map fst $ res else "none."
-    ComplementFDBR res -> if not $ List.null res then T.concat["everything except: ", T.unwords $ map fst $ res] else "everything." --"all of them"?
+    FDBR res -> if not $ List.null res then T.intercalate ", " $ map fst $ res else "none."
+    ComplementFDBR res -> if not $ List.null res then T.concat["everything except: ", T.intercalate ", " $ map fst $ res] else "everything." --"all of them"?
 
 which' :: SemFunc (TF Result -> TF Result -> TF T.Text)
 which' = applyCard which'' >|< GettsIntersect (GI_Which)
@@ -380,7 +378,7 @@ how_many = wrapT2 how_many'
 who = which ((get_members "person") `nounor` ((get_members "science_team")))
 
 what''' nph = if not $ T.null result then result else "nothing."
-    where result = T.unwords $ map fst nph --TODO: ADD COMMAS
+    where result = T.intercalate ", " $ map fst nph --TODO: ADD COMMAS
 
 --TODO: should entities have to be declared? or can they be inferred via triples like subject, object, implement, location?
 --TODO: is a year an entity?  I think not, cite Kent, see MSc thesis for citation
@@ -405,7 +403,7 @@ what''' nph = if not $ T.null result then result else "nothing."
 what'' :: Result -> T.Text --as in "what discovered"?
 what'' (FDBR nph) = what''' nph
 what'' (ComplementFDBR []) = "everything."
-what'' (ComplementFDBR nph) = T.concat ["everything except: ", what''' nph] --TODO: ADD COMMAS
+what'' (ComplementFDBR nph) = T.concat ["everything except: ", what''' nph]
 
 --NOTE: want to keep notion of "you don't pay for what you don't use"
 
@@ -487,7 +485,7 @@ make_prop_termphrase' prop nph triples = if not $ T.null finalList then T.concat
         ComplementFDBR _ -> ([], "This list has no meaning: ", "I can't perform this query because I would need to enumerate the entire triplestore.")
     evs = List.nub $ List.concatMap snd nph_v
     rtriples = pure_getts_triples_entevprop triples [prop] evs
-    finalList = T.unwords $ List.nub $ map (\(x,y,z) -> z) rtriples
+    finalList = T.intercalate ", " $ List.nub $ map (\(x,y,z) -> z) rtriples
 
 --Now hold on: `how $ not discovered` refers to events other than discover events
 --`how $ a (not person) (not discover)`, not mutually exclusive
