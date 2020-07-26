@@ -276,6 +276,7 @@ module.then(m => rts.newAsteriusInstance(Object.assign(req, {module: m}))).then(
   window.getts_sparql = getts_sparql;
   window.getts_triples_members = getts_triples_members;
   window.getts_triples_entevprop_type = getts_triples_entevprop_type;
+  window.getts_cardinality_allents = getts_cardinality_allents
   window.set_query = set_query;
   window.update_results = update_results;
   //console.log(i);
