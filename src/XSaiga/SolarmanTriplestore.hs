@@ -316,6 +316,10 @@ which''' nph vbph = if not $ T.null result then result else "none."
 --the complement of the empty set denotes everything
 everything = ComplementFDBR []
 
+thing' :: SemFunc (TF Result)
+thing' = (const $ ComplementFDBR []) >|< (GettsComplement GettsNone)
+thing = wrapT0 thing' --Do not memoize "thing"
+
 --TODO: thing/exist should be defined in terms of ComplementFDBR [], not enumerated
 --OR if they are enumerated, they should be done so using the same 4 properties
 --used to determine the cardinality
@@ -1976,8 +1980,8 @@ dictionary''' = HashMap.fromListWith (flip (++)) $ map (\(t,m,atts) -> ((m,t),[a
 
 dictionary :: [(T.Text, MemoL, [AttValue])]
 dictionary = [
-    ("thing",              Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
-    ("things",             Cnoun,     [NOUNCLA_VAL $ get_members "thing"]),
+    ("thing",              Cnoun,     [NOUNCLA_VAL $ thing]),
+    ("things",             Cnoun,     [NOUNCLA_VAL $ thing]),
     ("planets",            Cnoun,     [NOUNCLA_VAL $ get_members "planet"]),
     ("planet",             Cnoun,     [NOUNCLA_VAL $ get_members "planet"]),
     ("person",             Cnoun,     [NOUNCLA_VAL $ get_members "person"]),
@@ -1995,8 +1999,8 @@ dictionary = [
     ("red",                Adj,       [ADJ_VAL $ get_members "red"]),
     ("ringed",             Adj,       [ADJ_VAL $ get_members "ringed"]),
     ("vacuumous",          Adj,       [ADJ_VAL $ get_members "vacuumous"]),
-    ("exist",              Intransvb, [VERBPH_VAL $ get_members "thing"]), --TODO: replace with COMP [], add "everything" == comp []
-    ("exists",             Intransvb, [VERBPH_VAL $ get_members "thing"]),
+    ("exist",              Intransvb, [VERBPH_VAL $ thing]), --TODO: replace with COMP [], add "everything" == comp [] NOTE PAPER: can introduce a word like "actually exist" to force FDBR eval
+    ("exists",             Intransvb, [VERBPH_VAL $ thing]),
     ("spin",               Intransvb, [VERBPH_VAL $ get_members "spin"]),
     ("spins",              Intransvb, [VERBPH_VAL $ get_members "spin"]),
     ("the",                Det,       [DET_VAL $ the]),
@@ -2137,6 +2141,7 @@ dictionary = [
     ("everybody",   Indefpron,meaning_of detph   "every person" Detph),
     ("nobody",      Indefpron,meaning_of detph   "no person" Detph),
     ("noone",       Indefpron,meaning_of detph   "no person" Detph),
+    ("nothing",     Indefpron,meaning_of detph   "no thing" Detph),
     --Begin prepositional stuff--
     ("with",        Prepn, [PREPN_VAL ["with_implement"]]),
     ("using",       Prepn, [PREPN_VAL ["with_implement"]]),
