@@ -160,7 +160,7 @@ instance TripleStore SPARQLBackend where
         --now we have the [(ev,ent)] bindings from before, already de-namespaced and deconstructed in javascript
         return $ List.concatMap (\(ev,ent) -> [(ev, "type", "membership"), (ev, "subject", ent), (ev, "object", set)]) bindings
 
-    getts_cardinality_allents (SPARQL endpoint namespace_uri) propNames = does
+    getts_cardinality_allents (SPARQL endpoint namespace_uri) propNames = do
         x <- asterius_getts_cardinality_allents (jsonToJSVal triplestore) (toJSArray $ map jsonToJSVal propNames)
         let count = jsonFromJSVal' x :: Cardinality
         return $ count

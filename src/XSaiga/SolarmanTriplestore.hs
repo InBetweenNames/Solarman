@@ -316,6 +316,10 @@ which''' nph vbph = if not $ T.null result then result else "none."
 --the complement of the empty set denotes everything
 everything = ComplementFDBR []
 
+--TODO: thing/exist should be defined in terms of ComplementFDBR [], not enumerated
+--OR if they are enumerated, they should be done so using the same 4 properties
+--used to determine the cardinality
+
 --3 cases
 --  1. result FDBR -> the usual
 --  2. a. result Comp, cardinality of complement == everything -> everything
@@ -638,24 +642,65 @@ filter_ev' ((names,_,pred):list) evs triples
   relevant_evs = List.nub $ concatMap snd res
 -}
 
+empty_result_fdbr = (TFMemoT (const $ return $ FDBR [], GettsNone)) --TODO: GettsNone?
+
 --NOTE MEMO: Don't bother memoizing the individual rows, just make sure memoized termphs are used and the actual transvb itself is memoized
 --It is incredibly unlikely the same list of evs will occur twice
 --Then again, I suppose these could be precomputed... can we do that without messing around here?
 --Is this a case for intersect_fdbr :: TFMemo a = ([Triple] -> State (Map.Map GettsTree a), Maybe GettsTree)?
 --What's a good name for GettsFilterEv?  How do we deal with the recursion?
 --Temporary workaround: don't bother memoizing the list of events
+
+--TODO: THIS IS ACTUALLY RIGHT TO LEFT ORDER with foldrM!! kuiper discovered one moon in 1948 actually works
+--      but kuiper discovered in 1948 one moon does not!
+--NOTE FIXED but do we actually want LTR????
 filter_ev :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> [Event] -> ReducedTriplestore -> State (Map.Map GettsTree Result) [Event]
-filter_ev list evs triples = foldrM filt evs list
+filter_ev list evs triples = foldlM filt evs list
     where
-        filt _ [] = return []
-        filt (names, _, pred) evs = do
+        filt [] _ = return []
+        filt evs (names, _, pred) = do
             let pred_tf = getSem $ pred (make_pred_arg_memo evs names) --skips memoizing the result
             --Memoization already happened in pred_tf thankfully
             res <- pred_tf triples
-            let relevant_evs = List.nub $ concatMap snd (case res of FDBR x -> x) --FIXME TODO: handle ComplementFDBR
+            let relevant_evs = case res of
+                    FDBR x -> List.nub $ concatMap snd x
+                    ComplementFDBR [] -> evs --in the case of "no", ComplementFDBR [] can be returned, so keep all original evs
+                    ComplementFDBR evs -> error "ComplementFDBR evs, should not happen!"
             return relevant_evs
 
+{-
+Cases:
+    [] -> no args, no complement (False...)
+    (pred:preds) -> if pred [] && r preds then True else False...
+    problem: base case is True for just empty and False for recursive?
+    soln: detect in wrapper
+-}
+
+--check if ALL things are "no"
+filter_no :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> ReducedTriplestore -> State (Map.Map GettsTree Result) Bool
+filter_no [] triples = return False --"discovered" does not include complement
+filter_no list triples = foldlM filt True list
+    where
+        filt False _ = return False
+        filt next (names, _, pred) = do
+            let pred_tf = getSem $ pred empty_result_fdbr
+            --Memoization already happened in pred_tf thankfully
+            res <- pred_tf triples
+            case res of
+                FDBR _ -> return False
+                ComplementFDBR _ -> return (True && next)
     --NEW: Merge all events in predicate result for new query.  Result will be a subset of evs.
+
+--check if the FIRST thing is a "no" -- using left to right
+first_no :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> ReducedTriplestore -> State (Map.Map GettsTree Result) Bool
+first_no [] triples = return False --"discovered" does not include complement
+first_no ((names, _, pred):_) triples = do
+            let pred_tf = getSem $ pred empty_result_fdbr
+            --Memoization already happened in pred_tf thankfully
+            res <- pred_tf triples
+            case res of
+                FDBR _ -> return False
+                ComplementFDBR _ -> return True
 
 make_pred_arg_pure :: [Event] -> [T.Text] -> TF Result
 make_pred_arg_pure evs names triples = let relevant_triples = List.filter (\(x, _, _) -> x `elem` evs) (getTriples triples) -- only get triples with our events
@@ -729,11 +774,12 @@ filter_super' preps fdbr_start rtriples = foldr filt fdbr_start preps
 --TODO MEMO: can't memoize GFDBRs just yet or filter_super, but can memoize the rows
 --NOTE MEMO: May be able to memoize using fdbr_start?
 
+--NOTE: NOW LEFT TO RIGHT
 filter_super :: [([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result)] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) FDBR
-filter_super preps fdbr_start rtriples = foldrM filt fdbr_start preps
+filter_super preps fdbr_start rtriples = foldlM filt fdbr_start preps
     where
-        filt (_, Nothing, _) fdbr = return fdbr --do nothing if no ordering is required (e.g, ``in 1877'')
-        filt (props, Just ord, _) fdbr = --here we do the actual ordering requirments for the superlative (termphrase is ignored because it has already been applied previously)
+        filt fdbr (_, Nothing, _) = return fdbr --do nothing if no ordering is required (e.g, ``in 1877'')
+        filt fdbr (props, Just ord, _) = --here we do the actual ordering requirments for the superlative (termphrase is ignored because it has already been applied previously)
                 do
                     gfdbr <- make_gfdbr props fdbr rtriples
                     let sorted_parts = make_partition ord gfdbr
@@ -795,9 +841,12 @@ make_trans''' voice rel preps rtriples = ord_fdbr
     ord_fdbr = filter_super' preps fdbr rtriples
 -}
 
+--TODO: filter_super: if only one partition (everyone ranks the same) then no winner, return []
+
 --TODO: need to modify this to actually use the ordering
-make_trans'' :: Voice -> Relation -> [([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result)] -> TFMemo Result
-make_trans'' voice rel preps = TFMemoT (f, g) --top level things ALWAYS have a name
+--NOTE: this is 2-phase: superlative phrases come second
+make_trans''2phase :: Voice -> Relation -> [([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result)] -> TFMemo Result
+make_trans''2phase voice rel preps = TFMemoT (f, g) --top level things ALWAYS have a name
     where
     g = gettsTP voice rel (gatherPreps preps)
     f rtriples = do
@@ -811,10 +860,189 @@ make_trans'' voice rel preps = TFMemoT (f, g) --top level things ALWAYS have a n
                 fdbrRelevantEvs <- mapM (\(subj, evs) -> filter_ev preps evs rtriples >>= (\x -> return (subj, x))) images
                 let fdbr = filter (not . List.null . snd) fdbrRelevantEvs --TODO: this will make it so sets of events with a cardinality of 0 are not counted, partially leading to wrong "the least" behaviour (consider complement)
                 --Now for superlatives.  All termphrases are applied first, and ordering happens after.
-                res <- filter_super preps fdbr rtriples
-                let fixme = FDBR res
-                modify (\s' -> Map.insert g fixme s') --TODO FIXME
-                return fixme
+                do_complement <- first_no preps rtriples --Apply "no" complement based on first
+                filtered_super <- filter_super preps fdbr rtriples
+                let res = if do_complement then --this will be False if any superlative is present at the moment
+                        ComplementFDBR $ difference_fdbr images filtered_super --this will be difference_fdbr
+                    else
+                        FDBR filtered_super
+                modify (\s' -> Map.insert g res s')
+                return res
+
+filter_super2 :: ([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result) -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) FDBR
+filter_super2 (_, Nothing, _) fdbr rtriples = return fdbr --No superlative, no problem
+filter_super2 (props, Just ord, _) fdbr rtriples = --here we do the actual ordering requirments for the superlative (termphrase already applied)
+                do
+                    gfdbr <- make_gfdbr props fdbr rtriples
+                    let sorted_parts = make_partition ord gfdbr
+                    let maybe_top_gfdbr = Maybe.listToMaybe sorted_parts in
+                        case maybe_top_gfdbr of
+                            Just top_gfdbr -> return $ condense_gfdbr top_gfdbr
+                            Nothing -> return []
+
+
+--TODO: this is copy-pasted practically from filter_evs... perhaps that should refer to this?
+filter_prep :: ([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result)) -> [Event] -> ReducedTriplestore -> State (Map.Map GettsTree Result) [Event]
+filter_prep (names, _, pred) evs triples = do
+    let pred_tf = getSem $ pred (make_pred_arg_memo evs names) --skips memoizing the result
+    --Memoization already happened in pred_tf thankfully
+    res <- pred_tf triples
+    let relevant_evs = case res of
+            FDBR x -> List.nub $ concatMap snd x
+            ComplementFDBR [] -> evs --in the case of "no", ComplementFDBR [] can be returned, so keep all original evs
+            ComplementFDBR evs -> error "ComplementFDBR evs, should not happen!"
+    return relevant_evs
+
+--RTL order (preps flipped in make_trans)
+{-
+Do breadth-first evaluation of FDBR, with 2 cases:
+    * non-superlative phrase (including no, one, two..)
+    * superlative phrase ("the most")
+    * NOTE: how does "the least" fit in here?
+-}
+filter_ev2 :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) FDBR
+filter_ev2 list fdbr rtriples = foldlM filt fdbr list
+    where
+        filt [] _ = return []
+        filt fdbr p@(names, Nothing, pred) = apply_pred p fdbr
+        filt fdbr p = apply_pred p fdbr >>= (\res -> filter_super2 p res rtriples)
+        apply_pred p fdbr = do
+                new_fdbr <- mapM (\(subj, evs) -> filter_prep p evs rtriples >>= (\x -> return (subj, x))) fdbr
+                return $ filter (not . List.null . snd) new_fdbr --remove entities with empty events
+                 --TODO: this will make it so sets of events with a cardinality of 0 are not counted, partially leading to wrong "the least" behaviour (consider complement)
+
+--this seems to expect list is already flipped... maybe we ought not to do that?
+{-
+filter_ev2rtl :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) Result
+filter_ev2rtl [] fdbr rtriples = return $ FDBR fdbr
+filter_ev2rtl [last_prep] fdbr rtriples = do
+    do_complement <- first_no [last_prep] rtriples
+    new_fdbr <- filt fdbr last_prep
+    if do_complement then
+        ComplementFDBR $ fdbr `difference_fdbr` new_fdbr --this computes "not discover a ..."
+    else
+        FDBR $ new_fdbr
+filter_ev2rtl (prep:list) fdbr rtriples = filt prep (filter_ev2rtl list fdbr rtriples)
+    where
+        filt _ [] = return []
+        filt p@(names, Nothing, pred) fdbr = apply_pred p fdbr
+        filt p fdbr = apply_pred p fdbr >>= (\res -> filter_super2 p res rtriples)
+        apply_pred p fdbr = do
+                new_fdbr <- mapM (\(subj, evs) -> filter_prep p evs rtriples >>= (\x -> return (subj, x))) fdbr
+                return $ filter (not . List.null . snd) new_fdbr --remove entities with empty events
+                 --TODO: this will make it so sets of events with a cardinality of 0 are not counted, partially leading to wrong "the least" behaviour (consider complement)
+-}
+
+apply_pred p fdbr rtriples = do
+        new_fdbr <- mapM (\(subj, evs) -> filter_prep p evs rtriples >>= (\x -> return (subj, x))) fdbr
+        return $ filter (not . List.null . snd) new_fdbr --remove entities with empty events
+            --TODO: this will make it so sets of events with a cardinality of 0 are not counted, partially leading to wrong "the least" behaviour (consider complement)
+
+filt rtriples _ [] = return []
+filt rtriples p@(names, Nothing, pred) fdbr = apply_pred p fdbr rtriples
+filt rtriples p fdbr = apply_pred p fdbr rtriples >>= (\res -> filter_super2 p res rtriples)
+
+filter_ev2rtlattempt2 :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) Result
+filter_ev2rtlattempt2 [] fdbr rtriples = return $ FDBR $ fdbr
+filter_ev2rtlattempt2 [first_prep] fdbr rtriples =
+    do
+        do_complement <- first_no [first_prep] rtriples
+        new_fdbr <- filt rtriples first_prep fdbr
+        return $ if do_complement then
+            ComplementFDBR $ fdbr `difference_fdbr` new_fdbr --this computes "not discover a ..."
+        else
+            FDBR $ new_fdbr
+--first prep is treated differently: no complement is forced
+filter_ev2rtlattempt2 (first_prep:rest) fdbr rtriples = foldrM (filt rtriples) fdbr rest >>= \last_fdbr -> filter_ev2rtlattempt2 [first_prep] last_fdbr rtriples
+
+--TODO: mention unified approach in paper?
+
+is_no :: (TFMemo Result -> TFMemo Result) -> ReducedTriplestore -> State (Map.Map GettsTree Result) Bool
+is_no pred triples = do
+            let pred_tf = getSem $ pred empty_result_fdbr
+            --Memoization already happened in pred_tf thankfully
+            res <- pred_tf triples
+            case res of
+                FDBR _ -> return False
+                ComplementFDBR _ -> return True
+
+filt2 :: ReducedTriplestore -> FDBR -> ([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result) -> Result -> State (Map.Map GettsTree Result) Result
+--filt2 rtriples alltransvb _ (FDBR []) = return (FDBR []) --empty means stop processing (for now?)
+filt2 rtriples alltransvb p@(_, _, pred) (FDBR fdbr) = do
+            --the result of the previous thing is from something like "in 1877"
+    do_complement <- is_no pred rtriples
+    new_fdbr <- apply_pred p fdbr rtriples
+    if do_complement then
+        --the current result must be a subset of the FDBR down the chain
+        --this could happen in like "no moons in 1877"
+        --this will ensure "hall" is kept in "disovered no moons in 1877"
+        return $ ComplementFDBR $ fdbr `difference_fdbr` new_fdbr
+        --can ignore superlative entirely -- "pred" takes precedence
+    else
+        --do it normally
+        filter_super2 p new_fdbr rtriples >>= return . FDBR --result of superlative is always FDBR (for now)
+
+filt2 rtriples alltransvb p@(_, _, pred) (ComplementFDBR fdbr) = do
+            --the result of the previous thing is from something like "no"
+    do_complement <- is_no pred rtriples
+    let c_fdbr = alltransvb `difference_fdbr` fdbr
+    new_fdbr <- apply_pred p c_fdbr rtriples
+    if do_complement then
+
+        --current thing is like "no" and the previous thing is
+        --this could happen, for example, in the query "no moons in no places"
+        --the complement has the form ComplementFDBR [in a place]
+        --can extract FDBR as follows: transvb - complement (want this explicitly to handle the cas "COMP [a moon in a place]" which corresponds to "no moon in no place")
+        --the current result must be the entire termph set, not just the fdbr in there
+
+        --so c_fdbr corresponds to [a non-moon/nothing in a non-place/nowhere]
+
+        --new_fdbr corresponds to [at a non-blah/nowhere a non-moon/nothing in a non-place/nowhere] (no will ensure that)
+        --convert this back: now we have [at no place no moon in no place] (TODO: fixup example)
+        return $ ComplementFDBR $ alltransvb `difference_fdbr` new_fdbr
+    else
+        --current thing is like "in 1877", but what we have is a complement
+        --this could happen, for example, like "in 1877 at no place"
+        --result should be an FDBR representing "in 1877 at a non place" (including nowhere)
+        filter_super2 p new_fdbr rtriples >>= return . FDBR -- counts the most moons in non-places/nowhere
+
+filter_ev2rtlattempt3 :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> FDBR -> ReducedTriplestore -> State (Map.Map GettsTree Result) Result
+filter_ev2rtlattempt3 list alltransvb rtriples = foldrM (filt2 rtriples alltransvb) (FDBR alltransvb) list --lltransvb needs to be kept for all invocations of filt2
+
+--this is strictly right to left (?) no 2 phase
+make_trans''rtl :: Voice -> Relation -> [([T.Text], Maybe Ordering, TFMemo Result -> TFMemo Result)] -> TFMemo Result
+make_trans''rtl voice rel ltrPreps = TFMemoT (f, g) --top level things ALWAYS have a name
+    where
+    --preps = reverse ltrPreps --TODO NOTE: RTL ORDER (needs a different name because not $ a moon is not the same as discover no moon in terms of the FDBR returned
+    --preps = ltrPreps
+    --rtlPreps = reverse ltrPreps
+    g = gettsTP voice rel (gatherPreps ltrPreps) --for memoization purposes, use "discover no moon in 1877" even though evaluation order is rtl
+    f rtriples = do
+        s <- get
+        case Map.lookup g s of
+            Just res -> return res
+            Nothing -> do
+                let (subjectProp,_) = getVoiceProps voice rel
+                let filtRTriples = pure_getts_triples_entevprop_type rtriples (subjectProp:(nub $ concatMap (\(a,_,_) -> a) $ ltrPreps)) (relname rel)
+                let images = make_fdbr_with_prop filtRTriples subjectProp
+                --do_complement <- first_no ltrPreps rtriples --use ltrPreps because "no" complement inclusion depends solely on first "no" after the transvb
+                {-let adjusted_preps = reverse $ if do_complement then --reverse evaluation order here
+                        case ltrPreps of
+                            (x:xs) -> special x:xs
+                            [] -> error "attempting to 'no' when empty"
+                        else
+                            ltrPreps-}
+                --fdbr <- filter_ev2rtl ltrPreps images rtriples
+                {-let res = if do_complement then --this will be False if any superlative is present at the moment
+                        --ComplementFDBR $ difference_fdbr images fdbr --this will be difference_fdbr NOTE: needs adjustment for new scheme!
+                        ComplementFDBR $ fdbr
+                    else
+                        FDBR fdbr-}
+                res <- filter_ev2rtlattempt3 ltrPreps images rtriples
+                modify (\s' -> Map.insert g res s')
+                return res
+
+make_trans'' = make_trans''rtl
 
 --make_trans_active' "discover_ev" <<*>> (gatherPreps [at us_naval_observatory, in' 1877])
 --TODO: rtriples is used directly?? is this correct?
@@ -1240,6 +1468,11 @@ transvbph
                                                            synthesized SUPERPH_VAL OF S2,
                                                            synthesized PREP_VAL OF S3]]
     <|>
+    parser (nt transvb S1 *> nt preps S2 *> nt superph S3) --NEW FOR NEGATION "discovered in 1877 the most moons" --termph comes after preps
+    [rule_s VERBPH_VAL OF LHS ISEQUALTO applytransvbprep_super [synthesized VERB_VAL OF S1,
+                                                                synthesized PREP_VAL OF S2,
+                                                                synthesized SUPERPH_VAL OF S3]]
+    <|>
     parser (nt linkingvb S1 *> nt transvb S2) --"was discovered"
     [rule_s VERBPH_VAL  OF LHS ISEQUALTO drop3rdprep [synthesized LINKINGVB_VAL  OF  S1,
                                                       synthesized VERB_VAL       OF  S2]]
@@ -1550,6 +1783,15 @@ applytransvbsuper [x, y, z] = VERBPH_VAL $ make_trans_active' reln ((make_prep_s
     preps = getAtts getPREPVAL z
     (_, object) = getVoiceProps ActiveVoice reln
 
+applytransvbprep_super [x, y, z] = VERBPH_VAL $ make_trans_active' reln (preps ++ [make_prep_superph [object] superpred])
+    where
+    reln = getAtts getBR x
+    preps = getAtts getPREPVAL y
+    superpred = getAtts getSUPERPHVAL z
+    (_, object) = getVoiceProps ActiveVoice reln
+
+
+
 applytransvb_no_tmph [x,y] = VERBPH_VAL $ make_trans_active' reln preps
     where
     reln = getAtts getBR x
@@ -1763,7 +2005,7 @@ dictionary = [
     ("an",                 Det,       [DET_VAL $ a]),
     ("some",               Det,       [DET_VAL $ a]),
     ("any",                Det,       [DET_VAL $ a]),
-    --("no",                 Det,       [DET_VAL $ no]), FIXME: not entirely satisfied yet with this
+    ("no",                 Det,       [DET_VAL $ no]),
     ("every",              Det,       [DET_VAL $ every]),
     ("all",                Det,       [DET_VAL $ every]),
     ("two",                Det,       [DET_VAL $ two]),
@@ -1893,8 +2135,8 @@ dictionary = [
     ("everyone",    Indefpron,meaning_of detph   "every person" Detph),
     ("everything",  Indefpron,meaning_of detph   "every thing" Detph),
     ("everybody",   Indefpron,meaning_of detph   "every person" Detph),
-    --("nobody",      Indefpron,meaning_of detph   "no person" Detph),
-    --("noone",       Indefpron,meaning_of detph   "no person" Detph),
+    ("nobody",      Indefpron,meaning_of detph   "no person" Detph),
+    ("noone",       Indefpron,meaning_of detph   "no person" Detph),
     --Begin prepositional stuff--
     ("with",        Prepn, [PREPN_VAL ["with_implement"]]),
     ("using",       Prepn, [PREPN_VAL ["with_implement"]]),
