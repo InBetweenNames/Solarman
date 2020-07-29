@@ -1377,7 +1377,7 @@ relnouncla
                                                         synthesized RELPRON_VAL  OF S2,
                                                         synthesized VERBPH_VAL   OF S3]]
     <|>
-    parser (nt prefix S4 *> nt snouncla S2)
+    parser (nt prefix S4 *> nt relnouncla S2)
     [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_prefix [synthesized PREFIX_VAL OF S4,
                                                        synthesized NOUNCLA_VAL OF S2]]  --"non" applies closer than "that".  "non vacuumous moon" is also valid.  "non vacuumous moon that spins" will evaluate to "(non (vacuumous moon)) `that` spins"
     <|>
