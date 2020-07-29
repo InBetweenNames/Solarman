@@ -1365,6 +1365,10 @@ snouncla
   parser (nt adjs S1 *> nt cnoun S2)
   [rule_s NOUNCLA_VAL OF LHS ISEQUALTO intrsct1 [synthesized ADJ_VAL      OF  S1,
                                                  synthesized NOUNCLA_VAL  OF  S2]]
+  <|>
+  parser (nt prefix S4 *> nt snouncla S2)
+  [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_prefix [synthesized PREFIX_VAL OF S4,
+                                                     synthesized NOUNCLA_VAL OF S2]]  --"non" applies closer than "that".  "non vacuumous moon" is also valid.  "non vacuumous moon that spins" will evaluate to "(non (vacuumous moon)) `that` spins"
  )
 
 -------------------------------------------------------------------------------
@@ -1376,11 +1380,7 @@ relnouncla
     [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_middle1 [synthesized NOUNCLA_VAL  OF S1,
                                                         synthesized RELPRON_VAL  OF S2,
                                                         synthesized VERBPH_VAL   OF S3]]
-    <|>
-    parser (nt prefix S4 *> nt relnouncla S2)
-    [rule_s NOUNCLA_VAL OF LHS ISEQUALTO apply_prefix [synthesized PREFIX_VAL OF S4,
-                                                       synthesized NOUNCLA_VAL OF S2]]  --"non" applies closer than "that".  "non vacuumous moon" is also valid.  "non vacuumous moon that spins" will evaluate to "(non (vacuumous moon)) `that` spins"
-    <|>
+        <|>
     parser
     (nt snouncla S4)
     [rule_s NOUNCLA_VAL OF LHS ISEQUALTO copy [synthesized NOUNCLA_VAL OF S4]]
