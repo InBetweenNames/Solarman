@@ -32,17 +32,16 @@ To build for wasm (using Asterius):
     is significantly older.
 * Pull down latest Asterius and build it with `stack build asterius`
 * Boot Asterius with `stack exec ahc-boot` -- note that `stack exec` is needed for `ahc-` related activities
-* Navigate to XSaiga and `stack exec ahc-cabal v2-configure -- --disable-shared --allow-newer --constraint "cryptonite
-    -integer-gmp" -fasterius`.  The `-fasterius` is important to enable the Asterius workarounds.
+* Navigate to XSaiga and `stack exec ahc-cabal v2-configure -- --disable-shared --allow-newer --constraint "cryptonite -integer-gmp" --constraint "XSaiga +asterius"`.  The `XSaiga +asterius` is important to enable the Asterius workarounds.
 * If the dependencies don't work out, make sure it's booted.
-* Now do `stack exec ahc-cabal -- v2-build --disable-shared --allow-newer --constraint "cryptonite -integer-gmp" -fasterius`
+* Now do `stack exec ahc-cabal -- v2-build --disable-shared --allow-newer --constraint "cryptonite -integer-gmp" --constraint "XSaiga +asterius"`
 * If you get build errors from things like `x509`, and notice older versions, put newer versions in `asterius-deps/*`
     and try again
 * If you get build errors from things like `html-entities` where the compiler itself breaks, pass `--disable-shared` to
     `ahc-cabal`.  This is because WASM builds have no concept of dynamic linking and there's no graceful handling in
     Asterius to handle this.  `ahc-cabal` is supposed to fix that, but I think the `-dynamic-too` flag trips it up.
 * Some notes:
-  * I had to add cross-deps/hs-certificate/{x509,x509-store,x509-system,x509-util,x509-validation}, latest versions from
+  * I had to add asterius-deps/hs-certificate/{x509,x509-store,x509-system,x509-util,x509-validation}, latest versions from
       Git
   * I also had to add `html-entities` from latest git, but I'm not sure why this worked.  Now it stopped working again.
       Argh!  For some reason I built it once with `-v` and it worked.  Bleh.  Okay.  Keep trying with `-v`.  It will
@@ -55,7 +54,7 @@ To build for wasm (using Asterius):
 To run:
 
 ~~~
-stack exec ahc-dist -- --browser --input-mjs solarman.mjs --input-exe dist-newstyle/build/x86_64-linux/ghc-8.8.3/XSaiga-1.6.1.0/x/solarman.cgi/build/solarman.cgi/solarman.cgi
+stack exec ahc-dist -- --browser --input-mjs solarman.mjs --input-exe dist-newstyle/build/x86_64-linux/ghc-8.8.4/XSaiga-1.6.1.0/x/solarman.cgi/build/solarman.cgi/solarman.cgi
 ~~~
 
 Change `--browser` to `--run` if you want to run it on the command line.  `--run` doesn't work just yet.
@@ -81,5 +80,12 @@ execute the query, and then will call `updateResults` with the newly formed JSON
 Now to make the reduced triplestore a bit faster and improve the speed in general.  So far, the SPARQL queries are sent out over the network!!!
 Exciting times.
 
+To create a dist file:
 
-
+* Compile as above
+* Copy the `solarman.cgi` directory to a new directory, like `wasm-dist`
+* Copy `demo_sparql_asterius.html` to `wasm-dist/index.html`
+* Copy `speech.js` to `wasm-dist`
+* Copy `grammar.jsgf` to `wasm-dist`
+* Copy `loading.gif` to `wasm-dist`
+* Tar it up and you're good

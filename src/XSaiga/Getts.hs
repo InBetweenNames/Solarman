@@ -36,7 +36,11 @@ import Asterius.Types
 
 import qualified Data.Text.IO as TIO
 import qualified System.IO as SIO
+#endif
 
+type Cardinality = Int --if we need more than 2 billion entities, we can change this
+
+#ifdef ASTERIUS
 foreign import javascript safe "getts_sparql($1,$2)" asterius_getts_sparql :: JSString -> JSString -> IO JSString
 
 foreign import javascript safe "getts_triples_entevprop_type($1,$2,$3)" asterius_getts_triples_entevprop_type :: JSVal -> JSArray -> JSString -> IO JSArray
@@ -50,11 +54,14 @@ foreign import javascript safe "getts_triples_members($1,$2)" asterius_getts_tri
 foreign import javascript safe "getts_cardinality_allents($1,$2)" asterius_getts_cardinality_allents :: JSVal -> JSArray -> IO JSVal
 
 --TODO: the following is the preferred way to use Asterius, but it does not work yet
+
+{-
 gettsSelectQuery :: String -> Query SelectQuery -> IO (Maybe [[BindingValue]])
 gettsSelectQuery endpoint query = do
     js_triples_xml <- asterius_getts_sparql (toJSString endpoint) (toJSString $ createSelectQuery query)
     --SIO.putStrLn $ createSelectQuery query --This is crashing!
     return $ structureContent $ fromJSString $ js_triples_xml
+-}
 #else
 
 gettsSelectQuery = selectQuery
@@ -160,7 +167,7 @@ instance TripleStore SPARQLBackend where
         --now we have the [(ev,ent)] bindings from before, already de-namespaced and deconstructed in javascript
         return $ List.concatMap (\(ev,ent) -> [(ev, "type", "membership"), (ev, "subject", ent), (ev, "object", set)]) bindings
 
-    getts_cardinality_allents (SPARQL endpoint namespace_uri) propNames = do
+    getts_cardinality_allents triplestore@(SPARQL endpoint namespace_uri) propNames = do
         x <- asterius_getts_cardinality_allents (jsonToJSVal triplestore) (toJSArray $ map jsonToJSVal propNames)
         let count = jsonFromJSVal' x :: Cardinality
         return $ count

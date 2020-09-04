@@ -1,12 +1,12 @@
 packages: .
 optional-packages:
-  cross-deps/{comonad,distributive}
-  workaround-deps/{MissingH,rdf4h}
-  asterius-deps/hsparql
-  asterius-deps/html-entities
-  asterius-deps/hs-certificate/{x509,x509-store,x509-system,x509-util,x509-validation}
+  cross-deps/{comonad,distributive,generic-data}
+  /home/shane/cabal-deps/{MissingH,rdf4h}
+  --asterius-deps/hsparql
+  --asterius-deps/html-entities
+  --asterius-deps/hs-certificate/{x509,x509-store,x509-system,x509-util,x509-validation}
   asterius-deps/hsc2hs
-  asterius-deps/parsers
+  --asterius-deps/parsers
 
 
 --Required for Asterius: pass on command line ideally
@@ -14,3 +14,5 @@ optional-packages:
 
 --profiling: True
 --profiling-detail: all-functions
+
+allow-newer: all

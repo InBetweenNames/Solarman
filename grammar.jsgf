@@ -4,7 +4,7 @@ grammar com.speechweb.solarman;
 
 <adjs> = <adj> [<adjs>];
 
-<snouncla> = <Cnoun> | <adjs> <Cnoun>;
+<snouncla> = <Cnoun> | <adjs> <Cnoun> | non <snouncla>;
 
 <relnouncla> = <snouncla> <relpron> <joinvbph> | <snouncla>;
 
@@ -36,7 +36,7 @@ grammar com.speechweb.solarman;
 
 <verbph> = <transvbph> | <intransvb> | <linkingvb> <det> <nouncla>;
 
-<termph> = <pnoun> | <detph>;
+<termph> = <pnoun> | <detph> | not <termph>;
 
 <jointermph> = <jointermph> <termphjoin> <jointermph> | <termph>;
 
@@ -85,7 +85,7 @@ public <query> = <question> | <opener>;
 
 <quest3> = which | what;
 
-<det> = the | a | one | an | some | any | every | all | two | most;
+<det> = the | a | one | an | some | any | every | all | two | most | no;
 
 <superph_start> = the;
 

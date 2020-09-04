@@ -70,7 +70,7 @@ when:
 
   - condition: flag(asterius)
     ghc-options: -DASTERIUS
-    dependencies: asterius-prelude
+    dependencies: asterius-prelude >= 0.0.1
 
 default-extensions:
   - DoAndIfThenElse

@@ -473,8 +473,6 @@ instance Constructor c => HasConstructor (C1 c f) where
 
 constrName = gconIndex
 
-type Cardinality = Int --if we need more than 2 billion entities, we can change this
-
 --Denotes either a set of examples or a set of exceptions
 --Inspired from Frost,Boulos (2004)
 data Result = FDBR FDBR | ComplementFDBR FDBR

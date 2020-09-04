@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a015a64b83a16fb1cbb803e59ecd89bfdb96843a2d4cc18f547af9f465feb72d
+-- hash: 33fe6b26d8e66d20225eee8b3f4b8d5836785746db3d28b137834caec4fb9675
 
 name:           XSaiga
 version:        1.6.1.0
@@ -90,7 +90,7 @@ library
   if flag(asterius)
     ghc-options: -DASTERIUS
     build-depends:
-        asterius-prelude
+        asterius-prelude >=0.0.1
   default-language: Haskell2010
 
 executable solarman.cgi
@@ -129,5 +129,5 @@ executable solarman.cgi
   if flag(asterius)
     ghc-options: -DASTERIUS
     build-depends:
-        asterius-prelude
+        asterius-prelude >=0.0.1
   default-language: Haskell2010
