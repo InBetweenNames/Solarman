@@ -69,7 +69,7 @@ when:
       dependencies: network
 
   - condition: flag(asterius)
-    ghc-options: -DASTERIUS
+    cpp-options: -DASTERIUS
     dependencies: asterius-prelude >= 0.0.1
 
 default-extensions:
