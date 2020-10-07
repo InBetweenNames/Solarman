@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a5bc0a83f25f0273a3a6a56d0c3f0154df152aa44fcf7686c866c1653832ae6c
+-- hash: 05d5fa974482c4e7e19f6565ffc604e775a19e1ae0dc078a34dcfb1a61c40b1f
 
 name:           XSaiga
-version:        1.6.1.0
+version:        1.7.0.0
 synopsis:       An implementation of a polynomial-time top-down parser suitable for NLP
 description:    This package contains a Haskell implementation of the X-SAIGA project's parser combinators. The combinators
                 enable fully-general attribute grammars to be implemented as executable specifications. Although the parser
