@@ -64,7 +64,7 @@ dependencies:
 when:
   - condition: flag(instore)
     then:
-      ghc-options: -DINSTORE
+      cpp-options: -DINSTORE
     else:
       dependencies: network
 

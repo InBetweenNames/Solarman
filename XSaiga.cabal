@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 05d5fa974482c4e7e19f6565ffc604e775a19e1ae0dc078a34dcfb1a61c40b1f
+-- hash: 61347fb5074eac8845401849a533232e56964b281c50e44215fa49e7f7d78102
 
 name:           XSaiga
 version:        1.7.0.0
@@ -83,7 +83,7 @@ library
     , unordered-containers
     , vector
   if flag(instore)
-    ghc-options: -DINSTORE
+    cpp-options: -DINSTORE
   else
     build-depends:
         network
@@ -122,7 +122,7 @@ executable solarman.cgi
     , unordered-containers
     , vector
   if flag(instore)
-    ghc-options: -DINSTORE
+    cpp-options: -DINSTORE
   else
     build-depends:
         network
