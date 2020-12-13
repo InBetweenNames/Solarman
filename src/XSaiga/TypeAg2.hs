@@ -476,7 +476,7 @@ constrName = gconIndex
 
 --Denotes either a set of examples or a set of exceptions
 --Inspired from Frost,Boulos (2004)
-data Result = FDBR FDBR | ComplementFDBR FDBR
+data Result = FDBR FDBR | ComplementFDBR FDBR deriving (Show)
 getFDBR (FDBR x) = x
 getFDBR (ComplementFDBR x) = x
 
