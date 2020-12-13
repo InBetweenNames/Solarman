@@ -2195,6 +2195,7 @@ dictionary = [
     ("refractor_telescope_2",           Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_2"]),
     ("refractor_telescope_3",           Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_3"]),
     ("refractor_telescope_4",           Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_4"]),
+    ("refractor_telescope_5",           Pnoun,[TERMPH_VAL $ make_pnoun "refractor_telescope_5"]),
     ("reflector_telescope_1",           Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_1"]),
     ("reflector_telescope_2",           Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_2"]),
     ("reflector_telescope_3",           Pnoun,[TERMPH_VAL $ make_pnoun "reflector_telescope_3"]),
