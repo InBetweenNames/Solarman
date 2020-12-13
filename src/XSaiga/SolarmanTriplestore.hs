@@ -304,6 +304,16 @@ two' = applyCard two'' >|< GettsIntersect (GI_Number 2)
 
 two = wrapS2 two'
 
+
+three'' :: CardinalityFunction -> Result -> Result -> Result
+three'' cardinality nph vbph = let res = intersect_result'' nph vbph in if cardinality res == 3 then res else FDBR []
+
+three' :: SemFunc (TF Result -> TF Result -> TF Result)
+three' = applyCard three'' >|< GettsIntersect (GI_Number 3)
+
+three = wrapS2 three'
+
+
 --which nph vbph = if result /= [] then result else "none."
 --  where result = unwords $ intersect nph vbph
 
@@ -2028,6 +2038,7 @@ dictionary = [
     ("every",              Det,       [DET_VAL $ every]),
     ("all",                Det,       [DET_VAL $ every]),
     ("two",                Det,       [DET_VAL $ two]),
+    ("three",              Det,       [DET_VAL $ three]),
     ("most",               Det,       [DET_VAL $ most]),
     ("not",                Adverb,    [ADVERB_VAL $ nounnot]), --"a moon (not spins)
     ("not",                Termphnot, [TERMPHNOT_VAL $ termnot]), --"(not hall) discovered"
