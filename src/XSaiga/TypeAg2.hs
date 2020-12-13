@@ -26,7 +26,7 @@ import Data.Hashable
 import Debug.Trace
 import Generic.Data (gconIndex)
 
-data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_None | GI_Number Int deriving (Eq, Ord)
+data GettsIntersectType = GI_NounAnd | GI_Most | GI_Every | GI_Which | GI_HowMany | GI_None | GI_To | GI_Number Int deriving (Eq, Ord)
 
 instance Show GettsIntersectType where
     show GI_NounAnd = "intersect_fdbr"
@@ -315,6 +315,7 @@ instance Show (TF Text) where
 
 --apply over the intersect_entevimages, remember evs of im2 are preserved and im1 are discarded
 gettsAttachP :: T.Text -> GettsTree -> GettsTree
+gettsAttachP prop (GettsComplement x) = GettsComplement (gettsAttachP prop x)
 gettsAttachP prop (GettsIntersect t x y) = GettsIntersect t x (gettsAttachP prop y)
 gettsAttachP prop (GettsUnion t x y) = GettsUnion t x (gettsAttachP prop y)
 gettsAttachP prop (GettsTP p rel sub) = GettsTP p rel ((GettsPrep [prop] Nothing GettsNone):sub) --is this correct?  should i go back to the old way?  does cardinality have to match?

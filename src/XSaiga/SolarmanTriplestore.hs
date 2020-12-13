@@ -421,7 +421,24 @@ make_prep props tmph = (props, Nothing, tmph)
 
 make_prep_nph' props nph = (props, Nothing, intersect_result' <<*>> nph)
 
-make_prep_nph props nph = (props, Nothing, intersect_result nph)
+testing_intersect_evs'' fdbr1 fdbr2
+    = [("", concatMap snd fdbr1 `intersect` concatMap snd fdbr2)]
+
+testing_difference_evs'' fdbr1 fdbr2
+    = [("", concatMap snd fdbr1 \\ concatMap snd fdbr2)]
+
+testing_intersect_result_evs'' (FDBR fdbr1) (FDBR fdbr2)
+    = FDBR $ testing_intersect_evs'' fdbr1 fdbr2
+
+testing_intersect_result_evs'' (ComplementFDBR fdbr1) (FDBR fdbr2)
+    = FDBR $ testing_difference_evs'' fdbr1 fdbr2
+
+testing_intersect_result_evs' :: SemFunc (TF Result -> TF Result -> TF Result)
+testing_intersect_result_evs' = liftA2 testing_intersect_result_evs'' >|< GettsIntersect GI_To --a hack just to demo the proof of concept, should be a new category
+
+testing_intersect_result_evs = wrapS2 testing_intersect_result_evs'
+
+make_prep_nph props nph = (props, Nothing, testing_intersect_result_evs nph)
 
 make_prep_superph props (ord, tmph) = (props, Just ord, tmph)
 
@@ -529,6 +546,7 @@ where' = make_prop_termphrase "location"
 when' = make_prop_termphrase "year"
 how' = make_prop_termphrase "with_implement"
 
+findFirstObj (GettsComplement y) = findFirstObj y
 findFirstObj (GettsIntersect _ _ y) = findFirstObj y
 findFirstObj (GettsUnion _ _ y) = findFirstObj y
 findFirstObj (GettsTP _ (_,_,object) _) = object
@@ -653,9 +671,8 @@ empty_result_fdbr = (TFMemoT (const $ return $ FDBR [], GettsNone)) --TODO: Gett
 --What's a good name for GettsFilterEv?  How do we deal with the recursion?
 --Temporary workaround: don't bother memoizing the list of events
 
---TODO: THIS IS ACTUALLY RIGHT TO LEFT ORDER with foldrM!! kuiper discovered one moon in 1948 actually works
+--TODO: THIS IS ACTUALLY RIGHT TO LEFT ORDER with foldrM (leftmost-outermost)!! kuiper discovered one moon in 1948 actually works
 --      but kuiper discovered in 1948 one moon does not!
---NOTE FIXED but do we actually want LTR????
 filter_ev :: [([T.Text], Maybe Ordering, (TFMemo Result -> TFMemo Result))] -> [Event] -> ReducedTriplestore -> State (Map.Map GettsTree Result) [Event]
 filter_ev list evs triples = foldlM filt evs list
     where
