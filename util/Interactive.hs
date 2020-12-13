@@ -11,10 +11,10 @@ import Data.Functor
 import Data.Biapplicative
 import Control.Monad
 
-a $ b = a b
-infixr 0 $
-a . b = \x -> a (b x)
-infixr 9 .
+--a $ b = a b
+--infixr 0 $
+--a . b = \x -> a (b x)
+--infixr 9 .
 
 discover = make_trans_active discover_rel
 discover' = make_trans_active' discover_rel
@@ -63,6 +63,7 @@ used_ = make_trans_passive use_rel
 
 discoverer = get_subjs_of_event_type "discover_ev"
 discoverers = get_subjs_of_event_type "discover_ev"
+person = get_members "person"
 anyone = a person
 anything = a thing
 anybody = a person
@@ -72,13 +73,14 @@ somebody = a person
 everyone = every person
 everything = every thing
 everybody = every person
+telescope = get_members "telescope"
 telescopes = telescope
+place = get_members "place"
 places = place
-thing = get_members "thing"
-things = get_members "thing"
+--thing = get_members "thing"
+things = thing
 planets = get_members "planet"
 planet = get_members "planet"
-person = get_members "person"
 sun = get_members "sun"
 moon = get_members "moon"
 moons = get_members "moon"
@@ -93,8 +95,8 @@ green = get_members "green"
 red = get_members "red"
 ringed = get_members "ringed"
 vacuumous = get_members "vacuumous"
-exist = get_members "thing"
-exists = get_members "thing"
+--exist = get_members "thing"
+--exists = exist
 spin = get_members "spin"
 spins = get_members "spin"
 bernard = make_pnoun "bernard"
@@ -162,7 +164,6 @@ uranus = make_pnoun "uranus"
 human = get_members "person"
 humans = get_members "person"
 people = get_members "person"
-telescope = get_members "telescope"
 cassegrain_telescope = make_pnoun "cassegrain_telescope"
 hooker_telescope = make_pnoun "hooker_telescope"
 schmidt_telescope = make_pnoun "schmidt_telescope"
@@ -265,7 +266,6 @@ spacecraft = get_members "spacecraft"
 spacecrafts = get_members "spacecrafts"
 voyager_1 = make_pnoun "voyager_1"
 voyager_2 = make_pnoun "voyager_2"
-place = get_members "place"
 mt_hopkins = make_pnoun "mt_hopkins"
 fort_davis = make_pnoun "fort_davis"
 cerro_tololo = make_pnoun "cerro_tololo"
